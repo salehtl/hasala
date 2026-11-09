@@ -16,6 +16,9 @@ public enum AccountPasskeys {
   ) async throws(CeremonyError) -> AddedPasskey {
     guard let user = binding.userID, let writer = binding.writerID else { throw .noDeviceKey }
     guard let passkeys = env.passkeys else { throw .passkey(.unsupported) }
+    guard let seed = try secretStep({ () throws(SecretStoreError) in try env.secrets.writerSeed(userID: user, writerID: writer) })
+    else { throw .noDeviceKey }
+    defer { seed.wipe() }
     let proof = try await StepUpHelper.prove(env, params: .passkeyAdd, factor: factor, binding: binding, reason: reason)
     defer { proof.prf?.wipe() }
     guard let nonce = try? Base64.decodeURL(proof.stepUp.nonce) else { throw .badResponse("step-up nonce") }
@@ -27,7 +30,11 @@ public enum AccountPasskeys {
     do { options = try begin.options.decoded() } catch { throw .badResponse("add options") }
     var opened: KeyBody?
     if body == nil, let credentialID = proof.credentialID, proof.prf != nil {
-      opened = try? await Enrolment.unlockWithPRF(env, userID: user, credentialID: credentialID, prf: proof.prf)
+      do {
+        opened = try await Enrolment.unlockWithPRF(env, userID: user, credentialID: credentialID, prf: proof.prf)
+      } catch {
+        guard case .noPRF = error else { throw error }
+      }
     }
     defer { opened?.wipe() }
     let reg: RawRegistration
@@ -39,9 +46,6 @@ public enum AccountPasskeys {
         try Wrap.sealPRF(body: source, prfOutput: prf, userID: user, credentialID: reg.credentialID, random: env.random)
       }
     }
-    guard let seed = try secretStep({ () throws(SecretStoreError) in try env.secrets.writerSeed(userID: user, writerID: writer) })
-    else { throw .noDeviceKey }
-    defer { seed.wipe() }
     let sig = try cryptoStep("passkey add") {
       try DWK.sign(
         seed: seed,
@@ -49,7 +53,7 @@ public enum AccountPasskeys {
           nonce: nonce, clientDataJSON: reg.rawClientDataJSON, attestationObject: reg.rawAttestationObject,
           prfWrap: wrap))
     }
-    let added = try await apiStep { () async throws(APIError) in
+    let added = try await passkeyFinishStep(env, credentialID: reg.credentialID) { () async throws(APIError) in
       try await env.client.passkeyAddFinish(
         PasskeyAddFinishRequest(
           ceremonyID: begin.ceremony_id, credential: reg.credential,

@@ -54,6 +54,20 @@ struct KeychainTests {
     #expect(try k.read(.gmailRefresh(userID: user)) == nil)
   }
 
+  @Test("accounts lists one service's items in the store's group; none is empty; locked throws")
+  func accounts() throws {
+    let api = InMemoryKeychainAPI()
+    let k = KeychainSecretStore(accessGroup: "G1", api: api)
+    let elsewhere = KeychainSecretStore(accessGroup: "G2", api: api)
+    #expect(try k.accounts(service: "app.hasala.writer-key").isEmpty)
+    try k.write(.writerKey(userID: user, writerID: writer), Data(count: 33))
+    try k.write(.approvalKey(userID: user, writerID: writer), Data(count: 8))
+    try elsewhere.write(.writerKey(userID: user, writerID: writer), Data(count: 33))
+    #expect(try k.accounts(service: "app.hasala.writer-key") == ["\(user.string):\(writer.string)"])
+    api.locked = true
+    #expect(throws: SecretStoreError.self) { _ = try k.accounts(service: "app.hasala.writer-key") }
+  }
+
   @Test("the purge deletes every service in every group and reports completeness")
   func purge() throws {
     let api = InMemoryKeychainAPI()

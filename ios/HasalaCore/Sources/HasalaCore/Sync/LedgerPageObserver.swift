@@ -52,7 +52,6 @@ public actor LedgerPageObserver: PageObserver {
   private var sampleIssued = false
   /// Why the last projection failed, if it did (content-free); nil after a success.
   public private(set) var projectionFailure: String?
-  private var unconfirmed: [(localSeq: Int64, opID: String, authoredMs: Int64, op: Op)] = []
 
   /// `dictionary` is the bundled merchant dictionary (`MerchantDictionary.bundled()`;
   /// `.empty` when its tier is disabled).
@@ -247,27 +246,16 @@ public actor LedgerPageObserver: PageObserver {
 
   public func pullEnded() async {
     guard dirty, let s = state else { return }
-    dirty = false
     try? project(s)
-  }
-
-  public func willPush() async {
-    guard let rows = try? context.store.pendingOps() else { return }
-    var known = Set(unconfirmed.map(\.opID))
-    for r in rows where !known.contains(r.opID) {
-      guard let op = try? Pusher.decodeStored(r), let ms = try? parseInstantMs(op.authoredAt) else { continue }
-      unconfirmed.append((r.localSeq, r.opID, ms, op))
-      known.insert(r.opID)
-    }
   }
 
   public func ops(_ ids: Set<String>) -> OpLookup {
     var out = OpLookup()
     guard !ids.isEmpty else { return out }
-    for u in unconfirmed where ids.contains(u.opID) { out.found[u.opID] = u.op }
     var incomplete = false
     do {
-      for r in try context.store.pendingOps() where ids.contains(r.opID) && out.found[r.opID] == nil {
+      let stored = try context.store.pendingOps() + context.store.acknowledgedOps(writerID: context.writerID, foldedThrough: 0)
+      for r in stored where ids.contains(r.opID) && out.found[r.opID] == nil {
         do { out.found[r.opID] = try Pusher.decodeStored(r) } catch { incomplete = true }
       }
     } catch {
@@ -292,13 +280,18 @@ public actor LedgerPageObserver: PageObserver {
       let rows: [WireRowRecord]
       do { rows = try store.wireRows(before: before, limit: 50) } catch { return false }
       guard let oldest = rows.last else { break }
-      for r in rows where r.disposition == .folded {
+      for r in rows where r.disposition != .alarm {
         if opener == nil {
           guard let keys = try? context.epochKeys(upTo: sync.epochHWM) else { return false }
           opener = Opener(epochHWM: sync.epochHWM, keys: keys)
         }
-        guard let opener, case .opened(_, let ops)? = try? reopen(r, opener) else {
+        let setAside = r.disposition == .setAside
+        guard let opener, let outcome = try? reopen(r, opener, setsAsideNewer: setAside) else {
           complete = false
+          continue
+        }
+        guard case .opened(_, let ops) = outcome else {
+          complete = complete && setAside
           continue
         }
         for op in ops where ids.contains(op.opID) { found[op.opID] = op }
@@ -320,14 +313,15 @@ public actor LedgerPageObserver: PageObserver {
 
   /// The outbox, one op per overlay blob, in order.
   private func pendingOverlay(over s: State) throws(SyncStop) -> [[Op]] {
-    let rows = try context.storeCall { () throws(StoreError) in try context.store.pendingOps() }
-    let folded = s.maxAuthored[context.writerID.string] ?? Int64.min
-    unconfirmed.removeAll { $0.authoredMs <= folded }
-    let pendingIDs = Set(rows.map(\.opID))
-    var items: [(Int64, Op)] = unconfirmed.filter { !pendingIDs.contains($0.opID) }.map { ($0.localSeq, $0.op) }
-    items += rows.compactMap { r in (try? Pusher.decodeStored(r)).map { (r.localSeq, $0) } }
-    items.sort { $0.0 < $1.0 }
-    return items.map { [$0.1] }
+    let store = context.store
+    let writer = context.writerID
+    let hot = s.cursors.hot
+    try? store.forgetAcknowledged(writerID: writer, foldedThrough: hot)
+    let rows = try context.storeCall { () throws(StoreError) in
+      try store.acknowledgedOps(writerID: writer, foldedThrough: hot) + store.pendingOps()
+    }
+    let items = rows.compactMap { r in (try? Pusher.decodeStored(r)).map { (r.localSeq, $0) } }
+    return items.sorted { $0.0 < $1.0 }.map { [$0.1] }
   }
 
   private func project(_ s: State) throws(SyncStop) {
@@ -336,6 +330,7 @@ public actor LedgerPageObserver: PageObserver {
       try projection.project(
         s, pending: pending, writerID: context.writerID.string, dictionary: dictionary, projectedAtMs: context.clock.nowMs())
       projectionFailure = nil
+      dirty = false
     } catch {
       projectionFailure = String(describing: type(of: error))
       try? context.store.recordFoldEvent(kind: "projection_failed", detail: projectionFailure ?? "", at: context.clock.nowMs())
@@ -430,6 +425,10 @@ public actor LedgerPageObserver: PageObserver {
     } catch {
       throw .seed(error)
     }
+  }
+
+  public func sampleNotSaved() {
+    sampleIssued = false
   }
 
   // MARK: Errors

@@ -48,6 +48,40 @@ struct ObserverSyncTests {
     #expect(try a.reader.txn(id)?.category == "entertainment")
   }
 
+  @Test("an upload acknowledged just before a kill stays on screen, offline too, until a pull folds it")
+  func acknowledgedSurvivesRelaunch() async throws {
+    let (w, a, _) = try await twoRuntimes()
+    try await a.bootstrap()
+    let wall = w.clock.nowMs() + LocalClock.offsetMs
+    var first = ""
+    let blob = try await a.author { x in first = try Self.manual(&x, "Common Grounds", 8_100, at: wall) }
+    w.server.losePullAfterNextUpload()
+    let pushed = await a.run(.authored)
+    #expect(pushed.pushed.opsAcknowledged == 3 && pushed.stop != nil)
+    #expect(try a.context.store.pendingCount() == 0)
+    #expect(try a.reader.txn(first)?.merchantRaw == "Common Grounds")
+
+    let relaunched = try Runtime(a.context, projection: a.projection)
+    try await relaunched.observer.open()
+    #expect(try relaunched.reader.txn(first)?.merchantRaw == "Common Grounds")
+    #expect(try relaunched.reader.homeCurrency() == "AED")
+    #expect(await relaunched.observer.ops([blob.ops[0].opID]).found.count == 1)
+
+    var second = ""
+    try await relaunched.author { x in second = try Self.manual(&x, "Talabat", 2_500, at: wall + 1) }
+    #expect(try relaunched.reader.txn(first)?.merchantRaw == "Common Grounds")
+    #expect(try relaunched.reader.txn(second)?.pending == true)
+
+    #expect(await relaunched.run(.foreground).stop == nil)
+    #expect(try relaunched.reader.meta()?.pendingOps == 0)
+    let row = try #require(try relaunched.reader.txn(first))
+    #expect(!row.pending && row.amountHomeMinor == 8_100)
+    #expect(try relaunched.reader.txn(second)?.pending == false)
+    let later = try Runtime(a.context, projection: a.projection)
+    try await later.observer.open()
+    #expect(try later.reader.meta()?.pendingOps == 0)
+  }
+
   @Test("ops finds ops in sealed stored rows, newest first, and tells a missing id from a failed lookup")
   func opsLookup() async throws {
     let (w, a, b) = try await twoRuntimes()
@@ -129,6 +163,55 @@ struct ObserverSyncTests {
     let events = try b.context.store.foldEvents().map { "\($0.kind):\($0.detail)" }
     #expect(events.contains { $0.hasPrefix("set_aside_reread:rows_") })
     #expect(!events.contains { $0.hasPrefix("integrity_alarm") })
+  }
+
+  @Test("the op lookup finds an op in a row that a cold fold read after an older build set it aside")
+  func opsLookupReadsARereadRow() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await a.bootstrap()
+    let blob = try await a.author { x in _ = try Self.manual(&x, "Talabat", 6_450, at: w.clock.nowMs() + LocalClock.offsetMs) }
+    #expect(await a.run(.authored).stop == nil)
+    #expect(await b.run(.launch).stop == nil)
+    try await b.context.store.db.write { db in
+      try db.execute(sql: "UPDATE wire_rows SET disposition = 'set_aside'")
+      try db.execute(sql: "UPDATE fold_snapshot SET fold_print = 'older semantics'")
+    }
+    let again = try Runtime(b.context, projection: b.projection)
+    try await again.observer.open()
+    #expect(try again.reader.activity().map(\.merchantRaw) == ["Talabat"])
+    let id = blob.ops[0].opID
+    let r = await again.observer.ops([id, "op-nowhere"])
+    #expect(r.found.keys.sorted() == [id])
+    #expect(r.missing == ["op-nowhere"] && r.failed.isEmpty)
+  }
+
+  @Test("a row that is still set aside leaves an unknown id missing, not failed")
+  func opsLookupPassesARowStillSetAside() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await a.bootstrap()
+    let blob = try await a.author { x in _ = try Self.manual(&x, "Talabat", 6_450, at: w.clock.nowMs() + LocalClock.offsetMs) }
+    #expect(await a.run(.authored).stop == nil)
+    #expect(await b.run(.launch).stop == nil)
+    let ctx = a.context
+    let k1 = try EpochKey(epoch: 1, key: try #require(try ctx.secrets.epochKey(userID: ctx.userID, epoch: 1)))
+    let seed = try #require(try ctx.secrets.writerSeed(userID: ctx.userID, writerID: ctx.writerID))
+    let head = try #require(try ctx.store.chainHeads()[ctx.writerID])
+    let counter = head.counter + 1
+    let frame = try Sealer(epoch: 1, key: k1).seal(
+      plaintextOps: Data(#"{"v":\#(SchemaVersion.current + 1),"kind":"ops","ops":[]}"#.utf8),
+      envelope: try Envelope(userID: ctx.userID, writerID: ctx.writerID, counter: counter),
+      prevHash: head.hash, random: SeededRandom(seed: "unshipped"))
+    let msg = SigningMessage.head(userID: ctx.userID, counter: counter, blobHash: frame.blobHash, writerID: ctx.writerID)
+    w.server.injectRow(
+      user: ctx.userID, writerID: ctx.writerID.string, counter: counter, prevHash: head.hash.bytes, blob: frame.bytes,
+      headSig: try DWK.sign(seed: seed, message: msg))
+    w.server.setOpVersionCeiling(SchemaVersion.current)
+    #expect(await b.run(.foreground).stop == nil)
+    #expect(try b.context.store.wireRows().last?.disposition == .setAside)
+    let id = blob.ops[0].opID
+    let r = await b.observer.ops([id, "op-nowhere"])
+    #expect(r.found.keys.sorted() == [id])
+    #expect(r.missing == ["op-nowhere"] && r.failed.isEmpty)
   }
 
   @Test("a next-version row set aside under the ceiling stays set aside through a cold fold")

@@ -139,6 +139,39 @@ struct LedgerStoreTests {
     #expect(try s.syncState().authoredHead.counter == 2)
   }
 
+  @Test("an acknowledged op is kept until the pull reaches its row, whatever that row's disposition")
+  func acknowledgedOpsWaitForTheirRow() throws {
+    let s = try created()
+    try s.enqueue(
+      ["op1", "op2"].map {
+        PendingOp(opID: $0, opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil, enqueuedAt: 0)
+      })
+    try s.persistBatch([
+      InflightBlob(counter: 1, batchID: "B", prevHash: .zero, blobHash: h(1), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op1"], headSig: nil, createdAt: 0),
+      InflightBlob(counter: 2, batchID: "B", prevHash: h(1), blobHash: h(2), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op2"], headSig: Data(repeating: 5, count: 64), createdAt: 0),
+    ])
+    try s.acknowledge(counters: [1, 2], head: Chain.Head(counter: 2, hash: h(2)), at: 5)
+    #expect(try s.pendingCount() == 0)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).map(\.opID) == ["op1", "op2"])
+
+    try s.db.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO wire_rows (seq, writer_id, writer_counter, type_flag, size_bucket, blob_hash, prev_hash, created_at, blob, disposition)
+          VALUES (7, ?, 1, 'edit', 1024, zeroblob(32), zeroblob(32), 't', x'00', 'set_aside')
+          """,
+        arguments: [writer.string])
+    }
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 6).map(\.opID) == ["op1", "op2"])
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 7).map(\.opID) == ["op2"])
+    try s.forgetAcknowledged(writerID: writer, foldedThrough: 6)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).count == 2)
+    try s.forgetAcknowledged(writerID: writer, foldedThrough: 7)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).map(\.opID) == ["op2"])
+  }
+
   @Test("latch, epoch high-water mark (never lowered), roster and fold-event ring")
   func state() throws {
     let s = try created()
@@ -186,6 +219,63 @@ struct LedgerStoreTests {
     #expect(FileHygiene.isExcluded(dir.appendingPathComponent("ledger.sqlite")))
     let again = try LedgerStore.open(directory: dir)
     #expect(try again.meta()?.userID == user)
+  }
+}
+
+@Suite("CoreStore: the owner read at launch")
+struct StoreOwnerTests {
+  func directory() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("hasala-owner-\(ProcessInfo.processInfo.globallyUniqueString)")
+  }
+
+  func file(_ dir: URL) -> URL { dir.appendingPathComponent("ledger.sqlite") }
+
+  @Test("reads the owner of a store that was closed, and of one still open with unwritten changes")
+  func readsOwner() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    do {
+      let s = try LedgerStore.open(directory: dir)
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+    }
+    #expect(LedgerStore.owner(directory: dir) == user)
+    let open = try LedgerStore.open(directory: dir)
+    try open.setLastPull(1)
+    #expect(LedgerStore.owner(directory: dir) == user)
+  }
+
+  @Test("does not migrate a store one migration behind, or mark its folder")
+  func leavesTheStoreAlone() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    do {
+      let s = try LedgerStore.open(directory: dir)
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+      try s.db.write { db in
+        try db.execute(sql: "DROP TABLE acknowledged_ops")
+        try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'acknowledged_ops'")
+      }
+    }
+    var cleared = URLResourceValues()
+    cleared.isExcludedFromBackup = false
+    var folder = dir
+    try folder.setResourceValues(cleared)
+
+    #expect(LedgerStore.owner(directory: dir) == user)
+
+    #expect(!FileHygiene.isExcluded(URL(fileURLWithPath: dir.path)))
+    let queue = try DatabaseQueue(path: file(dir).path)
+    #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM grdb_migrations WHERE identifier = 'acknowledged_ops'") } == 0)
+  }
+
+  @Test("no owner for a missing file, which stays missing, or for a store never given an identity")
+  func noOwner() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    #expect(LedgerStore.owner(directory: dir) == nil)
+    #expect(!FileManager.default.fileExists(atPath: file(dir).path))
+    _ = try LedgerStore.open(directory: dir)
+    #expect(LedgerStore.owner(directory: dir) == nil)
   }
 }
 
@@ -262,6 +352,38 @@ struct SecretTests {
     #expect(m.count == 0)
   }
 
+  @Test("a wipe takes the keys of every writer this account left here, and no other account's")
+  func wipeTakesEveryWriterOfTheAccount() throws {
+    let m = MemorySecretStore()
+    let s = Secrets(store: m, apiHost: "h")
+    let orphan = try #require(WriterID("ios-1a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"))
+    let otherUser = try #require(UserID("7f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d"))
+    let otherWriter = try #require(WriterID("ios-2a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"))
+    for w in [writer, orphan] {
+      try s.writeWriterSeed(Data(count: 32), userID: user, writerID: w)
+      try m.write(.approvalKey(userID: user, writerID: w), Data("k".utf8))
+    }
+    try s.writeWriterSeed(Data(count: 32), userID: otherUser, writerID: otherWriter)
+    try m.write(.approvalKey(userID: otherUser, writerID: otherWriter), Data("k".utf8))
+
+    try s.wipeAccount(userID: user, writerID: writer)
+
+    #expect(try m.read(.writerKey(userID: user, writerID: writer)) == nil)
+    #expect(try m.read(.writerKey(userID: user, writerID: orphan)) == nil)
+    #expect(try m.read(.approvalKey(userID: user, writerID: orphan)) == nil)
+    #expect(try m.read(.writerKey(userID: otherUser, writerID: otherWriter)) != nil)
+    #expect(try m.read(.approvalKey(userID: otherUser, writerID: otherWriter)) != nil)
+  }
+
+  @Test("a wipe with no binding still takes the account's writer keys")
+  func wipeWithoutABoundWriter() throws {
+    let m = MemorySecretStore()
+    let s = Secrets(store: m, apiHost: "h")
+    try s.writeWriterSeed(Data(count: 32), userID: user, writerID: writer)
+    try s.wipeAccount(userID: user, writerID: nil)
+    #expect(m.count == 0)
+  }
+
   struct RefusesApprovalKey: SecretStore {
     let inner: MemorySecretStore
     func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { try inner.read(item) }
@@ -270,6 +392,7 @@ struct SecretTests {
       if case .approvalKey = item { throw .notNow(status: -25308) }
       try inner.delete(item)
     }
+    func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
   }
 
   @Test("a refused delete does not stop the wipe: every other item goes, and the refusal is reported")

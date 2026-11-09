@@ -85,6 +85,7 @@ public actor Outbox {
     pendingTrigger = Task {
       try? await Task.sleep(for: wait)
       guard !Task.isCancelled else { return }
+      pendingTrigger = nil
       await run()
     }
   }

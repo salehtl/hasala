@@ -228,6 +228,21 @@ struct AccountTests {
     #expect(try a.keychain.read(.session(apiHost: "api.hasala.app")) == nil)
   }
 
+  @Test("sign-out reports no confirmation for a session it could not read, and keeps what it could not act on")
+  func signOutUnconfirmed() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    a.keychain.locked = true
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    a.keychain.locked = false
+    #expect(try a.env.secrets.session()?.pending_logout == false)
+    try a.keychain.write(.session(apiHost: "api.hasala.app"), Data("not a session".utf8))
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    try a.env.secrets.deleteSession()
+    #expect(await AccountSignIn.signOut(a.env) == true)
+  }
+
   func bearerFailure(_ env: AccountEnvironment) -> CeremonyError? {
     do {
       _ = try AccountSignIn.liveBearer(env)
@@ -276,6 +291,27 @@ struct StepUpTests {
     let r = try await a.env.client.api.send(
       APIRequest(method: .post, path: "/api/v1/auth/logout-all", body: try APIClient.encode(Body(step_up: proof.stepUp)), bearer: token))
     #expect(r.status == 204)
+  }
+
+  @Test("a session signed out while offline cannot prove a step-up")
+  func signedOutSessionProvesNothing() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    var held = try #require(try a.env.secrets.session())
+    held.pending_logout = true
+    try a.env.secrets.writeSession(held)
+    do {
+      _ = try await StepUpHelper.prove(
+        a.env, params: .sessionLogoutAll, factor: .device(password: password), binding: a.binding, reason: "x")
+      Issue.record("expected the signed-out refusal")
+    } catch {
+      guard case .api(.refused(let failure)) = error, failure.status == 401 else {
+        Issue.record("got \(error)")
+        return
+      }
+    }
+    #expect(a.dak.signatureCount == 0)
   }
 
   @Test("a challenge that is not this client's C is refused before any prompt")

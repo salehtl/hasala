@@ -27,7 +27,8 @@ public enum AccountManagement {
     let ctx = engine.context
     for attempt in 0..<2 {
       try await catchUp(engine)
-      let head = (try? ctx.store.chainHeads()[ctx.writerID]) ?? .genesis
+      let head: Chain.Head
+      do { head = try ctx.store.chainHeads()[ctx.writerID] ?? .genesis } catch { throw .store(error) }
       let bearer = try AccountCreation.currentBearer(env)
       let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
       let nonce = try b64(challenge.nonce, "writer nonce")
@@ -87,6 +88,9 @@ public enum AccountManagement {
     if let stop = await engine.run(.refresh).stop {
       throw .badResponse("sync before removal: \(stop)")
     }
+    let unsent: Int
+    do { unsent = try engine.context.store.pendingCount() } catch { throw .store(error) }
+    guard unsent == 0 else { throw .badResponse("sync before removal: unsent ops") }
   }
 
   static func dwk(_ env: AccountEnvironment, _ ctx: SyncContext) throws(CeremonyError) -> SecureBytes {

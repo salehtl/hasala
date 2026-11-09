@@ -16,6 +16,10 @@ nonisolated struct PasskeyProviderAdapter: PasskeyProvider {
     try await Self.assert(challenge: challenge, allow: allowCredentialIDs, prfSalt: prfSalt)
   }
 
+  func reportUnknown(credentialID: Data) async {
+    await PasskeyAuthenticator.reportUnknown(credentialID: credentialID)
+  }
+
   @MainActor
   private static func register(_ o: CreationOptions, prfSalt: Data?) async throws(PasskeyError)
     -> CoreAuth.RawRegistration

@@ -125,6 +125,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var loginCeremonies: [String: Data] = [:]
     var addCeremonies: [String: (user: UserID, challenge: Data, nonce: Data)] = [:]
     var passwordCeremonies: [String: (email: String, nonce: Data)] = [:]
+    var recoveryCeremonies: [String: FakeRecoveryCeremony] = [:]
     var writerNonces: [Data: UserID] = [:]
     var stepUps: [Data: StepUpChallenge] = [:]
     var seq: Int64 = 0
@@ -133,6 +134,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     // tamper switches
     var cannedRefusals: [String: [(Int, String, String)]] = [:]
     var loseNextUploadResponse = false
+    var loseNextRegisterAnswer = false
     var losePullAfterNextUpload = false
     var loseNextPull = false
     var partialApplyNextUpload: Int?
@@ -169,6 +171,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   /// The next upload is applied, but its answer is lost (a transport error).
   public func loseNextUploadResponse() { state.withLock { $0.loseNextUploadResponse = true } }
+
+  public func loseNextRegisterAnswer() { state.withLock { $0.loseNextRegisterAnswer = true } }
 
   public func losePullAfterNextUpload() { state.withLock { $0.losePullAfterNextUpload = true } }
 
@@ -208,6 +212,16 @@ public final class FakeServer: Transport, @unchecked Sendable {
     state.withLock { s in
       s.users[user]?.history.removeAll { $0.writerID == writer.string && $0.event == "revoked" }
       s.users[user]?.writers[writer.string]?.revoked = nil
+    }
+  }
+
+  public func misreportCommitment(user: UserID) {
+    state.withLock { s in
+      guard let k = s.users[user]?.keys else { return }
+      s.users[user]?.keys = KeysResponse(
+        format_version: k.format_version, amk_commitment: Base64.encode(Data(repeating: 7, count: 32)),
+        authority_pubkey: k.authority_pubkey, recovery_pubkey: k.recovery_pubkey, recovery_wrap: k.recovery_wrap,
+        current_epoch: k.current_epoch)
     }
   }
 
@@ -266,6 +280,13 @@ public final class FakeServer: Transport, @unchecked Sendable {
     }) {
       throw .offline(.networkConnectionLost)
     }
+    if route == "POST /api/v1/writers/register", state.withLock({ s -> Bool in
+      defer { s.loseNextRegisterAnswer = false }
+      return s.loseNextRegisterAnswer
+    }) {
+      _ = handle(request, route: route)
+      throw .offline(.networkConnectionLost)
+    }
     if route == "POST /api/v1/sync" {
       let (response, lose) = upload(request)
       if lose { throw .offline(.networkConnectionLost) }
@@ -291,6 +312,9 @@ public final class FakeServer: Transport, @unchecked Sendable {
     case "POST /api/v1/auth/passkey/login/finish": return loginFinish(r)
     case "POST /api/v1/auth/password/login/begin": return passwordLoginBegin(r)
     case "POST /api/v1/auth/password/login/finish": return passwordLoginFinish(r)
+    case "POST /api/v1/auth/recover/begin": return recoverBegin(r)
+    case "POST /api/v1/auth/recover/verify": return recoverVerify(r)
+    case "POST /api/v1/auth/recover/finish": return recoverFinish(r)
     default: break
     }
     // Session routes.

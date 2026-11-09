@@ -30,6 +30,14 @@ struct SyncHaltTests {
     #expect(!BootController.clearsSyncHalt(.protocolError("refused 409 cursor_ahead")))
   }
 
+  @Test func aChainConflictStillHeldKeepsTheWall() {
+    #expect(!BootController.clearsSyncHalt(nil, latch: .chainBreak))
+    #expect(!BootController.clearsSyncHalt(.rateLimited(retryAfter: 30), latch: .chainBreak))
+    #expect(BootController.clearsSyncHalt(nil, latch: nil))
+    #expect(BootController.clearsSyncHalt(nil, latch: .accountFull))
+    #expect(!BootController.clearsSyncHalt(.offline, latch: nil))
+  }
+
   @Test func aRestoredServerIsShownAsRestoredNotTampered() {
     #expect(
       AccountRuntime.shownStop(.halted(.tampered(.chainBreak)), phase: .halted(.serverRestored)) == .halted(.serverRestored))

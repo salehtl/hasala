@@ -164,11 +164,11 @@ public enum AccountCreation {
     else { throw .challengeMismatch }
     let reg: RawRegistration
     do { reg = try await passkeys.register(options, prfSalt: KeyDerivation.prfSalt) } catch { throw .passkey(error) }
-    let grant = try await apiStep { () async throws(APIError) in
+    let grant = try await passkeyFinishStep(env, credentialID: reg.credentialID) { () async throws(APIError) in
       try await env.client.registerFinish(RegisterFinishRequest(ceremonyID: begin.ceremony_id, credential: reg.credential))
     }
     guard grant.user_id == signup.userID.string else { throw .badResponse("register user_id") }
-    try writeSession(env, grant)
+    try writeSession(env, grant, signupEmailNorm: signup.emailNorm)
     return RegisteredPasskey(
       signup: signup, userID: signup.userID, credentialID: reg.credentialID,
       attestationHash: sha256(reg.rawAttestationObject), prf: reg.prfFirst, backup: reg.backupFlags)
@@ -249,12 +249,15 @@ public enum AccountCreation {
     }
   }
 
-  static func writeSession(_ env: AccountEnvironment, _ grant: SessionGrant) throws(CeremonyError) {
+  static func writeSession(_ env: AccountEnvironment, _ grant: SessionGrant, signupEmailNorm: String? = nil)
+    throws(CeremonyError)
+  {
     let record: SessionRecord
     do {
       record = try SessionRecord.minted(
         token: grant.session_token, userID: grant.user_id,
-        expiresAt: RFC3339.seconds(grant.expires_at) ?? (env.clock.nowMs() / 1000 + 90 * 86400), random: env.random)
+        expiresAt: RFC3339.seconds(grant.expires_at) ?? (env.clock.nowMs() / 1000 + 90 * 86400), random: env.random,
+        signupEmailNorm: signupEmailNorm)
     } catch {
       throw .crypto("session tag")
     }
@@ -262,7 +265,7 @@ public enum AccountCreation {
   }
 
   static func currentBearer(_ env: AccountEnvironment) throws(CeremonyError) -> String {
-    guard let s = try secretStep({ () throws(SecretStoreError) in try env.secrets.session() }) else {
+    guard let s = try secretStep({ () throws(SecretStoreError) in try env.secrets.session() }), !s.pending_logout else {
       throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
     }
     return s.token
@@ -278,7 +281,7 @@ public enum AccountCreation {
     emailNorm: String, serverSalt: Data, displayName: String?, recoveryWrap: String, recoveryPublicKey: String,
     sessionAlreadyWritten: Bool = false
   ) async throws(CeremonyError) -> EnrolledAccount {
-    if !sessionAlreadyWritten { try writeSession(env, grant) }
+    if !sessionAlreadyWritten { try writeSession(env, grant, signupEmailNorm: emailNorm) }
     let k1 = try cryptoStep("K_1") { try keys.body.epochKey1(userID: userID) }
     defer { k1.wipe() }
     let aak = try keys.authorityPublicKey()
@@ -308,8 +311,27 @@ public enum AccountCreation {
       k.recovery_pubkey == recoveryPublicKey, k.recovery_wrap == recoveryWrap
     else { throw .integrityAlarm("keys differ after bootstrap") }
     let a = try await apiStep { () async throws(APIError) in try await env.client.account(bearer: bearer) }
-    guard let e = a.email, (try? EmailNorm.normalize(e)) == emailNorm else {
+    try compareSignupAddress(env, reported: a.email, signedUpAs: emailNorm)
+  }
+
+  static func signupAddress(_ env: AccountEnvironment) throws(CeremonyError) -> String? {
+    try secretStep { () throws(SecretStoreError) in try env.secrets.session()?.signup_email_norm }
+  }
+
+  static func heldSignupAddress(_ env: AccountEnvironment, userID: String) -> String? {
+    guard let held = try? env.secrets.session(), !held.pending_logout, held.user_id == userID else { return nil }
+    return held.signup_email_norm
+  }
+
+  static func compareSignupAddress(_ env: AccountEnvironment, reported: String?, signedUpAs emailNorm: String)
+    throws(CeremonyError)
+  {
+    guard let reported, (try? EmailNorm.normalize(reported)) == emailNorm else {
       throw .integrityAlarm("address differs after bootstrap")
+    }
+    if var s = try? env.secrets.session(), s.signup_email_norm != nil {
+      s.signup_email_norm = nil
+      try? env.secrets.writeSession(s)
     }
   }
 }

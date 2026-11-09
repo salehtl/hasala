@@ -6,12 +6,12 @@
 import CoreAuth
 import CoreDomain
 import CoreJSON
-import CoreProjection
 import CoreReplay
 import CoreTestSupport
 import Foundation
 import Testing
 
+@testable import CoreProjection
 @testable import CoreSync
 
 @Suite("CoreSync: LedgerPageObserver")
@@ -137,6 +137,59 @@ struct LedgerPageObserverTests {
     #expect(try r.projection.reader.meta()?.cursorHot == 3)
     #expect(try r.projection.reader.activity().map(\.merchantRaw) == ["TALABAT", "CARREFOUR"])
     #expect(try r.projection.reader.activity().allSatisfy { $0.amountHomeMinor != nil && !$0.pending })
+  }
+
+  static func blockProjection(_ r: Rig) async throws {
+    try await r.projection.queue.write { db in
+      try db.execute(sql: "CREATE TRIGGER no_projection BEFORE UPDATE ON projection_meta BEGIN SELECT RAISE(ABORT, 'no projection'); END")
+    }
+  }
+
+  static func allowProjection(_ r: Rig) async throws {
+    try await r.projection.queue.write { db in try db.execute(sql: "DROP TRIGGER no_projection") }
+  }
+
+  @Test("a projection that fails after a pull stays owed: the next pull's end writes it, with no new page")
+  func failedProjectionIsOwed() async throws {
+    let r = try Rig()
+    try await r.observer.open()
+    try await r.page([(1, try Self.setup())], counterBase: 1)
+    #expect(try r.projection.reader.meta()?.cursorHot == 1)
+
+    try await Self.blockProjection(r)
+    try await r.page([(2, try Self.ingest("CARREFOUR", 34_215))], counterBase: 2)
+    #expect(await r.observer.projectionFailure != nil)
+    #expect(try r.store.foldEvents().contains { $0.kind == "projection_failed" })
+    #expect(try r.projection.reader.meta()?.cursorHot == 1)
+
+    await r.observer.pullEnded()
+    #expect(try r.projection.reader.meta()?.cursorHot == 1)
+
+    try await Self.allowProjection(r)
+    await r.observer.pullEnded()
+    #expect(await r.observer.projectionFailure == nil)
+    #expect(try r.projection.reader.meta()?.cursorHot == 2)
+    #expect(try r.projection.reader.activity().map(\.merchantRaw) == ["CARREFOUR"])
+
+    let written = r.projection.generation
+    await r.observer.pullEnded()
+    #expect(r.projection.generation == written)
+  }
+
+  @Test("a reproject that succeeds settles a failed projection, so the next pull's end has nothing owed")
+  func reprojectSettlesFailedProjection() async throws {
+    let r = try Rig()
+    try await r.observer.open()
+    try await Self.blockProjection(r)
+    try await r.page([(1, try Self.setup())], counterBase: 1)
+    #expect(try r.projection.reader.meta()?.cursorHot == 0)
+
+    try await Self.allowProjection(r)
+    try await r.observer.reproject()
+    #expect(try r.projection.reader.meta()?.cursorHot == 1)
+    let written = r.projection.generation
+    await r.observer.pullEnded()
+    #expect(r.projection.generation == written)
   }
 
   @Test("a second observer on the same store starts warm from the snapshot")
@@ -287,6 +340,42 @@ struct LedgerPageObserverTests {
 
   static func account(review: Bool?, user: UserID = user) -> AccountInfo {
     AccountInfo(user_id: user.string, review_account: review)
+  }
+
+  static func refusal(_ r: Rig) async -> SampleSeedRefusal? {
+    do {
+      _ = try await r.observer.sampleBatches(account: account(review: true))
+      return nil
+    } catch {
+      guard case .seed(.refused(let why)) = error else { return nil }
+      return why
+    }
+  }
+
+  @Test("a sample load that could not be saved can be tried again, and is one-shot after that")
+  func sampleRetryAfterAFailedSave() async throws {
+    let r = try Rig()
+    _ = try await r.observer.sampleBatches(account: Self.account(review: true))
+    #expect(await Self.refusal(r) == .alreadyLoaded)
+
+    await r.observer.sampleNotSaved()
+
+    let again = try await r.observer.sampleBatches(account: Self.account(review: true))
+    #expect(again.count > 0)
+    #expect(await Self.refusal(r) == .alreadyLoaded)
+  }
+
+  @Test("a sample load that reached the outbox stays refused whatever the app reports")
+  func sampleSavedStaysRefused() async throws {
+    let r = try Rig()
+    let blobs = try await r.observer.sampleBatches(account: Self.account(review: true))
+    let ops = blobs.flatMap(\.ops)
+    try r.store.enqueue(
+      try ops.map { PendingOp(opID: $0.opID, opJSON: try Self.canonical($0), opType: $0.type.rawValue, entityKind: $0.entity?.kind, entityID: $0.entity?.id, enqueuedAt: 1) })
+
+    await r.observer.sampleNotSaved()
+
+    #expect(await Self.refusal(r) == .alreadyLoaded)
   }
 
   @Test("sample batches: only this review account, only an empty ledger, only once")

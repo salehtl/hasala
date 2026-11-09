@@ -45,6 +45,69 @@ struct OutboxTests {
     #expect(try store.pendingCount() == 0)
   }
 
+  @Test("an edit made while the authored run is under way leaves that run alone and asks for its own")
+  func enqueueDuringFiring() async throws {
+    let store = try LedgerStore.inMemory()
+    let started = Counter()
+    let finished = Counter()
+    let cancelled = Counter()
+    let release = Mutex(false)
+    let box = Outbox(
+      store: store, clock: FakeClock(), debounce: .milliseconds(20),
+      onAuthored: {
+        started.bump()
+        while !release.withLock({ $0 }) { await Task.yield() }
+        if Task.isCancelled { cancelled.bump() }
+        finished.bump()
+      })
+    try await box.enqueue([op("a")])
+    for _ in 0..<200 where started.value == 0 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(started.value == 1)
+    try await box.enqueue([op("b")])
+    release.withLock { $0 = true }
+    for _ in 0..<200 where finished.value < 2 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(finished.value == 2)
+    #expect(cancelled.value == 0)
+  }
+
+  @Test("flushing the trigger while the authored run is under way leaves that run alone")
+  func flushDuringFiring() async throws {
+    let store = try LedgerStore.inMemory()
+    let started = Counter()
+    let finished = Counter()
+    let cancelled = Counter()
+    let release = Mutex(false)
+    let box = Outbox(
+      store: store, clock: FakeClock(), debounce: .milliseconds(20),
+      onAuthored: {
+        started.bump()
+        while !release.withLock({ $0 }) { await Task.yield() }
+        if Task.isCancelled { cancelled.bump() }
+        finished.bump()
+      })
+    try await box.enqueue([op("a")])
+    for _ in 0..<200 where started.value == 0 { try await Task.sleep(for: .milliseconds(10)) }
+    async let flushed: Void = box.flushTriggerNow()
+    for _ in 0..<200 where started.value < 2 { try await Task.sleep(for: .milliseconds(10)) }
+    release.withLock { $0 = true }
+    await flushed
+    for _ in 0..<200 where finished.value < 2 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(finished.value == 2)
+    #expect(cancelled.value == 0)
+  }
+
+  @Test("flushing inside the window fires once: the replaced wait never fires")
+  func flushInsideWindowFiresOnce() async throws {
+    let store = try LedgerStore.inMemory()
+    let fired = Counter()
+    let box = Outbox(store: store, clock: FakeClock(), debounce: .milliseconds(300), onAuthored: { fired.bump() })
+    try await box.enqueue([op("a")])
+    await box.flushTriggerNow()
+    #expect(fired.value == 1)
+    try await Task.sleep(for: .milliseconds(500))
+    #expect(fired.value == 1)
+  }
+
   @Test("several enqueues inside the debounce window fire one authored trigger")
   func debounce() async throws {
     let store = try LedgerStore.inMemory()

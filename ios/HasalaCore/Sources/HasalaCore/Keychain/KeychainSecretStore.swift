@@ -115,6 +115,18 @@ public final class KeychainSecretStore: SecretStore {
     guard s == errSecSuccess || s == errSecItemNotFound else { throw Self.failure(s) }
   }
 
+  public func accounts(service: String) throws(SecretStoreError) -> [String] {
+    var q = base(service: service, account: nil)
+    q[kSecReturnAttributes as String] = true
+    q[kSecMatchLimit as String] = kSecMatchLimitAll
+    let (s, accounts) = api.accounts(q)
+    switch s {
+    case errSecSuccess: return accounts
+    case errSecItemNotFound: return []
+    default: throw Self.failure(s)
+    }
+  }
+
   /// The fresh-install purge's deletes (§4.4 `installCheck`): every item of
   /// every app service in each of `groups`. Returns whether every delete
   /// answered success or not-found; the caller sets `installID` only then.

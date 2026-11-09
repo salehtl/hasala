@@ -326,7 +326,7 @@ final class LiveAccountService: AccountService {
       } else {
         // A password session, or a relaunch (the assertion is gone): C2's passkey login
         // with PRF replaces the session.
-        let again = try await AccountSignIn.withPasskey(env, bound: nil, wantPRF: true)
+        let again = try await AccountSignIn.replacingHeldSession(env, wantPRF: true)
         signIn = again
         guard let a = again.assertion else { throw CeremonyError.noPRF }
         assertion = a
@@ -524,8 +524,7 @@ final class LiveAccountService: AccountService {
     do {
       enrolled = try await AccountRecovery.finishWithPasskey(env, r)
     } catch {
-      // A closed sheet keeps the verified ceremony for another try; anything else spent it.
-      if error.failureClass != .cancelled {
+      if !r.canFinish(after: error) {
         r.wipe()
         recovery = nil
       }

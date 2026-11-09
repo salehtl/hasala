@@ -383,14 +383,15 @@ final class BootController {
     retryingSync = true
     Task {
       let out = await rt.coordinator.run(.refresh)
+      let latch = await rt.engine.status.latch
       retryingSync = false
       guard runtime === rt else { return }
-      if Self.clearsSyncHalt(out.stop) { syncHalt = nil }
+      if Self.clearsSyncHalt(out.stop, latch: latch) { syncHalt = nil }
     }
   }
 
-  static func clearsSyncHalt(_ stop: SyncStop?) -> Bool {
-    stop.map(WorkCoordinator.tolerable) ?? true
+  static func clearsSyncHalt(_ stop: SyncStop?, latch: OutboxLatch? = nil) -> Bool {
+    latch != .chainBreak && (stop.map(WorkCoordinator.tolerable) ?? true)
   }
 
   static func syncHalt(for stop: SyncStop) -> HaltKind? {

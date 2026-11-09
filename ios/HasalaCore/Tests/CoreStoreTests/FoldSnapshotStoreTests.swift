@@ -72,6 +72,21 @@ struct FoldSnapshotStoreTests {
     #expect(try s.foldSnapshot() == nil)
   }
 
+  @Test("persistPage raises the epoch mark in the page's transaction and never lowers it")
+  func epochMarkWithPage() throws {
+    let s = try Self.stored()
+    #expect(throws: StoreError.self) {
+      try s.persistPage(rows: [Self.row(3, 2, prev: h(2))], heads: [:], cursor: 3, at: 7, epochHWM: 2)
+    }
+    #expect(try s.syncState().epochHWM == 1)
+    try s.persistPage(rows: [Self.row(3, 3, prev: h(2))], heads: [:], cursor: 3, at: 8, epochHWM: 3)
+    #expect(try s.syncState().epochHWM == 3)
+    try s.persistPage(rows: [Self.row(4, 4, prev: h(3))], heads: [:], cursor: 4, at: 9, epochHWM: 2)
+    #expect(try s.syncState().epochHWM == 3)
+    try s.persistPage(rows: [Self.row(5, 5, prev: h(4))], heads: [:], cursor: 5, at: 10)
+    #expect(try s.syncState().epochHWM == 3)
+  }
+
   @Test("each load check rejects in order, deletes the row and records why")
   func rejections() throws {
     // Absent while rows exist (cursor 0 is a fresh store: nothing to report).

@@ -176,6 +176,17 @@ public final class LedgerStore: Sendable {
     }
   }
 
+  public static func owner(directory: URL) -> UserID? {
+    var configuration = Configuration()
+    configuration.readonly = true
+    configuration.busyMode = .timeout(5)
+    let file = directory.appendingPathComponent("ledger.sqlite").path
+    guard let queue = try? DatabaseQueue(path: file, configuration: configuration),
+      let id = try? queue.read({ try String.fetchOne($0, sql: "SELECT user_id FROM store_meta WHERE id = 1") })
+    else { return nil }
+    return UserID(id)
+  }
+
   /// An in-memory store (tests).
   public static func inMemory() throws(StoreError) -> LedgerStore {
     do {
@@ -275,11 +286,20 @@ public final class LedgerStore: Sendable {
     }
   }
 
-  public func setEpochHWM(_ e: UInt32) throws(StoreError) {
+  public func recordLogGenerationIfUnknown(_ generation: Int64) throws(StoreError) {
     try write { db in
       try db.execute(
-        sql: "UPDATE sync_state SET epoch_hwm = max(epoch_hwm, ?) WHERE id = 1", arguments: [Int64(e)])
+        sql: "UPDATE sync_state SET log_generation = ? WHERE id = 1 AND log_generation IS NULL",
+        arguments: [generation])
     }
+  }
+
+  public func setEpochHWM(_ e: UInt32) throws(StoreError) {
+    try write { db in try Self.raiseEpochHWM(e, db) }
+  }
+
+  private static func raiseEpochHWM(_ e: UInt32, _ db: Database) throws {
+    try db.execute(sql: "UPDATE sync_state SET epoch_hwm = max(epoch_hwm, ?) WHERE id = 1", arguments: [Int64(e)])
   }
 
   public func setRoster(_ json: Data) throws(StoreError) {
@@ -326,7 +346,7 @@ public final class LedgerStore: Sendable {
   /// the snapshot and the cursor commit together.
   public func persistPage(
     rows: [WireRowRecord], heads: [WriterID: Chain.Head], cursor: Int64, at: Int64,
-    snapshot: FoldSnapshotChange = .keep
+    snapshot: FoldSnapshotChange = .keep, epochHWM: UInt32? = nil
   ) throws(StoreError) {
     let tip = rows.last(where: { $0.seq == cursor }).map {
       Self.boundTip(seq: $0.seq, writerID: $0.writerID, counter: $0.counter, blobHash: $0.blobHash, prevHash: $0.prevHash)
@@ -354,6 +374,7 @@ public final class LedgerStore: Sendable {
       }
       try db.execute(
         sql: "UPDATE sync_state SET cursor_hot = ?, last_pull_at = ? WHERE id = 1", arguments: [cursor, at])
+      if let epochHWM { try Self.raiseEpochHWM(epochHWM, db) }
       try Self.applySnapshot(snapshot, cursor: cursor, tip: tip, at: at, db)
     }
   }
@@ -490,6 +511,14 @@ public final class LedgerStore: Sendable {
             db, sql: "SELECT op_ids_json FROM inflight_blobs WHERE writer_counter = ?", arguments: [c])
         else { continue }
         for id in try JSONDecoder().decode([String].self, from: ids) {
+          try db.execute(
+            sql: """
+              INSERT OR IGNORE INTO acknowledged_ops
+                (local_seq, op_id, op_json, op_type, entity_kind, entity_id, enqueued_at, writer_counter)
+              SELECT local_seq, op_id, op_json, op_type, entity_kind, entity_id, enqueued_at, ?
+                FROM pending_ops WHERE op_id = ?
+              """,
+            arguments: [c, id])
           try db.execute(sql: "DELETE FROM pending_ops WHERE op_id = ?", arguments: [id])
         }
         try db.execute(sql: "DELETE FROM inflight_blobs WHERE writer_counter = ?", arguments: [c])

@@ -171,6 +171,19 @@ func apiStep<T>(_ body: () async throws(APIError) -> T) async throws(CeremonyErr
   do { return try await body() } catch { throw .api(error) }
 }
 
+func passkeyFinishStep<T>(
+  _ env: AccountEnvironment, credentialID: Data, _ body: () async throws(APIError) -> T
+) async throws(CeremonyError) -> T {
+  do {
+    return try await body()
+  } catch {
+    if let status = error.failure?.status, (400..<500).contains(status) {
+      await env.passkeys?.reportUnknown(credentialID: credentialID)
+    }
+    throw .api(error)
+  }
+}
+
 func cryptoStep<T>(_ what: String, _ body: () throws -> T) throws(CeremonyError) -> T {
   do { return try body() } catch { throw .crypto(what) }
 }

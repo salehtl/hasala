@@ -113,6 +113,25 @@ struct SyncTests {
     #expect(try storedOps(b).count == 40)
   }
 
+  @Test("a resend answered as partly applied when the server holds every row finishes the batch with no latch")
+  func partialAnswerWithEveryRowStored() async throws {
+    let (w, a, _) = try await twoPhones()
+    try enqueue(a, [op(1), op(2)])
+    w.server.loseNextUploadResponse()
+    #expect(await SyncEngine(context: a).run(.authored).stop == .offline)
+    let sent = try #require(try a.store.inflight().last)
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "conflict", detail: "oplog: \(partiallyAppliedDetail)")
+    let engine = SyncEngine(context: a)
+    let out = await engine.run(.silentPush)
+    #expect(out.stop == nil)
+    #expect(out.pushed.opsAcknowledged == 2)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.inflight().isEmpty && a.store.pendingCount() == 0)
+    #expect(try a.store.syncState().authoredHead.hash == sent.blobHash)
+    #expect(w.server.storedRowCount(user: a.userID) == 1)
+  }
+
   @Test("every page writer's last row must carry a valid head_sig (R2b); nothing is persisted otherwise")
   func unsignedHeads() async throws {
     let (w, a, b) = try await twoPhones()
@@ -159,6 +178,75 @@ struct SyncTests {
     #expect(await engine.status.integrityAlarms == 1)
     #expect(try b.store.wireRows().first?.disposition == .alarm)
     #expect(try b.store.syncState().cursorHot == 1)
+  }
+
+  func injectAtEpochTwo(
+    _ w: World, writer a: SyncContext, key: EpochKey, counters: ClosedRange<Int64>, sealedAt: (Int64) -> Int64 = { $0 }
+  ) throws {
+    var prev = try #require(try a.store.chainHeads()[a.writerID]?.hash)
+    let seed = try #require(try a.secrets.writerSeed(userID: a.userID, writerID: a.writerID))
+    for counter in counters {
+      let frame = try Sealer(epoch: 2, key: key).seal(
+        plaintextOps: Data(try OpCodec.encodeBlobOps([op(Int(counter))])),
+        envelope: try Envelope(userID: a.userID, writerID: a.writerID, counter: sealedAt(counter)), prevHash: prev,
+        random: SeededRandom(seed: "epoch-\(counter)"))
+      let hash = Chain.hash(prev: prev, frame: frame.bytes)
+      let msg = SigningMessage.head(userID: a.userID, counter: counter, blobHash: hash, writerID: a.writerID)
+      w.server.injectRow(
+        user: a.userID, writerID: a.writerID.string, counter: counter, prevHash: prev.bytes, blob: frame.bytes,
+        headSig: try DWK.sign(seed: seed, message: msg))
+      prev = hash
+    }
+  }
+
+  func pushedAndPulled() async throws -> (World, SyncContext, SyncContext, EpochKey) {
+    let (w, a, b) = try await twoPhones()
+    try enqueue(a, [op(1)])
+    #expect(await SyncEngine(context: a).run(.authored).stop == nil)
+    #expect(await SyncEngine(context: b).run(.launch).stop == nil)
+    #expect(try b.store.syncState().epochHWM == 1)
+    return (w, a, b, try EpochKey(epoch: 2, key: Data(repeating: 9, count: 32)))
+  }
+
+  @Test("a page stopped for a missing epoch key leaves the epoch mark where it was")
+  func newEpochWithoutItsKeyKeepsTheMark() async throws {
+    let (w, a, b, two) = try await pushedAndPulled()
+    try injectAtEpochTwo(w, writer: a, key: two, counters: 2...2)
+    w.server.publishEpoch(user: a.userID, 2)
+    let cursor = try b.store.syncState().cursorHot
+    #expect(await SyncEngine(context: b).run(.foreground).stop == .needsUnlock(epoch: 2))
+    #expect(try b.store.syncState().epochHWM == 1)
+    #expect(try b.store.syncState().cursorHot == cursor)
+
+    try b.secrets.writeEpochKey(two.key, userID: b.userID, epoch: 2)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == nil)
+    #expect(try b.store.syncState().epochHWM == 2)
+    #expect(try b.store.syncState().cursorHot == cursor + 1)
+  }
+
+  @Test("a page refused after its epoch was read leaves the epoch mark where it was")
+  func refusedPageKeepsTheMark() async throws {
+    let (w, a, b, two) = try await pushedAndPulled()
+    try b.secrets.writeEpochKey(two.key, userID: b.userID, epoch: 2)
+    try injectAtEpochTwo(w, writer: a, key: two, counters: 2...3) { $0 == 3 ? 99 : $0 }
+    w.server.publishEpoch(user: a.userID, 2)
+    let cursor = try b.store.syncState().cursorHot
+    #expect(await SyncEngine(context: b).run(.foreground).stop == .halted(.tampered(.aadMismatch)))
+    #expect(try b.store.syncState().epochHWM == 1)
+    #expect(try b.store.syncState().cursorHot == cursor)
+  }
+
+  @Test("an accepted page raises the epoch mark with its rows, so a relaunch seals at the new epoch")
+  func acceptedPageRaisesTheMark() async throws {
+    let (w, a, b, two) = try await pushedAndPulled()
+    try b.secrets.writeEpochKey(two.key, userID: b.userID, epoch: 2)
+    try injectAtEpochTwo(w, writer: a, key: two, counters: 2...3)
+    w.server.publishEpoch(user: a.userID, 2)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == nil)
+    #expect(try b.store.syncState().epochHWM == 2)
+    try enqueue(b, [op(9)])
+    #expect(await SyncEngine(context: b).run(.authored).stop == nil)
+    #expect(try b.store.pendingCount() == 0)
   }
 
   @Test("a row from a writer outside the verified roster: one re-fetch, then tampered(unknownWriter)")
@@ -295,6 +383,162 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0)
   }
 
+  @Test("account_full's pause runs from the refusal: a run inside it does not restart it")
+  func accountFullPauseDoesNotSlide() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let clock = try #require(a.clock as? FakeClock)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    let before = w.server.uploadCount
+
+    clock.advance(ms: SyncEngine.accountFullPauseMs - 1)
+    _ = await engine.run(.silentPush)
+    #expect(w.server.uploadCount == before)
+    #expect(await engine.status.latch == .accountFull)
+
+    clock.advance(ms: 1)
+    _ = await engine.run(.silentPush)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+  }
+
+  @Test("a suspension met on upload outlives the run that met it; the last upload answer of a run decides")
+  func suspensionFollowsTheUpload() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let suspended = (status: 403, code: "account_suspended")
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.suspended)
+    #expect(await engine.status.phase == .idle)
+    #expect(try a.store.pendingCount() == 1 && a.store.inflight().count == 1)
+
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    #expect(await engine.run(.silentPush).stop == nil)
+    #expect(await engine.status.suspended)
+
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    #expect(await engine.run(.foreground).stop == nil)
+    #expect(await !engine.status.suspended)
+    #expect(try a.store.pendingCount() == 0 && a.store.inflight().isEmpty)
+  }
+
+  @Test("a run that stops after its upload answer still reports that answer, and a run with no answer changes nothing")
+  func suspensionSurvivesALaterStop() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.authored).stop == .offline)
+    #expect(await !engine.status.suspended)
+    #expect(try a.store.inflight().count == 1)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 403, code: "account_suspended")
+    w.server.refuseNext("GET /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.foreground).stop == .offline)
+    #expect(await engine.status.suspended)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.foreground).stop == .offline)
+    #expect(await engine.status.suspended)
+
+    try a.store.setLatch(.hardStop)
+    let before = w.server.uploadCount
+    #expect(await engine.run(.silentPush).stop == nil)
+    #expect(w.server.uploadCount == before)
+    #expect(await engine.status.suspended)
+    try a.store.setLatch(nil)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.foreground).stop == .offline)
+    #expect(await !engine.status.suspended)
+    #expect(try a.store.pendingCount() == 0 && a.store.inflight().isEmpty)
+  }
+
+  @Test("a chain_break stays a halt until a resend is accepted: asking re-tests it, an unasked run stays latched")
+  func chainBreakIsRetested() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let halted = SyncStop.halted(.tampered(.ownChainConflict))
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")
+    #expect(await engine.run(.authored).stop == halted)
+    #expect(try a.store.syncState().latch == .chainBreak)
+    let sent = try a.store.inflight()
+    #expect(sent.count == 1)
+
+    let before = w.server.uploadCount
+    #expect(await engine.run(.silentPush).stop == nil)
+    #expect(w.server.uploadCount == before)
+    #expect(try a.store.syncState().latch == .chainBreak)
+    #expect(await engine.status.latch == .chainBreak)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")
+    #expect(await engine.run(.refresh).stop == halted)
+    #expect(w.server.storedRowCount(user: a.userID) == 0)
+    #expect(try a.store.syncState().latch == .chainBreak)
+    #expect(try a.store.inflight() == sent)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")
+    let relaunched = SyncEngine(context: a)
+    #expect(await relaunched.run(.launch).stop == halted)
+    #expect(try a.store.syncState().latch == .chainBreak)
+
+    #expect(await relaunched.run(.refresh).stop == nil)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(await relaunched.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0 && a.store.inflight().isEmpty)
+    #expect(w.server.storedRowCount(user: a.userID) == 1)
+  }
+
+  @Test("a stored op this build can't read stops that run's push only: the status then follows the store")
+  func localHardStopDoesNotStick() async throws {
+    let (_, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try a.store.enqueue([
+      PendingOp(
+        opID: "01J0000000000000000000BAD1", opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil,
+        entityID: nil, enqueuedAt: 0)
+    ])
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.latch == .hardStop)
+    #expect(try a.store.syncState().latch == nil)
+
+    try await a.store.db.write { db in try db.execute(sql: "DELETE FROM pending_ops") }
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.latch == nil)
+  }
+
+  @Test("a latch the store will not keep stops the run as a store failure, and the next run latches")
+  func latchWriteFailure() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    try await a.store.db.write { db in
+      try db.execute(sql: "CREATE TRIGGER no_latch BEFORE UPDATE OF outbox_latch ON sync_state BEGIN SELECT RAISE(ABORT, 'no latch'); END")
+    }
+    w.server.refuseNext("POST /api/v1/sync", status: 400, code: "bad_request")
+    let first = await engine.run(.authored)
+    guard case .store? = first.stop else {
+      Issue.record("\(String(describing: first.stop))")
+      return
+    }
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(try a.store.inflight().count == 1)
+
+    try await a.store.db.write { db in try db.execute(sql: "DROP TRIGGER no_latch") }
+    w.server.refuseNext("POST /api/v1/sync", status: 400, code: "bad_request")
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(try a.store.syncState().latch == .hardStop)
+    #expect(await engine.status.latch == .hardStop)
+  }
+
   @Test("ops authored while a flush runs are shown to the observer before they are sealed")
   func observerSeesEachBatch() async throws {
     let (_, a, _) = try await twoPhones()
@@ -316,6 +560,120 @@ struct SyncTests {
     _ = await (x, y, z)
     #expect(w.server.uploadCount == 1)
     #expect(try a.store.pendingCount() == 0)
+  }
+
+  @Test(
+    "a trailing rerun runs to the most generous deadline of the callers that asked for it, never the first run's",
+    arguments: [
+      (joiners: [Duration?.none], uploads: true),
+      (joiners: [Duration?.some(.seconds(60))], uploads: true),
+      (joiners: [Duration?.some(.seconds(-30)), .none], uploads: true),
+      (joiners: [Duration?.some(.seconds(-30)), .some(.seconds(60))], uploads: true),
+      (joiners: [Duration?.some(.seconds(60)), .some(.seconds(-30))], uploads: true),
+      (joiners: [Duration?.some(.seconds(-30))], uploads: false),
+      (joiners: [Duration?.some(.seconds(-30)), .some(.seconds(-20))], uploads: false),
+    ])
+  func rerunRunsToItsCallersDeadline(joiners: [Duration?], uploads: Bool) async throws {
+    let (w, a, _) = try await twoPhones()
+    let gate = Gate(inner: w.server)
+    let ctx = SyncContext(
+      userID: a.userID, writerID: a.writerID, store: a.store, secrets: a.secrets, client: AuthClient(transport: gate),
+      clock: a.clock, random: a.random)
+    try enqueue(ctx, [op(1)])
+    let engine = SyncEngine(context: ctx)
+    let first = Task { await engine.run(.authored, deadline: ContinuousClock.now - .seconds(60)) }
+    while gate.held == 0 { await Task.yield() }
+    var asked: [Task<RunOutcome, Never>] = []
+    for joiner in joiners {
+      let deadline = joiner.map { ContinuousClock.now + $0 }
+      asked.append(Task { await engine.run(.authored, deadline: deadline) })
+      try await Task.sleep(for: .milliseconds(30))
+    }
+    gate.open()
+    _ = await first.value
+    for task in asked { _ = await task.value }
+    #expect(w.server.uploadCount == (uploads ? 1 : 0))
+    #expect(try ctx.store.pendingCount() == (uploads ? 0 : 1))
+  }
+
+  @Test("a 429's wait lasts only as long as the run that met it")
+  func retryAfterFollowsTheLastRun() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    w.server.refuseNext("GET /api/v1/sync", status: 429, code: "rate_limited")
+    _ = await engine.run(.launch)
+    #expect(await engine.status.retryAfterSeconds == 7)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.launch).stop == .offline)
+    #expect(await engine.status.retryAfterSeconds == nil)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 429, code: "rate_limited")
+    _ = await engine.run(.launch)
+    #expect(await engine.status.retryAfterSeconds == 7)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 426, code: "upgrade_required")
+    #expect(await engine.run(.launch).stop == .halted(.updateRequired))
+    #expect(await engine.status.retryAfterSeconds == nil)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 429, code: "rate_limited")
+    _ = await engine.run(.launch)
+    #expect(await engine.run(.launch).stop == nil)
+    #expect(await engine.status.retryAfterSeconds == nil)
+  }
+
+  @Test("a run whose upload was refused is not a success: the screen reads on and the last success stays")
+  func refusedUploadIsNoSuccess() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let clock = try #require(a.clock as? FakeClock)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.latch == .accountFull)
+    #expect(await engine.status.phase == .idle)
+    #expect(await engine.status.lastSuccessAt == nil)
+
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    #expect(await engine.status.lastSuccessAt == nil)
+
+    clock.advance(ms: 1000)
+    #expect(await engine.run(.foreground).stop == nil)
+    let success = clock.nowMs()
+    #expect(await engine.status.lastSuccessAt == success)
+
+    clock.advance(ms: 1000)
+    try enqueue(a, [op(2)])
+    w.server.refuseNext("POST /api/v1/sync", status: 403, code: "account_suspended")
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.suspended)
+    #expect(await engine.status.lastSuccessAt == success)
+
+    clock.advance(ms: 1000)
+    #expect(await engine.run(.foreground).stop == nil)
+    #expect(await engine.status.lastSuccessAt == clock.nowMs())
+  }
+
+  @Test("a store failure is no halt: the phase agrees with the stop, and the next run goes on")
+  func storeFailureIsNoHalt() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    try await a.store.db.write { db in
+      try db.execute(sql: "CREATE TRIGGER no_latch BEFORE UPDATE OF outbox_latch ON sync_state BEGIN SELECT RAISE(ABORT, 'no latch'); END")
+    }
+    w.server.refuseNext("POST /api/v1/sync", status: 400, code: "bad_request")
+    let failed = await engine.run(.authored)
+    guard case .store? = failed.stop else {
+      Issue.record("\(String(describing: failed.stop))")
+      return
+    }
+    #expect(await engine.status.phase == .idle)
+
+    try await a.store.db.write { db in try db.execute(sql: "DROP TRIGGER no_latch") }
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.phase == .idle)
   }
 
   @Test("before first unlock every read is 'not now': the run stops quietly and stores nothing")
