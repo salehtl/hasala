@@ -215,6 +215,93 @@ import Testing
     #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
   }
 
+  func unlinkedIPhoneWithATokenLeft(_ rig: Rig, link: MailboxLinkStatus) async throws {
+    await rig.server.setLink(link)
+    try rig.keychain.write("synthetic-token-of-the-stopped-connect")
+    #expect(await rig.state().phase == .unlinked)
+  }
+
+  @Test(arguments: [MailboxTrigger.launch, .retry])
+  func aTakeoverThatDiedBeforeTheLinkMovedLeavesNoTokenAndNoRevoke(_ trigger: MailboxTrigger) async throws {
+    let rig = Rig()
+    try await unlinkedIPhoneWithATokenLeft(rig, link: .holder(isThisDevice: false, watchExpiresAtMs: nil))
+
+    let report = await rig.engine.runCycle(trigger: trigger)
+
+    #expect(report.phase == .unlinked && report.haltedOn == nil)
+    #expect(try rig.keychain.read() == nil)
+    #expect(revokes(rig) == 0)
+    #expect(await rig.state().phase == .unlinked)
+  }
+
+  @Test(arguments: [MailboxLinkStatus.noLink, .holder(isThisDevice: true, watchExpiresAtMs: nil)])
+  func aTokenLeftOnAnUnlinkedIPhoneStaysWhenNoOtherIPhoneHoldsTheLink(_ link: MailboxLinkStatus) async throws {
+    let rig = Rig()
+    try await unlinkedIPhoneWithATokenLeft(rig, link: link)
+
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .unlinked)
+
+    #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+    #expect(await rig.state().phase == .unlinked)
+  }
+
+  @Test func aTokenLeftOnAnUnlinkedIPhoneStaysWhenTheServerCannotSay() async throws {
+    let rig = Rig()
+    try await unlinkedIPhoneWithATokenLeft(rig, link: .holder(isThisDevice: false, watchExpiresAtMs: nil))
+    await rig.server.setOffline(true)
+
+    let report = await rig.engine.runCycle(trigger: .launch)
+
+    #expect(report.phase == .unlinked && report.haltedOn == nil)
+    #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+  }
+
+  @Test func aTokenOfOneProviderStaysWhileAnotherIPhoneHoldsTheOthersLink() async throws {
+    let rig = Rig()
+    try await unlinkedIPhoneWithATokenLeft(rig, link: .holder(isThisDevice: false, watchExpiresAtMs: nil))
+    await rig.server.setLinkProvider(.outlook)
+
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .unlinked)
+
+    #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+  }
+
+  @Test func onlyALaunchOrARetryAsksAboutATokenLeftOnAnUnlinkedIPhone() async throws {
+    let rig = Rig()
+    try await unlinkedIPhoneWithATokenLeft(rig, link: .holder(isThisDevice: false, watchExpiresAtMs: nil))
+
+    for trigger in [MailboxTrigger.foreground, .refresh, .silentPush, .appRefresh, .processing, .timer] {
+      _ = await rig.engine.runCycle(trigger: trigger)
+    }
+
+    #expect(await rig.server.linkStatusReads == 0)
+    #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+  }
+
+  @Test(arguments: [MailboxTrigger.launch, .retry])
+  func anUnlinkedIPhoneWithNoTokenDoesNotAskTheServer(_ trigger: MailboxTrigger) async throws {
+    let rig = Rig()
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+
+    #expect(await rig.engine.runCycle(trigger: trigger).phase == .unlinked)
+
+    #expect(await rig.server.linkStatusReads == 0)
+  }
+
+  @Test func aTakeoverStartedAgainAfterTheTokenWentStillConnects() async throws {
+    let rig = Rig()
+    try await unlinkedIPhoneWithATokenLeft(rig, link: .holder(isThisDevice: false, watchExpiresAtMs: nil))
+    _ = await rig.engine.runCycle(trigger: .launch)
+
+    guard case .connected = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) else {
+      Issue.record("the connect did not finish")
+      return
+    }
+
+    #expect(try rig.keychain.read() == rig.gmail.refreshToken)
+    #expect(await rig.state().phase != .unlinked)
+  }
+
   func saveReader(_ rig: Rig) async throws {
     var c = MailboxCommit()
     c.reader = MailReaderState(address: SyntheticMail.defaultTo)

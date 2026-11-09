@@ -802,6 +802,15 @@ public actor MailboxEngine {
     return .otherDevice
   }
 
+  private func forgetTokenOfAStoppedTakeover(_ trigger: MailboxTrigger) async {
+    guard trigger == .launch || trigger == .retry, await tokens.hasRefreshToken() == true else { return }
+    do throws(MailboxServerError) {
+      if case .holder(isThisDevice: false, _) = try await server.linkStatus(provider: provider.id) {
+        await tokens.forget()
+      }
+    } catch {}
+  }
+
   // MARK: - The cycle
 
   /// One cycle (spec 04 §7.5). `deadlineMs` is in the engine clock's epoch ms; nil = foreground
@@ -844,6 +853,7 @@ public actor MailboxEngine {
     var holderConfirmed = false
     switch state.phase {
     case .unlinked:
+      await forgetTokenOfAStoppedTakeover(trigger)
       return report
     case .otherDevice:
       await forgetReader()
