@@ -156,6 +156,9 @@ func transientRender(err error) bool {
 	}
 	var pe *pgconn.PgError
 	if errors.As(err, &pe) {
+		if pe.Code == "55P03" {
+			return true
+		}
 		switch pe.Code[:2] {
 		case "08", "40", "53", "57", "58":
 			return true

@@ -229,3 +229,38 @@ func TestARevocationTheLedgerDidNotRecordIsNotReportedAsDone(t *testing.T) {
 		t.Fatalf("revoke with a failed ledger write: %d %s", w.Code, w.Body)
 	}
 }
+
+func TestAResendPastTheMintLimitIsRefusedAndAudited(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	var entry string
+	if err := pool.QueryRow(bg, `INSERT INTO waitlist_entries (email_tag, email_norm, state, bank_slug, source, created_at,
+		updated_at, confirmed_at, invited_at) VALUES (decode(repeat('ab', 32), 'hex'), 'limit@example.com', 'invited', 'enbd', 'web',
+		now(), now(), now(), now()) RETURNING id`).Scan(&entry); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	if err := pool.QueryRow(bg, `INSERT INTO invite_codes (code_hash, email_tag, waitlist_entry_id, origin, state, created_at,
+		minted_at, expires_at, mint_count) VALUES (decode(repeat('cd', 32), 'hex'), decode(repeat('ab', 32), 'hex'), $1, 'admin',
+		'active', now(), now(), now() + interval '1 day', $2) RETURNING id`, entry, invites.MaxMints).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	path := "/invites/" + id + "/resend"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id, c.now())}}
+	w := req(c, "POST", path, form, nil)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "refused") {
+		t.Fatalf("resend at the limit: %d %s", w.Code, w.Body)
+	}
+	var queued int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE invite_id = $1`, id).Scan(&queued); err != nil || queued != 0 {
+		t.Fatalf("%d mail rows, %v", queued, err)
+	}
+	var result, code string
+	if err := pool.QueryRow(bg, `SELECT result, error_code FROM admin_audit WHERE action = 'console.invite.resend'`).
+		Scan(&result, &code); err != nil {
+		t.Fatal(err)
+	}
+	if result != "refused" || code != "mint_limit" {
+		t.Fatalf("audit %s %s", result, code)
+	}
+}
