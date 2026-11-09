@@ -1299,7 +1299,7 @@ public actor MailboxEngine {
     switch error {
     case .reconnectRequired: .reconnectRequired
     case .notNow: nil
-    case .offline, .revoked: .offline
+    case .offline: .offline
     }
   }
 

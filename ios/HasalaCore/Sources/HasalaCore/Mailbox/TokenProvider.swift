@@ -28,8 +28,6 @@ public enum MailAuthError: Error, Sendable, Equatable {
   /// The Keychain is unreadable (before first unlock): try again later, change nothing.
   case notNow
   case offline
-  /// The token was revoked on purpose (disconnect, other device took over).
-  case revoked
 }
 
 public typealias GmailAuthError = MailAuthError
