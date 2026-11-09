@@ -128,3 +128,81 @@ func TestAWrapDeletionThatChangesNothingRecordsNothing(t *testing.T) {
 		t.Fatal("a refused deletion removed the wrap")
 	}
 }
+
+func (f *keyFixture) bootstrapWordsUnseen() {
+	f.t.Helper()
+	b := f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), true)
+	b.PhraseUnseen = true
+	if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+func TestAReplayKeepsThePasskeyTheUnseenWordsDependOn(t *testing.T) {
+	f := newKeyFixtureUnbootstrapped(t)
+	f.bootstrapWordsUnseen()
+	entries := []purgeledger.Entry{{ID: f.user, At: f.clock.now().Add(time.Hour), Kind: purgeledger.KindPasskey, Credential: f.credID}}
+	for i := 0; i < 2; i++ {
+		rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+		if err != nil || rep != (ReapplyReport{Kept: 1}) {
+			t.Fatalf("replay %d: %+v %v, want the removal reported as kept back", i+1, rep, err)
+		}
+	}
+	if n := f.count(`SELECT count(*) FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`, f.user, f.credID); n != 1 {
+		t.Fatal("the replay took the only passkey that can show the 12 words")
+	}
+	if n := f.count(`SELECT count(*) FROM account_key_wraps WHERE user_id = $1`, f.user); n != 1 {
+		t.Fatal("the replay took the wrap the 12 words still depend on")
+	}
+	if _, err := f.sessions.Resolve(bgctx, f.token); err != nil {
+		t.Fatalf("a removal the replay kept back ended a session: %v", err)
+	}
+}
+
+func TestAReplayStillRemovesAPasskeyWhenAnotherCanShowTheUnseenWords(t *testing.T) {
+	f := newKeyFixtureUnbootstrapped(t).guarded()
+	f.bootstrapWordsUnseen()
+	second, _, err := f.addOver(f.token, f.device, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := f.clock.now().Add(time.Hour)
+	entries := []purgeledger.Entry{
+		{ID: f.user, At: at, Kind: purgeledger.KindPasskey, Credential: second.CredID},
+		{ID: f.user, At: at, Kind: purgeledger.KindPasskey, Credential: f.credID},
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep != (ReapplyReport{Passkeys: 1, Kept: 1}) {
+		t.Fatalf("reapply %+v %v, want the first removal applied and the last kept back", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM webauthn_credentials WHERE credential_id = $1`, second.CredID); n != 0 {
+		t.Fatal("the passkey with another wrap beside it came back")
+	}
+	if n := f.count(`SELECT count(*) FROM webauthn_credentials WHERE credential_id = $1`, f.credID); n != 1 {
+		t.Fatal("the replay took the last passkey that can show the words")
+	}
+}
+
+func TestAReplayCountsWordsTheLedgerSawAfterTheRemoval(t *testing.T) {
+	for name, kind := range map[string]purgeledger.Kind{"a passkey": purgeledger.KindPasskey, "a wrap": purgeledger.KindWrap} {
+		t.Run(name, func(t *testing.T) {
+			f := newKeyFixtureUnbootstrapped(t)
+			f.bootstrapWordsUnseen()
+			at := f.clock.now().Add(time.Hour)
+			entries := []purgeledger.Entry{
+				{ID: f.user, At: at, Kind: kind, Credential: f.credID},
+				{ID: f.user, At: at.Add(time.Minute), Kind: purgeledger.KindPhraseSeen},
+			}
+			rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+			if err != nil || rep.PhrasesSeen != 1 || rep.Kept != 0 || rep.Passkeys+rep.Wraps != 1 {
+				t.Fatalf("reapply %+v %v, want the removal applied and the words seen", rep, err)
+			}
+			if n := f.count(`SELECT count(*) FROM account_key_wraps WHERE user_id = $1`, f.user); n != 0 {
+				t.Fatal("a removal came back although the words were seen after it")
+			}
+			if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+				t.Fatalf("a second replay %+v %v, want nothing", rep, err)
+			}
+		})
+	}
+}

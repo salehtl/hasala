@@ -169,10 +169,11 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 		"%d device removal(s), %d password change(s), %d passkey removal(s), %d first view(s) of the 12 words, %d waitlist leave(s) and %d bounced-invite waitlist "+
 		"deletion(s) applied again, %d sign-out(s) of all sessions, %d email change(s) and %d invite revocation(s) applied again, "+
 		"%d freeze(s) lifted because the replay left the account no passkey and no password, "+
-		"%d device removal(s) whose signer is not in the database (signed out only), %d key wrap deletion(s) applied again, "+
+		"%d device removal(s) whose signer is not in the database (signed out only), "+
+		"%d passkey removal(s) kept back because that passkey is the only way to show the unseen 12 words, %d key wrap deletion(s) applied again, "+
 		"%d entries past retention removed\n",
 		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Unfreezes, again.Devices, again.Passwords, again.Passkeys,
-		again.PhrasesSeen, left, bounced, again.Sessions, again.Emails, revoked, again.Lifted, again.Unsigned, again.Wraps, dropped)
+		again.PhrasesSeen, left, bounced, again.Sessions, again.Emails, revoked, again.Lifted, again.Unsigned, again.Kept, again.Wraps, dropped)
 	return nil
 }
 

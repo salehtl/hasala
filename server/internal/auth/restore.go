@@ -65,6 +65,7 @@ type ReapplyReport struct {
 	Emails      int
 	Unsigned    int
 	Lifted      int
+	Kept        int
 }
 
 type reapplied int
@@ -73,6 +74,7 @@ const (
 	reappliedNothing reapplied = iota
 	reappliedDone
 	reappliedUnsigned
+	reappliedKept
 )
 
 func liftedInLedger(entries []purgeledger.Entry) map[int]bool {
@@ -154,6 +156,18 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 	afterUnfreeze := afterSameSecondUnfreeze(entries)
 	var touched []uuid.UUID
 	seen := map[uuid.UUID]bool{}
+	for _, e := range entries {
+		if e.Kind != purgeledger.KindPhraseSeen {
+			continue
+		}
+		out, err := reapplyOne(ctx, pool, e, now, reapplyPhraseSeenTx)
+		if err != nil {
+			return rep, fmt.Errorf("auth: reapply %s of %s: %w", e.Kind, e.At.UTC().Format(time.RFC3339), err)
+		}
+		if out == reappliedDone {
+			rep.PhrasesSeen++
+		}
+	}
 	for i, e := range entries {
 		var (
 			step  func(context.Context, pgx.Tx, purgeledger.Entry, time.Time) (reapplied, error)
@@ -183,8 +197,6 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			step, count, locks = reapplyPasskeyTx, &rep.Passkeys, true
 		case purgeledger.KindWrap:
 			step, count = reapplyWrapTx, &rep.Wraps
-		case purgeledger.KindPhraseSeen:
-			step, count = reapplyPhraseSeenTx, &rep.PhrasesSeen
 		case purgeledger.KindSessions:
 			step, count = reapplySessionsTx, &rep.Sessions
 		case purgeledger.KindEmail:
@@ -205,6 +217,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			}
 		case reappliedUnsigned:
 			rep.Unsigned++
+		case reappliedKept:
+			rep.Kept++
 		}
 	}
 	for _, e := range entries {
@@ -454,6 +468,12 @@ func reapplyPasswordTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 }
 
 func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	if err := refuseIfLastUnseenWrapTx(ctx, tx, e.ID, e.Credential); err != nil {
+		if errors.Is(err, ErrPhraseUnseen) {
+			return reappliedKept, nil
+		}
+		return reappliedNothing, err
+	}
 	var created time.Time
 	err := tx.QueryRow(ctx,
 		`SELECT created_at FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2 FOR UPDATE`,
