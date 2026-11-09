@@ -169,9 +169,9 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   /// grant this iPhone stops using anyway.
   @discardableResult
   public func revokeAndForget(keepOnFailure: Bool = true) async -> Bool {
-    guard await revoke(stopOnFailure: keepOnFailure) else { return false }
-    try? store.delete()
-    return true
+    let revoked = await revoke(stopOnFailure: keepOnFailure)
+    if revoked || !keepOnFailure { try? store.delete() }
+    return revoked
   }
 
   public func revoke(stopOnFailure: Bool = true) async -> Bool {
