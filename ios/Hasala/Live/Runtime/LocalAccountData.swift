@@ -80,12 +80,14 @@ enum LocalAccountData {
 
   /// The account's data left this iPhone (deleted here or elsewhere, removed, wiped from
   /// a wall): forget the setup flag, the mailbox provider, the skipped review cards, the push registration,
-  /// the recent searches (held in memory only) and, in Debug simulator runs, the simulator's
-  /// approval keys.
+  /// the recent searches (held in memory only), the cached profile pictures and, in Debug
+  /// simulator runs, the simulator's approval keys.
   static func forget(
-    defaults: UserDefaults = .standard, facts: BankTextsFacts = .shared, marker: LockedTextsMarkerFile = .shared
+    defaults: UserDefaults = .standard, facts: BankTextsFacts = .shared, marker: LockedTextsMarkerFile = .shared,
+    gravatar: GravatarPreference = .shared
   ) {
     SearchHistory.shared.clear()
+    gravatar.forgetPictures()
     WidgetLinkInbox.shared.pending = nil
     defaults.removeObject(forKey: setupFinishedKey)
     defaults.removeObject(forKey: legacySetupFinishedKey)
