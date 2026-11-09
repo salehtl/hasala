@@ -104,3 +104,67 @@ func TestAccountUnfreezeWithoutALedgerWarns(t *testing.T) {
 		t.Fatalf("account unfreeze without a ledger exited %d with %q (%s)", code, out, msg)
 	}
 }
+
+func TestAnUnfreezeTheLedgerMissedIsRecordedByRunningItAgain(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	user := oplogtest.NewUser(t, pool)
+	id := user.String()
+	freeze := func() {
+		t.Helper()
+		if _, err := pool.Exec(ctx, `UPDATE users SET frozen_at = now() - interval '1 hour',
+		    freeze_trigger_at = now() - interval '1 hour', frozen_by = 'holder', holder_also_froze = false WHERE id = $1`, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	freeze()
+	dsn := "HASALA_PG_DSN=" + pool.Config().ConnString()
+	broken := []string{dsn, "HASALA_PURGE_LEDGER_PATH=" + t.TempDir()}
+	code, out, msg := hasalad(t, broken, "account", "unfreeze", id, "--confirm", id)
+	if code != 1 || !strings.Contains(out, "unfrozen") || !strings.Contains(msg, "did not record it") {
+		t.Fatalf("an unfreeze whose ledger write failed exited %d with %q (%s)", code, out, msg)
+	}
+
+	ledger := filepath.Join(t.TempDir(), "purged")
+	env := []string{dsn, "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	code, out, msg = hasalad(t, env, "account", "unfreeze", id, "--confirm", id)
+	if code != 0 || !strings.Contains(out, "was not frozen") {
+		t.Fatalf("the second run exited %d with %q (%s)", code, out, msg)
+	}
+	entries, err := purgeledger.Read(ledger)
+	if err != nil || len(entries) != 1 || entries[0].ID != user || entries[0].Kind != purgeledger.KindUnfreeze {
+		t.Fatalf("ledger %+v %v, want the unfreeze the first run missed", entries, err)
+	}
+
+	if code, out, msg := hasalad(t, env, "account", "unfreeze", id, "--confirm", id); code != 0 ||
+		!strings.Contains(out, "nothing changed") {
+		t.Fatalf("a third run exited %d with %q (%s)", code, out, msg)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 1 {
+		t.Fatalf("ledger %+v %v after a third run, want one entry", entries, err)
+	}
+
+	freeze()
+	if code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger"); code != 0 || !strings.Contains(out, "1 unfreeze(s)") {
+		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	var frozen bool
+	if err := pool.QueryRow(ctx, `SELECT frozen_at IS NOT NULL FROM users WHERE id = $1`, user).Scan(&frozen); err != nil || frozen {
+		t.Fatalf("a restore brought back the freeze: frozen %v, %v", frozen, err)
+	}
+}
+
+func TestAnAccountNeverUnfrozenHasNothingToRecord(t *testing.T) {
+	pool := pgtest.New(t)
+	user := oplogtest.NewUser(t, pool)
+	id := user.String()
+	ledger := filepath.Join(t.TempDir(), "purged")
+	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	if code, out, msg := hasalad(t, env, "account", "unfreeze", id, "--confirm", id); code != 0 ||
+		!strings.Contains(out, "nothing changed") {
+		t.Fatalf("unfreeze of an unfrozen account exited %d with %q (%s)", code, out, msg)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 0 {
+		t.Fatalf("ledger %+v %v, want none", entries, err)
+	}
+}

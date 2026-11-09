@@ -80,6 +80,7 @@ const (
 	senderCount   = 4
 	configPause   = 5 * time.Minute
 	tickEvery     = time.Second
+	drainFor      = 20 * time.Second
 )
 
 type job struct {
@@ -104,6 +105,8 @@ type Dispatcher struct {
 	Now    func() time.Time
 	Stats  Stats
 
+	DrainFor time.Duration
+
 	queue    chan job
 	mu       sync.Mutex // guards th, pause and envPause
 	th       *throttle
@@ -127,6 +130,8 @@ func (d *Dispatcher) now() time.Time {
 // Start runs the senders and the trailing-edge ticker until ctx is done; the
 // returned channel closes when every goroutine has stopped.
 func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
+	sending, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	context.AfterFunc(ctx, func() { time.AfterFunc(d.drainLimit(), cancel) })
 	for range senderCount {
 		d.wg.Add(1)
 		go func() {
@@ -134,9 +139,10 @@ func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 			for {
 				select {
 				case <-ctx.Done():
+					d.drain(sending)
 					return
 				case j := <-d.queue:
-					d.run(context.WithoutCancel(ctx), j)
+					d.run(sending, j)
 				}
 			}
 		}()
@@ -151,13 +157,52 @@ func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 			case <-ctx.Done():
 				return
 			case <-tick.C:
-				d.Flush(context.WithoutCancel(ctx))
+				d.Flush(sending)
 			}
 		}
 	}()
 	done := make(chan struct{})
-	go func() { d.wg.Wait(); close(done) }()
+	go func() {
+		d.wg.Wait()
+		cancel()
+		d.dropQueued()
+		close(done)
+	}()
 	return done
+}
+
+func (d *Dispatcher) drainLimit() time.Duration {
+	if d.DrainFor > 0 {
+		return d.DrainFor
+	}
+	return drainFor
+}
+
+func (d *Dispatcher) drain(sending context.Context) {
+	for sending.Err() == nil {
+		select {
+		case j := <-d.queue:
+			d.run(sending, j)
+		default:
+			return
+		}
+	}
+}
+
+func (d *Dispatcher) dropQueued() {
+	left := 0
+	for {
+		select {
+		case j := <-d.queue:
+			d.Stats.Dropped[j.r].Add(1)
+			left++
+		default:
+			if left > 0 {
+				slog.Warn("pushv2: stopped with wakes still queued", "dropped", left)
+			}
+			return
+		}
+	}
 }
 
 func (d *Dispatcher) enqueue(j job) bool {

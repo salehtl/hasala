@@ -109,6 +109,16 @@ func runInvite(env *runEnv, args []string) error {
 			revoked = id
 			return nil
 		}); err != nil {
+			if errors.Is(err, invites.ErrNoSuchInvite) {
+				id, recorded, rerr := recordMissedRevocation(ctx, pool, cfg.Server.PurgeLedgerPath, positional[1])
+				if rerr != nil {
+					return fmt.Errorf("invite revoke: the restore ledger did not record the revocation: %w", rerr)
+				}
+				if recorded {
+					fmt.Fprintf(env.stdout, "invite %s was already revoked; the restore ledger now records it\n", invites.ShortID(id))
+					return nil
+				}
+			}
 			return err
 		}
 		fmt.Fprintf(env.stdout, "revoked invite %s\n", invites.ShortID(revoked))
@@ -159,6 +169,22 @@ func runInvite(env *runEnv, args []string) error {
 	fmt.Fprintln(env.stderr, "this code is single use, gates ACCOUNT CREATION only, and is not "+
 		"recoverable: it is stored as a hash. Hand it over out of band.")
 	return nil
+}
+
+func recordMissedRevocation(ctx context.Context, pool *pgxpool.Pool, ledger, prefix string) (uuid.UUID, bool, error) {
+	if ledger == "" {
+		return uuid.Nil, false, nil
+	}
+	id, at, err := invites.Revoked(ctx, pool, prefix)
+	if errors.Is(err, invites.ErrNoSuchInvite) || errors.Is(err, invites.ErrAmbiguous) {
+		return uuid.Nil, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	e := purgeledger.Entry{ID: id, At: at, Kind: purgeledger.KindInviteRevoked}
+	recorded, err := purgeledger.EnsureEntry(ledger, e, time.Now().Add(-purgeledger.Retention))
+	return id, recorded, err
 }
 
 func listInvites(ctx context.Context, env *runEnv, pool *pgxpool.Pool) error {

@@ -762,6 +762,60 @@ func (q *Queue) failExhausted(ctx context.Context) error {
 	return nil
 }
 
+func (q *Queue) FailWithoutWorker(ctx context.Context) (string, error) {
+	if q.Tagger != nil {
+		return "", nil
+	}
+	n, err := q.failDue(ctx, mail.ErrNotConfigured.Error(), dueToFail)
+	if err != nil {
+		return "", fmt.Errorf("mailq: no worker: %w", err)
+	}
+	if n == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("%d failed with no worker", n), nil
+}
+
+const dueToFail = `(status = 'queued' OR (status = 'sending' AND lease_until < now()))`
+
+func (q *Queue) failDue(ctx context.Context, reason, where string, args ...any) (int, error) {
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
+	if err != nil {
+		return 0, err
+	}
+	defer pgtx.Rollback(ctx, tx)
+	rows, err := tx.Query(ctx,
+		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL,
+		        error = $1, recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
+		  WHERE `+where+`
+		 RETURNING id, kind, user_id, waitlist_entry_id, invite_id`, append([]any{reason}, args...)...)
+	if err != nil {
+		return 0, err
+	}
+	failed, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Row, error) {
+		var row Row
+		return row, r.Scan(&row.ID, &row.Kind, &row.UserID, &row.EntryID, &row.InviteID)
+	})
+	if err != nil {
+		return 0, err
+	}
+	var after []func()
+	if q.Unsent != nil {
+		for _, row := range failed {
+			done, err := q.Unsent(ctx, tx, row)
+			if err != nil {
+				return 0, err
+			}
+			after = appendDone(after, done)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	runDone(after)
+	return len(failed), nil
+}
+
 func (q *Queue) settleDue(ctx context.Context) {
 	rows, err := q.Pool.Query(ctx, `SELECT id FROM mail_log WHERE hook_due ORDER BY id`)
 	if err != nil {

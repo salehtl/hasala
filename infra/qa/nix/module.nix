@@ -1671,6 +1671,7 @@ in
           ReadWritePaths = [ ledgerDir ];
           Restart = "on-failure";
           RestartSec = "5s";
+          TimeoutStopSec = "90s";
           RestrictAddressFamilies = [
             "AF_INET"
             "AF_INET6"
