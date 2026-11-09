@@ -223,6 +223,14 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 	if err := waitlist.OnAddressTakenTx(ctx, tx, st.ID, a.Keys.EmailTag(newAddr)); err != nil {
 		return err
 	}
+	for _, q := range []string{
+		`DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`,
+		`DELETE FROM recovery_ceremonies WHERE user_id = $1`,
+	} {
+		if _, err := tx.Exec(ctx, q, st.ID); err != nil {
+			return fmt.Errorf("auth: email change: end outstanding ceremonies: %w", err)
+		}
+	}
 	if hash != nil {
 		if _, err := tx.Exec(ctx, `UPDATE users SET password_version = $2 WHERE id = $1`, st.ID, a.Keys.Current()); err != nil {
 			return err

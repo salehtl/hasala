@@ -117,3 +117,68 @@ func TestOnlyOneOfTwoEmailChangesFinishingTogetherWins(t *testing.T) {
 		t.Fatalf("the address is %q, want the winner's %q", got, winner)
 	}
 }
+
+func (f *acctFixture) finishChange(m *member) []byte {
+	f.t.Helper()
+	c := f.begunChange(m)
+	if err := f.acct.EmailChangeFinish(bgctx, m.info(), c.id.ChangeID, c.new, &c.oldCode, nil); err != nil {
+		f.t.Fatal(err)
+	}
+	m.addr, m.s = c.next, f.stretch(c.next, m.pw)
+	return m.s
+}
+
+func TestAnEmailChangeEndsAnApprovedResetMadeUnderTheOldAddress(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	r := f.approvedReset(m, "a password stretched for the old address")
+	current := f.finishChange(m)
+	if _, err := f.acct.ResetFinish(bgctx, r.id, r.newS, r.sig); !errors.Is(err, ErrResetRefused) {
+		t.Fatalf("a reset begun under the old address: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`, m.user.UserID); n != 0 {
+		t.Fatalf("%d resets outlived the change", n)
+	}
+	if _, err := m.loginPassword(current, nil); err != nil {
+		t.Fatalf("the password re-keyed for the new address: %v", err)
+	}
+}
+
+func TestAnEmailChangeEndsTheRecoveriesInFlight(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	id, v := f.verifiedRecovery(m, "password")
+	req := f.passwordRecoveryRequest(m, id, v, f.stretch(m.addr, "a password stretched for the old address"))
+	passkeyID, passkeyV := f.verifiedRecovery(m, "passkey")
+	passkeyReq, _ := f.passkeyRecoveryRequest(m, passkeyID, passkeyV)
+	current := f.finishChange(m)
+	if _, err := f.acct.RecoverFinish(bgctx, req); !errors.Is(err, ErrRecoveryRefused) {
+		t.Fatalf("a password recovery begun under the old address: %v", err)
+	}
+	if _, err := f.acct.RecoverFinish(bgctx, passkeyReq); !errors.Is(err, ErrRecoveryRefused) {
+		t.Fatalf("a passkey recovery begun under the old address: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM recovery_ceremonies WHERE user_id = $1`, m.user.UserID); n != 0 {
+		t.Fatalf("%d recoveries outlived the change", n)
+	}
+	if _, err := m.loginPassword(current, nil); err != nil {
+		t.Fatalf("the password re-keyed for the new address: %v", err)
+	}
+}
+
+func TestAnEmailChangeRefusedAtTheLastStepLeavesAResetRunning(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	c := f.begunChange(m)
+	r := f.approvedReset(m, "a brand new password")
+	wrong := "000000"
+	if wrong == c.oldCode {
+		wrong = "000001"
+	}
+	if err := f.acct.EmailChangeFinish(bgctx, m.info(), c.id.ChangeID, c.new, &wrong, nil); !errors.Is(err, ErrCodeRejected) {
+		t.Fatalf("a change with the wrong code: %v", err)
+	}
+	if _, err := f.acct.ResetFinish(bgctx, r.id, r.newS, r.sig); err != nil {
+		t.Fatalf("a reset beside a refused change: %v", err)
+	}
+}
