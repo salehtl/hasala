@@ -236,10 +236,14 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 	// nothing, and the retry can use the same ceremony.
 	release, err := a.Gate.Acquire(ctx)
 	if err != nil {
+		var rerr error
 		if boundWriter != "" {
-			if rerr := refundWriterPasswordAttempt(ctx, a.Pool, *userID, boundWriter, now); rerr != nil {
-				return SignedIn{}, rerr
-			}
+			rerr = refundWriterPasswordAttempt(ctx, a.Pool, *userID, boundWriter, now)
+		} else {
+			rerr = refundEmailPasswordAttempt(ctx, a.Pool, tag, now)
+		}
+		if rerr != nil {
+			return SignedIn{}, rerr
 		}
 		return SignedIn{}, gateErr(err)
 	}
