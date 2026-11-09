@@ -303,8 +303,8 @@ func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Mess
 	)
 	err = q.Pool.QueryRow(ctx,
 		`INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id,
-		                       waitlist_entry_id, invite_id, bank_slug, params, status, attempts, lease_until, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'sending', 1, now() + interval '2 minutes', now())
+		                       waitlist_entry_id, invite_id, bank_slug, params, status, attempts, lease_until, created_at, one_shot)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'sending', 1, now() + interval '2 minutes', now(), true)
 		 RETURNING id, lease_until`,
 		e.Kind, nilIfEmpty(e.Subkind), string(e.Lane), e.To, tag, Hint(e.To), e.UserID, e.EntryID, e.InviteID,
 		e.BankSlug, params).Scan(&id, &lease)
@@ -506,7 +506,7 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	if _, err := q.Pool.Exec(ctx,
 		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
-		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1`, maxAttempts); err != nil {
+		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1 AND NOT one_shot`, maxAttempts); err != nil {
 		return false, fmt.Errorf("mailq: expired leases: %w", err)
 	}
 	if err := q.failExhausted(ctx); err != nil {
@@ -682,9 +682,11 @@ func (q *Queue) failExhausted(ctx context.Context) error {
 	defer pgtx.Rollback(ctx, tx)
 	rows, err := tx.Query(ctx,
 		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL,
-		        error = 'attempts exhausted', recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
-		  WHERE attempts >= $1 AND recipient_tag IS NOT NULL
-		    AND (status = 'queued' OR (status = 'sending' AND lease_until < now()))
+		        error = CASE WHEN one_shot THEN 'interrupted: outcome unknown' ELSE 'attempts exhausted' END,
+		        recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
+		  WHERE recipient_tag IS NOT NULL
+		    AND ((attempts >= $1 AND status = 'queued')
+		         OR ((attempts >= $1 OR one_shot) AND status = 'sending' AND lease_until < now()))
 		 RETURNING id, kind, user_id, waitlist_entry_id, invite_id`, maxAttempts)
 	if err != nil {
 		return err

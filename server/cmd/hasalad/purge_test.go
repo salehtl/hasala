@@ -251,6 +251,9 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 			"1 sign-out(s) of all sessions, 1 email change(s) and 1 invite revocation(s) applied again, 1 freeze(s) lifted because") {
 		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
 	}
+	if !strings.Contains(out, "0 passkey removal(s) kept back because") {
+		t.Fatalf("the summary does not count the kept-back removals: %q", out)
+	}
 	for _, id := range []string{gone.String(), changed.String(), frozen.String(), thawed.String(), unfrozen.String(), entry, bounced,
 		strings.Repeat("55", 20), signedOut.String(), moved.String(), invite} {
 		if strings.Contains(out, id) {

@@ -56,7 +56,7 @@ func TestRevokingTheHolderDropsTheMailboxLinkAndRecordsTheRemoval(t *testing.T) 
 
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
 	rev := f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), su)
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), rev); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), rev); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 0 {
@@ -86,7 +86,7 @@ func TestRevokingAnotherDeviceKeepsTheHoldersLink(t *testing.T) {
 	f.enrol(other)
 	plantMailboxLink(t, f.pool, f.user, f.device.WriterID, 0x12)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1 AND holder_writer_id = $2`, f.user, f.device.WriterID); n != 1 {
@@ -108,7 +108,7 @@ func TestAFailedRevocationRecordsNothing(t *testing.T) {
 	f.enrol(other)
 	plantMailboxLink(t, f.pool, f.user, other.WriterID, 0x13)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 3, make([]byte, 32), su)); !errors.Is(err, ErrHeadMoved) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 3, make([]byte, 32), su)); !errors.Is(err, ErrHeadMoved) {
 		t.Fatalf("a wrong head: %v", err)
 	}
 	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 1 {
@@ -857,7 +857,7 @@ func TestAReplayOnTheLiveDatabaseAppliesNothing(t *testing.T) {
 		plantMailboxLink(t, f.pool, f.user, stolen.WriterID, 0x16)
 		f.clock.advance(time.Minute + 820*time.Millisecond)
 		su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
-		if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
+		if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
 			t.Fatal(err)
 		}
 		entries := readLedger(t, path)
@@ -883,7 +883,7 @@ func TestALogoutAllIsRecordedAndSurvivesARestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.clock.advance(time.Hour + 300*time.Millisecond)
-	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
 		t.Fatal(err)
 	}
 	entries := readLedger(t, path)
@@ -1407,6 +1407,71 @@ func TestAFreezeInTheSameSecondAsARestoredUnfreezeIsApplied(t *testing.T) {
 	}
 	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_by = 'holder'`, m.user.UserID); n != 1 {
 		t.Fatal("a second replay lifted the freeze")
+	}
+}
+
+func TestAFreezeAfterAnUnfreezeOfTheSameSecondOutlivesThatUnfreezesEvent(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	at := f.clock.now().Truncate(time.Second)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+		m.user.UserID, at.Add(400*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	entries := []purgeledger.Entry{
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindUnfreeze},
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: at},
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep != (ReapplyReport{Freezes: 1}) {
+		t.Fatalf("reapply %+v %v, want the freeze", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_by = 'holder'`, m.user.UserID); n != 1 {
+		t.Fatal("the unfreeze before the freeze lifted it")
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a second replay %+v %v, want nothing", rep, err)
+	}
+}
+
+func TestAFreezeLiftedByAnEventTheLedgerDoesNotExplainStaysLifted(t *testing.T) {
+	for name, gap := range map[string]time.Duration{"the same second": 400 * time.Millisecond, "a later second": 2 * time.Second} {
+		t.Run(name, func(t *testing.T) {
+			f := newAcctFixture(t)
+			m := f.passwordMember("Maya")
+			f.clock.advance(time.Hour)
+			at := f.clock.now().Truncate(time.Second)
+			if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+				m.user.UserID, at.Add(gap)); err != nil {
+				t.Fatal(err)
+			}
+			f.clock.advance(time.Minute)
+			entries := []purgeledger.Entry{{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: at}}
+			if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+				t.Fatalf("reapply %+v %v: a lifted freeze came back", rep, err)
+			}
+		})
+	}
+}
+
+func TestAFreezeAfterASameSecondUnfreezeIsStillLiftedByALaterEvent(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	at := f.clock.now().Truncate(time.Second)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+		m.user.UserID, at.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	entries := []purgeledger.Entry{
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindUnfreeze},
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: at},
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("reapply %+v %v: a freeze lifted a second later came back", rep, err)
 	}
 }
 

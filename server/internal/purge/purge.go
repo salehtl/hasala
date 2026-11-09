@@ -102,6 +102,7 @@ var notUserLinked = []string{
 	"public.rate_counters",
 	"public.device_freeze_challenges",
 	"public.server_meta",
+	"public.restore_ledger_held",
 	// Spec 07 §2.12: the bank catalog, and the waitlist with its tokens. An
 	// entry is an address that has not become an account (or, once joined, a
 	// tag with no address); the account's own joined entry and its mail rows

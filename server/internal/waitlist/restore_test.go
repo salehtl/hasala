@@ -3,6 +3,7 @@ package waitlist
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -90,5 +91,32 @@ func TestALeaveIsRecordedAndSurvivesARestore(t *testing.T) {
 	}
 	if n, err := ReapplyLeaves(ctx, pool, recorded); err != nil || n != 0 {
 		t.Fatalf("a second replay %d %v", n, err)
+	}
+}
+
+func TestALeaveHoldsItsLineWithTheDeletion(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	s := New(pool, nil, "https://hasala.app")
+	s.Hold, s.Record = purgeledger.HoldTx, func(purgeledger.Entry) {}
+	leaving := plantEntry(t, pool, 9, "held@example.test")
+	var tok string
+	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		var err error
+		tok, err = MintToken(ctx, tx, leaving, "leave")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Leave(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "purged")
+	if n, err := purgeledger.Flush(ctx, pool, path); err != nil || n != 1 {
+		t.Fatalf("flush: %d %v", n, err)
+	}
+	entries, err := purgeledger.Read(path)
+	if err != nil || len(entries) != 1 || entries[0].ID != leaving || entries[0].Kind != purgeledger.KindWaitlistLeave {
+		t.Fatalf("ledger %+v %v, want the leave", entries, err)
 	}
 }

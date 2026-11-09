@@ -52,7 +52,7 @@ func (a *Accounts) ResetBegin(ctx context.Context, email string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	eligible := ok && st.hasPassword() && st.active() && !st.frozen() && !st.InDoubt
+	eligible := ok && st.resettable()
 	var userID *uuid.UUID
 	if eligible {
 		userID = &st.ID
@@ -261,28 +261,39 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 		return SignedIn{}, err
 	}
 	defer pgtx.Rollback(ctx, tx)
-	var approvedSession []byte
-	err = tx.QueryRow(ctx,
-		`UPDATE password_reset_ceremonies SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL AND approved_at IS NOT NULL
-		 RETURNING approved_session`,
-		resetID, now).Scan(&approvedSession)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return SignedIn{}, fmt.Errorf("%w: already consumed", ErrResetRefused)
-	}
-	if err != nil {
-		return SignedIn{}, err
-	}
 	st, err := readAccount(ctx, tx, *userID, true)
 	if err != nil {
 		return SignedIn{}, fmt.Errorf("%w: %v", ErrResetRefused, err)
 	}
-	if !st.active() || !st.hasPassword() || st.frozen() {
+	now = a.now()
+	var approvedSession []byte
+	err = tx.QueryRow(ctx,
+		`UPDATE password_reset_ceremonies SET consumed_at = $2
+		  WHERE id = $1 AND consumed_at IS NULL AND approved_at IS NOT NULL AND expires_at > $2
+		 RETURNING approved_session`,
+		resetID, now).Scan(&approvedSession)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return SignedIn{}, fmt.Errorf("%w: already consumed or expired", ErrResetRefused)
+	}
+	if err != nil {
+		return SignedIn{}, err
+	}
+	if !st.resettable() {
 		return SignedIn{}, fmt.Errorf("%w: the account is no longer eligible", ErrResetRefused)
 	}
 	var live bool
 	if err := tx.QueryRow(ctx, `SELECT revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
 		st.ID, *approver).Scan(&live); err != nil || !live {
 		return SignedIn{}, fmt.Errorf("%w: the approver is gone", ErrResetRefused)
+	}
+	var sessionLive bool
+	err = tx.QueryRow(ctx, `SELECT revoked_at IS NULL AND expires_at > $2 FROM sessions WHERE token_hash = $1 FOR SHARE`,
+		approvedSession, now).Scan(&sessionLive)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return SignedIn{}, err
+	}
+	if !sessionLive {
+		return SignedIn{}, fmt.Errorf("%w: the approver's session is gone", ErrResetRefused)
 	}
 	if err := setPasswordTx(ctx, tx, st.ID, hash, salt, a.Keys.Current(), now); err != nil {
 		return SignedIn{}, err
@@ -300,10 +311,14 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	if err != nil {
 		return SignedIn{}, err
 	}
+	held, err := a.Hold.Tx(ctx, tx, passwordEntry(st.ID, now))
+	if err != nil {
+		return SignedIn{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return SignedIn{}, err
 	}
-	a.recordPassword(st.ID, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	// The new iPhone has no writer yet: every device of the account hears of
 	// the reset, the approver included (spec 02 §12.5).

@@ -124,13 +124,21 @@ func writerPasswordAttempt(ctx context.Context, q queryExecer, userID uuid.UUID,
 	return nil
 }
 
-func refundWriterPasswordAttempt(ctx context.Context, q queryExecer, userID uuid.UUID, writerID string, now time.Time) error {
+func refundCounter(ctx context.Context, q queryExecer, scope string, key []byte, window time.Duration, now time.Time) error {
 	if _, err := q.Exec(ctx,
-		`UPDATE rate_counters SET count = count - 1 WHERE scope = 'password-writer' AND key = $1 AND window_start = $2 AND count > 0`,
-		writerCounterKey(userID, writerID), now.UTC().Truncate(passwordWriterWindow)); err != nil {
-		return fmt.Errorf("auth: rate counter password-writer: %w", err)
+		`UPDATE rate_counters SET count = count - 1 WHERE scope = $1 AND key = $2 AND window_start = $3 AND count > 0`,
+		scope, key, now.UTC().Truncate(window)); err != nil {
+		return fmt.Errorf("auth: rate counter %s: %w", scope, err)
 	}
 	return nil
+}
+
+func refundWriterPasswordAttempt(ctx context.Context, q queryExecer, userID uuid.UUID, writerID string, now time.Time) error {
+	return refundCounter(ctx, q, "password-writer", writerCounterKey(userID, writerID), passwordWriterWindow, now)
+}
+
+func refundEmailPasswordAttempt(ctx context.Context, q queryExecer, tag []byte, now time.Time) error {
+	return refundCounter(ctx, q, "password-email", tag, passwordEmailWindow, now)
 }
 
 func clearPasswordTx(ctx context.Context, q queryExecer, userID uuid.UUID) error {
@@ -148,6 +156,9 @@ func setPasswordTx(ctx context.Context, q queryExecer, userID uuid.UUID, hash, s
 		        password_failures = 0, password_paused_until = NULL
 		  WHERE id = $1`, userID, hash, salt, generation, now); err != nil {
 		return fmt.Errorf("auth: set password: %w", err)
+	}
+	if _, err := q.Exec(ctx, `DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`, userID); err != nil {
+		return fmt.Errorf("auth: set password: end outstanding resets: %w", err)
 	}
 	return nil
 }

@@ -114,7 +114,7 @@ func runServe(env *runEnv, args []string) error {
 	slog.Info("hasalad serve: shutting down")
 	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(shutCtx); err != nil && serveErr == nil {
+	if err := finishServing(shutCtx, srv, srvAPI); err != nil && serveErr == nil {
 		serveErr = fmt.Errorf("shutdown: %w", err)
 	}
 	stop()
@@ -123,6 +123,14 @@ func runServe(env *runEnv, args []string) error {
 	}
 	ex.wait()
 	return serveErr
+}
+
+func finishServing(ctx context.Context, srv *http.Server, srvAPI *api.Server) error {
+	err := srv.Shutdown(ctx)
+	if srvAPI.Accounts != nil {
+		srvAPI.Accounts.Mail.Wait(ctx)
+	}
+	return err
 }
 
 func newHTTPServer(h http.Handler) *http.Server {

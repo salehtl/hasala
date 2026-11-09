@@ -175,7 +175,7 @@ func (s *StepUp) Begin(ctx context.Context, userID uuid.UUID, sessionHash []byte
 			`SELECT (SELECT count(*) FROM step_up_challenges
 			          WHERE user_id = $1 AND proof_kind = 'device_code' AND issued_at > $2),
 			        EXISTS (SELECT 1 FROM email_codes WHERE user_id = $1 AND ceremony_kind = 'step_up'
-			                   AND burned_at > $3)`,
+			                   AND (burned_at > $3 OR (used_at IS NULL AND out_of_attempts_at > $3)))`,
 			userID, now.Add(-time.Hour), now.Add(-deviceCodeBurnPause)).Scan(&begins, &burned); err != nil {
 			return Begun{}, fmt.Errorf("auth: step-up begin: C8 budget: %w", err)
 		}
@@ -288,7 +288,7 @@ func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Con
 	ch, err := s.charge(ctx, g)
 	if err != nil {
 		if errors.Is(err, ErrStepUpFailed) {
-			if ferr := s.fail(ctx, g.StepUp.Nonce, nil); ferr != nil {
+			if ferr := s.fail(ctx, g, nil); ferr != nil {
 				return ferr
 			}
 		}
@@ -315,7 +315,7 @@ func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Con
 			}
 		}
 		if errors.Is(err, ErrStepUpFailed) {
-			if ferr := s.fail(ctx, g.StepUp.Nonce, fail); ferr != nil {
+			if ferr := s.fail(ctx, g, fail); ferr != nil {
 				return ferr
 			}
 		}
@@ -329,7 +329,7 @@ func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Con
 		// credential is not the wrap's; account.unfreeze: the factor is not
 		// older than the trigger); that is a failed proof and burns.
 		if errors.Is(err, ErrStepUpFailed) {
-			if ferr := s.fail(ctx, g.StepUp.Nonce, nil); ferr != nil {
+			if ferr := s.fail(ctx, g, nil); ferr != nil {
 				return ferr
 			}
 		}
@@ -407,7 +407,7 @@ func (s *StepUp) refund(ctx context.Context, g Guarded, ch charged) error {
 
 // fail commits a failed proof's effects and (unless they say otherwise) the
 // burn of its nonce, in one transaction of their own.
-func (s *StepUp) fail(ctx context.Context, nonce []byte, f failure) error {
+func (s *StepUp) fail(ctx context.Context, g Guarded, f failure) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("auth: step-up: record the failure: %w", err)
@@ -420,8 +420,10 @@ func (s *StepUp) fail(ctx context.Context, nonce []byte, f failure) error {
 		}
 	}
 	if burn {
-		if _, err := tx.Exec(ctx, `UPDATE step_up_challenges SET used_at = $2 WHERE nonce = $1 AND used_at IS NULL`,
-			nonce, s.now()); err != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE step_up_challenges SET used_at = $2
+			  WHERE nonce = $1 AND user_id = $3 AND session_hash = $4 AND used_at IS NULL`,
+			g.StepUp.Nonce, s.now(), g.UserID, g.SessionHash); err != nil {
 			return fmt.Errorf("auth: step-up: burn: %w", err)
 		}
 	}
@@ -598,19 +600,8 @@ func (s *StepUp) verifyDeviceCode(ctx context.Context, tx pgx.Tx, g Guarded, p P
 	if fail == nil {
 		return Proven{}, nil, fmt.Errorf("%w: %v", ErrStepUpFailed, err)
 	}
-	nonce := g.StepUp.Nonce
 	return Proven{}, func(ctx context.Context, tx pgx.Tx) (bool, error) {
-		var attempts int
-		if err := tx.QueryRow(ctx,
-			`UPDATE step_up_challenges SET code_attempts = least(code_attempts + 1, 5) WHERE nonce = $1 RETURNING code_attempts`,
-			nonce).Scan(&attempts); err != nil {
-			return false, err
-		}
-		burned, err := fail.apply(ctx, tx, now)
-		if err != nil {
-			return false, err
-		}
-		return burned || attempts >= codeMaxAttempts, nil
+		return fail.apply(ctx, tx, now)
 	}, fmt.Errorf("%w: wrong code", ErrStepUpFailed)
 }
 

@@ -111,6 +111,31 @@ func forgetPushTokens(ctx context.Context, tx pgx.Tx, where string, args ...any)
 	return nil
 }
 
+func takePushTokens(ctx context.Context, tx pgx.Tx, where string, args ...any) ([]pushv2.Target, error) {
+	return collectTakenPushTokens(tx.Query(ctx, `DELETE FROM apns_tokens WHERE `+where+` RETURNING token_hex, environment`, args...))
+}
+
+func takeAccountPushTokens(ctx context.Context, tx pgx.Tx, userID uuid.UUID, exceptWriterID string) ([]pushv2.Target, error) {
+	return collectTakenPushTokens(tx.Query(ctx,
+		`WITH taken AS (DELETE FROM apns_tokens WHERE user_id = $1 RETURNING writer_id, token_hex, environment)
+		 SELECT token_hex, environment FROM taken WHERE writer_id <> $2`, userID, exceptWriterID))
+}
+
+func collectTakenPushTokens(rows pgx.Rows, err error) ([]pushv2.Target, error) {
+	if err != nil {
+		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+	}
+	taken, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (pushv2.Target, error) {
+		var t pushv2.Target
+		err := r.Scan(&t.TokenHex, &t.Environment)
+		return t, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+	}
+	return taken, nil
+}
+
 // Mint describes a session a ceremony issues.
 type Mint struct {
 	UserID       uuid.UUID
@@ -143,6 +168,17 @@ func (s *Sessions) IssueTx(ctx context.Context, q queryExecer, m Mint) (Minted, 
 	case MintedRegister, MintedLogin, MintedRecover, MintedPasswordSignup, MintedPasswordLogin, MintedPasswordReset:
 	default:
 		return Minted{}, fmt.Errorf("auth: issue session: minted_by %q", m.MintedBy)
+	}
+	if m.WriterID != "" {
+		var live bool
+		err := q.QueryRow(ctx, `SELECT revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2 FOR SHARE`,
+			m.UserID, m.WriterID).Scan(&live)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return Minted{}, fmt.Errorf("auth: issue session: read the writer: %w", err)
+		}
+		if err == nil && !live {
+			return Minted{}, ErrWriterRevoked
+		}
 	}
 	raw, err := randBytes(sessionTokenBytes)
 	if err != nil {
@@ -215,6 +251,14 @@ func (s *Sessions) CredentialForSession(ctx context.Context, token string) ([]by
 		return nil, fmt.Errorf("auth: credential for session: %w", err)
 	}
 	return cred, nil
+}
+
+func LiveSessionSQL(alias, nowArg, idleSinceArg string) string {
+	return alias + ".revoked_at IS NULL AND " + alias + ".expires_at > " + nowArg + " AND " + alias + ".last_used_at > " + idleSinceArg
+}
+
+func (s *Sessions) IdleSince(now time.Time) time.Time {
+	return now.Add(-s.TTL)
 }
 
 // Resolve returns the account of a live session, or an error wrapping
@@ -373,28 +417,25 @@ func RevokeOtherSessionsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, kee
 	if keep == nil {
 		keep = [][]byte{}
 	}
-	rows, err := tx.Query(ctx,
-		`DELETE FROM apns_tokens
-		  WHERE user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
-		    WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[])))
-		 RETURNING token_hex, environment`, userID, keep)
+	revoked, err := takePushTokens(ctx, tx,
+		`user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
+		    WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[])))`, userID, keep)
 	if err != nil {
-		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+		return nil, err
 	}
-	revoked, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (pushv2.Target, error) {
-		var t pushv2.Target
-		err := r.Scan(&t.TokenHex, &t.Environment)
-		return t, err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+	if err := revokeSessionRowsTx(ctx, tx, userID, keep, now); err != nil {
+		return nil, err
 	}
+	return revoked, nil
+}
+
+func revokeSessionRowsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keep [][]byte, now time.Time) error {
 	if _, err := tx.Exec(ctx,
 		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'
 		  WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[]))`, userID, keep, now); err != nil {
-		return nil, fmt.Errorf("auth: revoke other sessions: %w", err)
+		return fmt.Errorf("auth: revoke other sessions: %w", err)
 	}
-	return revoked, nil
+	return nil
 }
 
 // ErrSessionBound means a bind was asked of a session that is already bound

@@ -102,8 +102,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // and deletes every APNs token, in one transaction. Writers are NOT revoked:
 // the devices keep their keys and can sign in again (spec 02 §9.3). It needs
 // a session.logout_all step-up, records sessions_revoked, and gives every
-// other device a security wake through its token, collected before the
-// tokens are forgotten (§12.5); they then meet a 401.
+// other device a security wake through its token, read as the tokens are
+// forgotten (§12.5); they then meet a 401.
 func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	if !s.AccountPerUser.Allow(userID.String()) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many sign-outs; try again shortly")
@@ -125,15 +125,12 @@ func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request, userID 
 		s.writeKeyErr(w, r, auth.ErrStepUpRequired)
 		return
 	}
-	// The caller's own device is not woken. The tokens are collected before
-	// the step-up's transaction forgets them; a failed lookup costs the
-	// wakes, never the sign-out.
-	tokens := s.accountTokens(r.Context(), userID, info.WriterID)
-	if err := s.accounts().LogoutAll(r.Context(), info, su); err != nil {
+	revoked, err := s.accounts().LogoutAll(r.Context(), info, su)
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	s.wakeTokens(r.Context(), tokens, pushv2.ReasonSecurity)
+	s.wakeTokens(r.Context(), revoked, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }
 

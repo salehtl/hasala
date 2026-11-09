@@ -1,13 +1,17 @@
 package api
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/keyproto"
+	"github.com/salehtl/hasala/server/internal/pgtx"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -91,5 +95,176 @@ func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
 	rows.Close()
 	if !slices.Equal(reasons, []string{"others"}) {
 		t.Fatalf("revocation reasons %v, want only 'others' (spec 02 §9.3)", reasons)
+	}
+}
+
+func TestALogoutAllWakesATokenRegisteredAfterTheRequestBegan(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	d2 := authtest.NewDevice(t)
+	tok2 := k.enrol(d2)
+	putToken(h, k.token, 1)
+	wk.take()
+
+	su := k.stepUp(k.token, keyproto.ActionSessionLogoutAll)
+	var late string
+	h.srv.StepUp.Now = func() time.Time {
+		if late == "" {
+			late = tokenHexFor(2)
+			putToken(h, tok2, 2)
+		}
+		return time.Now()
+	}
+	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", k.token, StepUpOnlyRequest{StepUp: su}), http.StatusNoContent)
+	if h.countAPNs(k.user) != 0 {
+		t.Fatal("logout-all left tokens")
+	}
+	ws := wk.take()
+	if len(ws) != 1 || !slices.Equal(ws[0].tokens, []string{late}) || ws[0].r != pushv2.ReasonSecurity {
+		t.Fatalf("logout-all wakes %+v, want the token registered during the request", ws)
+	}
+}
+
+func holdAPNsToken(h *harness, tokenHex string) (release func()) {
+	h.t.Helper()
+	tx, err := pgtx.BeginReadCommitted(bg, h.pool)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.t.Cleanup(func() { pgtx.Rollback(bg, tx) })
+	if _, err := tx.Exec(bg, `SELECT 1 FROM apns_tokens WHERE token_hex = $1 FOR UPDATE`, tokenHex); err != nil {
+		h.t.Fatal(err)
+	}
+	return func() {
+		if err := tx.Commit(bg); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+}
+
+func waitForALockedRequest(h *harness) {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		var n int
+		if err := h.pool.QueryRow(bg,
+			`SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`).Scan(&n); err != nil {
+			h.t.Fatal(err)
+		}
+		if n > 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	h.t.Fatal("the request never waited on the held token")
+}
+
+func logoutAllInBackground(h *harness, k *keyed) <-chan *httptest.ResponseRecorder {
+	h.t.Helper()
+	su := k.stepUp(k.token, keyproto.ActionSessionLogoutAll)
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() { done <- h.req("POST", "/api/v1/auth/logout-all", k.token, StepUpOnlyRequest{StepUp: su}) }()
+	return done
+}
+
+func TestALogoutAllWakesATokenRegisteredWhileItsDeletesRun(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	d2 := authtest.NewDevice(t)
+	tok2 := k.enrol(d2)
+	own := putToken(h, k.token, 1)
+	wk.take()
+
+	release := holdAPNsToken(h, own)
+	done := logoutAllInBackground(h, k)
+	waitForALockedRequest(h)
+	late := putToken(h, tok2, 2)
+	release()
+	wantStatus(t, <-done, http.StatusNoContent)
+
+	if n := h.countAPNs(k.user); n != 0 {
+		t.Fatalf("logout-all left %d tokens", n)
+	}
+	ws := wk.take()
+	if len(ws) != 1 || !slices.Equal(ws[0].tokens, []string{late}) || ws[0].r != pushv2.ReasonSecurity {
+		t.Fatalf("logout-all wakes %+v, want only the token registered while it ran", ws)
+	}
+}
+
+func TestALogoutAllNeverWakesItsOwnDeviceRegisteringWhileItRuns(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	d2 := authtest.NewDevice(t)
+	tok2 := k.enrol(d2)
+	other := putToken(h, tok2, 2)
+	wk.take()
+
+	release := holdAPNsToken(h, other)
+	done := logoutAllInBackground(h, k)
+	waitForALockedRequest(h)
+	putToken(h, k.token, 1)
+	release()
+	wantStatus(t, <-done, http.StatusNoContent)
+
+	if n := h.countAPNs(k.user); n != 0 {
+		t.Fatalf("logout-all left %d tokens", n)
+	}
+	ws := wk.take()
+	if len(ws) != 1 || !slices.Equal(ws[0].tokens, []string{other}) {
+		t.Fatalf("logout-all wakes %+v, want the other device only", ws)
+	}
+}
+
+func TestRevokingADeviceWakesATokenRegisteredAfterTheRequestBegan(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	d2 := authtest.NewDevice(t)
+	tok2 := k.enrol(d2)
+	putToken(h, k.token, 1)
+	wk.take()
+
+	su := k.stepUp(k.token, keyproto.ActionWriterRevoke, []byte(d2.WriterID))
+	n := k.nonce(k.token)
+	rm, _ := keyproto.RevocationMessage(n, d2.WriterID, 0, make([]byte, 32))
+	var late string
+	h.srv.Writers.Now = func() time.Time {
+		if late == "" {
+			late = tokenHexFor(2)
+			putToken(h, tok2, 2)
+		}
+		return time.Now()
+	}
+	wantStatus(t, h.req("POST", "/api/v1/writers/revoke", k.token, RevokeRequest{WriterID: d2.WriterID,
+		SignerWriterID: k.device.WriterID, Nonce: b64(n), FinalCounter: "0", FinalHead: b64(make([]byte, 32)),
+		Sig: b64(ed25519.Sign(k.device.DWK, rm)), StepUp: su}), http.StatusNoContent)
+	if h.countAPNs(k.user) != 1 {
+		t.Fatal("the revoked writer's token survived")
+	}
+	ws := wk.take()
+	if len(ws) != 2 || !ws[0].others || ws[0].writer != k.device.WriterID || !slices.Equal(ws[1].tokens, []string{late}) {
+		t.Fatalf("revoke wakes %+v, want the others and the token registered during the request", ws)
+	}
+}
+
+func TestRemovingThisDeviceDoesNotWakeItsOwnToken(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	putToken(h, k.token, 1)
+	wk.take()
+
+	su := k.stepUp(k.token, keyproto.ActionWriterRevoke, []byte(k.device.WriterID))
+	n := k.nonce(k.token)
+	rm, _ := keyproto.RevocationMessage(n, k.device.WriterID, 0, make([]byte, 32))
+	wantStatus(t, h.req("POST", "/api/v1/writers/revoke", k.token, RevokeRequest{WriterID: k.device.WriterID,
+		SignerWriterID: k.device.WriterID, Nonce: b64(n), FinalCounter: "0", FinalHead: b64(make([]byte, 32)),
+		Sig: b64(ed25519.Sign(k.device.DWK, rm)), StepUp: su}), http.StatusNoContent)
+	ws := wk.take()
+	if len(ws) != 1 || !ws[0].others || ws[0].writer != k.device.WriterID {
+		t.Fatalf("removing this device wakes %+v, want only the others", ws)
 	}
 }

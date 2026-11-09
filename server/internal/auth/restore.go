@@ -14,57 +14,43 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-func (a *Accounts) recordFreeze(userID uuid.UUID, trigger, at time.Time) {
-	if a.Record == nil {
-		return
-	}
+func freezeEntry(userID uuid.UUID, trigger, at time.Time) purgeledger.Entry {
 	if trigger.After(at) {
 		trigger = at
 	}
-	a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindFreeze, Trigger: trigger})
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindFreeze, Trigger: trigger}
 }
 
-func (a *Accounts) recordPassword(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPassword})
-	}
+func passwordEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPassword}
 }
 
-func (a *Accounts) recordPhraseSeen(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPhraseSeen})
-	}
+func phraseSeenEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPhraseSeen}
 }
 
-func (a *Accounts) recordSessions(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindSessions})
-	}
+func sessionsEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindSessions}
 }
 
-func (a *Accounts) recordEmail(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindEmail})
-	}
-}
-
-func (a *Accounts) recordUnfreeze(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(UnfreezeEntry(userID, at))
-	}
+func emailEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindEmail}
 }
 
 func UnfreezeEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
 	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindUnfreeze}
 }
 
-func recordPasskeyRemovals(record func(purgeledger.Entry), userID uuid.UUID, credentials [][]byte, at time.Time) {
-	if record == nil {
-		return
-	}
+func passkeyRemovalEntries(userID uuid.UUID, credentials [][]byte, at time.Time) []purgeledger.Entry {
+	out := make([]purgeledger.Entry, 0, len(credentials))
 	for _, id := range credentials {
-		record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPasskey, Credential: id})
+		out = append(out, purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPasskey, Credential: id})
 	}
+	return out
+}
+
+func wrapDeletionEntry(userID uuid.UUID, credential []byte, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindWrap, Credential: credential}
 }
 
 type ReapplyReport struct {
@@ -73,11 +59,13 @@ type ReapplyReport struct {
 	Devices     int
 	Passwords   int
 	Passkeys    int
+	Wraps       int
 	PhrasesSeen int
 	Sessions    int
 	Emails      int
 	Unsigned    int
 	Lifted      int
+	Kept        int
 }
 
 type reapplied int
@@ -86,6 +74,7 @@ const (
 	reappliedNothing reapplied = iota
 	reappliedDone
 	reappliedUnsigned
+	reappliedKept
 )
 
 func liftedInLedger(entries []purgeledger.Entry) map[int]bool {
@@ -112,6 +101,25 @@ func liftedInLedger(entries []purgeledger.Entry) map[int]bool {
 		}
 	}
 	return lifted
+}
+
+func afterSameSecondUnfreeze(entries []purgeledger.Entry) map[int]bool {
+	type second struct {
+		id uuid.UUID
+		at int64
+	}
+	unfrozen := map[second]bool{}
+	after := map[int]bool{}
+	for i, e := range entries {
+		key := second{e.ID, e.At.Unix()}
+		switch e.Kind {
+		case purgeledger.KindUnfreeze:
+			unfrozen[key] = true
+		case purgeledger.KindFreeze:
+			after[i] = unfrozen[key]
+		}
+	}
+	return after
 }
 
 func unfreezesToApply(entries []purgeledger.Entry, lifted map[int]bool) map[int]bool {
@@ -145,8 +153,21 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 	}
 	lifted := liftedInLedger(entries)
 	unfreezes := unfreezesToApply(entries, lifted)
+	afterUnfreeze := afterSameSecondUnfreeze(entries)
 	var touched []uuid.UUID
 	seen := map[uuid.UUID]bool{}
+	for _, e := range entries {
+		if e.Kind != purgeledger.KindPhraseSeen {
+			continue
+		}
+		out, err := reapplyOne(ctx, pool, e, now, reapplyPhraseSeenTx)
+		if err != nil {
+			return rep, fmt.Errorf("auth: reapply %s of %s: %w", e.Kind, e.At.UTC().Format(time.RFC3339), err)
+		}
+		if out == reappliedDone {
+			rep.PhrasesSeen++
+		}
+	}
 	for i, e := range entries {
 		var (
 			step  func(context.Context, pgx.Tx, purgeledger.Entry, time.Time) (reapplied, error)
@@ -160,6 +181,9 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 				break
 			}
 			step, count, locks = reapplyFreezeTx, &rep.Freezes, true
+			if afterUnfreeze[i] {
+				step = reapplyFreezeAfterUnfreezeTx
+			}
 		case purgeledger.KindUnfreeze:
 			if !unfreezes[i] {
 				continue
@@ -171,8 +195,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			step, count, locks = reapplyPasswordTx, &rep.Passwords, true
 		case purgeledger.KindPasskey:
 			step, count, locks = reapplyPasskeyTx, &rep.Passkeys, true
-		case purgeledger.KindPhraseSeen:
-			step, count = reapplyPhraseSeenTx, &rep.PhrasesSeen
+		case purgeledger.KindWrap:
+			step, count = reapplyWrapTx, &rep.Wraps
 		case purgeledger.KindSessions:
 			step, count = reapplySessionsTx, &rep.Sessions
 		case purgeledger.KindEmail:
@@ -193,6 +217,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			}
 		case reappliedUnsigned:
 			rep.Unsigned++
+		case reappliedKept:
+			rep.Kept++
 		}
 	}
 	for _, e := range entries {
@@ -233,6 +259,14 @@ func reapplyOne(ctx context.Context, pool *pgxpool.Pool, e purgeledger.Entry, no
 }
 
 func reapplyFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return restoreFreezeTx(ctx, tx, e, now, `>=`)
+}
+
+func reapplyFreezeAfterUnfreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return restoreFreezeTx(ctx, tx, e, now, `>`)
+}
+
+func restoreFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time, later string) (reapplied, error) {
 	var frozen *time.Time
 	err := tx.QueryRow(ctx, `SELECT frozen_at FROM users WHERE id = $1 FOR UPDATE`, e.ID).Scan(&frozen)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -243,7 +277,7 @@ func reapplyFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now ti
 	}
 	var lifted bool
 	if err := tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND date_trunc('second', at) >= $3)`,
+		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND date_trunc('second', at) `+later+` $3)`,
 		e.ID, EventAccountUnfrozen, e.At).Scan(&lifted); err != nil || lifted {
 		return reappliedNothing, err
 	}
@@ -434,6 +468,12 @@ func reapplyPasswordTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 }
 
 func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	if err := refuseIfLastUnseenWrapTx(ctx, tx, e.ID, e.Credential); err != nil {
+		if errors.Is(err, ErrPhraseUnseen) {
+			return reappliedKept, nil
+		}
+		return reappliedNothing, err
+	}
 	var created time.Time
 	err := tx.QueryRow(ctx,
 		`SELECT created_at FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2 FOR UPDATE`,
@@ -451,6 +491,21 @@ func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now t
 		return reappliedNothing, err
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`, e.ID, e.Credential)
+	if err != nil || tag.RowsAffected() != 1 {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplyWrapTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, _ time.Time) (reapplied, error) {
+	if err := refuseIfLastUnseenWrapTx(ctx, tx, e.ID, e.Credential); err != nil {
+		if errors.Is(err, ErrPhraseUnseen) {
+			return reappliedNothing, nil
+		}
+		return reappliedNothing, err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2 AND created_at < $3`,
+		e.ID, e.Credential, e.At.Truncate(time.Second))
 	if err != nil || tag.RowsAffected() != 1 {
 		return reappliedNothing, err
 	}

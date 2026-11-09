@@ -58,6 +58,7 @@ type Service struct {
 	// then on the console's list to approve. It gets nothing about the entry.
 	OnConfirmed func()
 	Record      func(purgeledger.Entry)
+	Hold        purgeledger.HoldFunc
 
 	mu        sync.Mutex
 	countsAt  time.Time
@@ -234,12 +235,14 @@ func (s *Service) Leave(ctx context.Context, token string) error {
 	if err := DeleteEntryTx(ctx, tx, entry); err != nil {
 		return err
 	}
+	held, err := s.Hold.Tx(ctx, tx, purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistLeave})
+	if err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	if s.Record != nil {
-		s.Record(purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistLeave})
-	}
+	held.Release(s.Record)
 	return nil
 }
 

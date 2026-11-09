@@ -35,6 +35,11 @@ import (
 // nudgeInterval is spec 02 §13.7's watch-renewal nudge.
 const nudgeInterval = 15 * time.Minute
 
+const (
+	heldLinesInterval   = time.Minute
+	restoreFlushTimeout = 10 * time.Second
+)
+
 // readSecret reads a *_FILE secret: the whole file, never logged.
 func readSecret(name, path string) (string, error) {
 	b, err := os.ReadFile(path)
@@ -253,20 +258,31 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Register("deleted", mailq.DeletedRenderer)
 	minter, _ := tagger.(invites.Minter)
 	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
-	var record func(purgeledger.Entry)
+	var (
+		hold   purgeledger.HoldFunc
+		record func(purgeledger.Entry)
+	)
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
+		hold = purgeledger.HoldTx
 		record = func(e purgeledger.Entry) {
-			if err := purgeledger.AppendEntries(p, e); err != nil {
-				slog.Warn("hasalad serve: the restore ledger did not record a waitlist deletion", "kind", string(e.Kind), "err", err)
+			flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), restoreFlushTimeout)
+			defer cancel()
+			if _, err := purgeledger.Flush(flushCtx, pool, p); err != nil {
+				slog.Warn("hasalad serve: the restore ledger did not take a waitlist deletion; the line stays held and a sweep retries it",
+					"kind", string(e.Kind), "err", err)
 			}
 		}
 	}
-	q.Unsent = invites.MailUnsent(record)
+	q.Unsent = invites.MailUnsent(hold, record)
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
-		wl.Record = record
+		wl.Record, wl.Hold = record, hold
+		ex.done = append(ex.done, startSweepEvery(ctx, "restore ledger held lines", heldLinesInterval,
+			countSweep("wrote %d held restore ledger line(s)", func(ctx context.Context) (int, error) {
+				return purgeledger.Flush(ctx, pool, p)
+			})))
 		ex.done = append(ex.done, startSweep(ctx, "restore ledger retention",
 			countSweep("removed %d restore ledger entries past retention", func(context.Context) (int, error) {
 				return purgeledger.Prune(p, time.Now().Add(-purgeledger.Retention))
@@ -320,7 +336,7 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted and the email worker does not run")
 	}
 	ex.done = append(ex.done,
-		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool, record) }),
+		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool, hold, record) }),
 		startSweep(ctx, "waitlist sweep", wl.Sweep),
 		startSweep(ctx, "mail log sweep", q.Sweep),
 	)

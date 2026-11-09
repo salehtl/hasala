@@ -119,3 +119,41 @@ func TestABusyGateLeavesThePasswordLoginCeremonyUsable(t *testing.T) {
 		t.Fatalf("the retry on the same ceremony: %v", err)
 	}
 }
+
+func TestABusyGateGivesBackAnUnboundAttemptOnTheAddress(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	g, release := busyGate(t)
+	f.acct.Gate = g
+	for i := 0; i <= passwordEmailLimit; i++ {
+		if _, err := m.loginPassword(m.s, nil); !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("attempt %d against a busy gate: %v", i+1, err)
+		}
+	}
+	if n := f.count(`SELECT coalesce(sum(count), 0)::int FROM rate_counters WHERE scope = 'password-email'`); n != 0 {
+		t.Fatalf("%d attempts stayed counted against the address", n)
+	}
+	release()
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatalf("a sign-in once the gate is free: %v", err)
+	}
+	if n := f.count(`SELECT coalesce(sum(count), 0)::int FROM rate_counters WHERE scope = 'password-email'`); n != 1 {
+		t.Fatalf("%d attempts counted after one judged sign-in, want 1", n)
+	}
+}
+
+func TestABusyGateGivesBackABoundAttemptOnTheDevice(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	g, release := busyGate(t)
+	f.acct.Gate = g
+	for i := 0; i <= passwordWriterFailMax; i++ {
+		if _, err := m.loginPassword(m.s, m.device); !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("attempt %d against a busy gate: %v", i+1, err)
+		}
+	}
+	release()
+	if _, err := m.loginPassword(m.s, m.device); err != nil {
+		t.Fatalf("a bound sign-in once the gate is free: %v", err)
+	}
+}

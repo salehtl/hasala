@@ -33,6 +33,7 @@ type Accounts struct {
 	Mail     *Mailer
 	Now      func() time.Time
 	Record   func(purgeledger.Entry)
+	Hold     purgeledger.HoldFunc
 }
 
 func (a *Accounts) now() time.Time {
@@ -115,6 +116,9 @@ type accountState struct {
 func (s accountState) frozen() bool      { return s.FrozenAt != nil }
 func (s accountState) active() bool      { return s.Status == "active" }
 func (s accountState) hasPassword() bool { return len(s.PasswordHash) > 0 }
+func (s accountState) resettable() bool {
+	return s.hasPassword() && s.active() && !s.frozen() && !s.InDoubt
+}
 func (s accountState) operatorFrozen() bool {
 	return s.FrozenBy != nil && *s.FrozenBy == FrozenByOperator
 }
@@ -164,25 +168,6 @@ func accountByEmail(ctx context.Context, q querier, emailNorm string) (accountSt
 type AccountStatus struct {
 	Suspended bool
 	Frozen    bool
-	FrozenBy  string
-}
-
-// Status reads an account's suspension and freeze.
-func (a *Accounts) Status(ctx context.Context, userID uuid.UUID) (AccountStatus, error) {
-	var (
-		status string
-		frozen *time.Time
-		by     *string
-	)
-	if err := a.Pool.QueryRow(ctx, `SELECT status, frozen_at, frozen_by FROM users WHERE id = $1`, userID).
-		Scan(&status, &frozen, &by); err != nil {
-		return AccountStatus{}, fmt.Errorf("auth: account status: %w", err)
-	}
-	out := AccountStatus{Suspended: status == "suspended", Frozen: frozen != nil}
-	if by != nil {
-		out.FrozenBy = *by
-	}
-	return out, nil
 }
 
 // normEmail applies email_norm, mapping a refusal to ErrBadEmail.

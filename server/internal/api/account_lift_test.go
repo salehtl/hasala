@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/authtest"
 )
 
 func (h *harness) freezeAt(t *testing.T, user any, by string, trigger time.Time) {
@@ -116,4 +117,30 @@ func (h *harness) sessionWriter(t *testing.T, token string) string {
 		t.Fatal(err)
 	}
 	return id
+}
+
+func TestHolderCanLiftAnswersForTheCallingDevice(t *testing.T) {
+	h := newHarness(t)
+	keys, fake, _ := h.accounts()
+	a := h.passwordSignup(keys, fake, "maya@example.com")
+
+	newer := authtest.NewDevice(t)
+	if _, err := h.pool.Exec(bg, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at)
+	        VALUES ($1, $2, 'ed25519', $3, $4, now() + interval '2 hours')`, a.user, newer.WriterID, newer.DWKPub(), newer.DAKPub()); err != nil {
+		t.Fatal(err)
+	}
+	newerToken := h.session(mustUUID(t, a.user))
+	h.bind(newerToken, newer.WriterID)
+	unbound := h.session(mustUUID(t, a.user))
+
+	h.freezeAt(t, a.user, "holder", time.Now().Add(time.Hour))
+	if got := h.holderCanLift(t, a.token); got == nil || !*got {
+		t.Fatalf("the device older than the trigger: holder_can_lift %v", got)
+	}
+	if got := h.holderCanLift(t, newerToken); got == nil || *got {
+		t.Fatalf("a device newer than the trigger, with an older device on the account: holder_can_lift %v", got)
+	}
+	if got := h.holderCanLift(t, unbound); got == nil || *got {
+		t.Fatalf("a session with no device on a password-only account: holder_can_lift %v", got)
+	}
 }

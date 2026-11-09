@@ -23,9 +23,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -34,6 +36,17 @@ const DeviceFreezeTTL = 5 * time.Minute
 
 // deviceFreezeBackdate bounds how far a device freeze is dated back.
 const deviceFreezeBackdate = 7 * 24 * time.Hour
+
+var stepUpSignOutKinds = []string{
+	EventSessionsRevoked,
+	EventAccountFrozen,
+	EventAccountUnfrozen,
+	EventPasswordSet,
+	EventPasswordChanged,
+	EventPasswordRemoved,
+	EventPasswordReset,
+	EventPasskeyRemoved,
+}
 
 // Who froze an account.
 const (
@@ -138,10 +151,14 @@ func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error)
 	if err != nil {
 		return Wake{}, err
 	}
+	held, err := a.Hold.Tx(ctx, tx, freezeEntry(userID, trigger, now))
+	if err != nil {
+		return Wake{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Wake{}, err
 	}
-	a.recordFreeze(userID, trigger, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(userID, "", revoked), nil
 }
@@ -156,9 +173,9 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 	}
 	var (
 		revoked []pushv2.Target
-		frozeAt time.Time
+		held    purgeledger.Held
 	)
-	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
+	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
 		if err != nil {
 			return err
@@ -167,8 +184,10 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 			return ErrAccountFrozen
 		}
 		now := a.now()
-		frozeAt = now
-		if revoked, err = freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, [][]byte{session.Hash}, p.WriterID); err != nil {
+		if held, err = a.Hold.Tx(ctx, tx, freezeEntry(session.UserID, now, now)); err != nil {
+			return err
+		}
+		if revoked, err = freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, [][]byte{session.Hash}, session.WriterID); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx,
@@ -181,7 +200,7 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 	if err != nil {
 		return Wake{}, err
 	}
-	a.recordFreeze(session.UserID, frozeAt, frozeAt)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
@@ -210,8 +229,8 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		return Wake{}, err
 	}
 	var (
-		revoked    []pushv2.Target
-		unfrozenAt time.Time
+		revoked []pushv2.Target
+		held    purgeledger.Held
 	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
@@ -227,23 +246,20 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		trigger := *st.FreezeTriggerAt
 		switch p.Kind {
 		case keyproto.ProofPasskey:
-			var created time.Time
-			if err := tx.QueryRow(ctx, `SELECT created_at FROM webauthn_credentials WHERE credential_id = $1`,
-				p.CredentialID).Scan(&created); err != nil || !created.Before(trigger) {
+			if ok, err := passkeyPredatesFreeze(ctx, tx, p.CredentialID, trigger); err != nil || !ok {
 				return fmt.Errorf("%w: the passkey is not older than the freeze", ErrStepUpFailed)
 			}
 		case keyproto.ProofDevice:
-			var registered time.Time
-			if err := tx.QueryRow(ctx, `SELECT registered_at FROM writers WHERE user_id = $1 AND writer_id = $2`,
-				session.UserID, p.WriterID).Scan(&registered); err != nil || !registered.Before(trigger) ||
-				st.PasswordSetAt == nil || !st.PasswordSetAt.Before(trigger) {
+			if ok, err := devicePredatesFreeze(ctx, tx, st, p.WriterID); err != nil || !ok {
 				return fmt.Errorf("%w: the device or the password is not older than the freeze", ErrStepUpFailed)
 			}
 		default:
 			return fmt.Errorf("%w: proof kind %s", ErrStepUpFailed, p.Kind)
 		}
 		now := a.now()
-		unfrozenAt = now
+		if held, err = a.Hold.Tx(ctx, tx, UnfreezeEntry(session.UserID, now)); err != nil {
+			return err
+		}
 		if err := clearFreezeTx(ctx, tx, session.UserID, now); err != nil {
 			return err
 		}
@@ -254,14 +270,64 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 			return err
 		}
 		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventAccountUnfrozen,
-			WriterID: p.WriterID, CredentialID: p.CredentialID}, now)
+			WriterID: session.WriterID, CredentialID: p.CredentialID}, now)
 	})
 	if err != nil {
 		return Wake{}, err
 	}
-	a.recordUnfreeze(session.UserID, unfrozenAt)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
+}
+
+func passkeyPredatesFreeze(ctx context.Context, q querier, credentialID []byte, trigger time.Time) (bool, error) {
+	var created time.Time
+	err := q.QueryRow(ctx, `SELECT created_at FROM webauthn_credentials WHERE credential_id = $1`, credentialID).Scan(&created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("auth: read the passkey's age: %w", err)
+	}
+	return created.Before(trigger), nil
+}
+
+func devicePredatesFreeze(ctx context.Context, q querier, st accountState, writerID string) (bool, error) {
+	if writerID == "" || !st.hasPassword() || st.PasswordSetAt == nil || !st.PasswordSetAt.Before(*st.FreezeTriggerAt) {
+		return false, nil
+	}
+	var (
+		registered time.Time
+		live       bool
+	)
+	err := q.QueryRow(ctx, `SELECT registered_at, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
+		st.ID, writerID).Scan(&registered, &live)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("auth: read the device's age: %w", err)
+	}
+	return live && registered.Before(*st.FreezeTriggerAt), nil
+}
+
+func HolderCanLift(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, writerID string) (bool, error) {
+	st, err := readAccount(ctx, pool, userID, false)
+	if err != nil {
+		return false, err
+	}
+	if !st.frozen() || st.operatorFrozen() || st.FreezeTriggerAt == nil {
+		return false, nil
+	}
+	var older bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM webauthn_credentials WHERE user_id = $1 AND created_at < $2)`,
+		userID, *st.FreezeTriggerAt).Scan(&older); err != nil {
+		return false, fmt.Errorf("auth: read the passkeys' age: %w", err)
+	}
+	if older {
+		return true, nil
+	}
+	return devicePredatesFreeze(ctx, pool, st, writerID)
 }
 
 // DeviceFreezeChallenge is #77: a nonce for any well-formed writer id, with no
@@ -345,8 +411,12 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 	trigger := now
 	var signedOut *time.Time
 	if err := tx.QueryRow(ctx,
-		`SELECT max(revoked_at) FROM sessions WHERE user_id = $1 AND writer_id = $2 AND revoked_reason = 'others'`,
-		c.user, writerID).Scan(&signedOut); err != nil {
+		`SELECT max(s.revoked_at) FROM sessions s
+		  WHERE s.user_id = $1 AND s.writer_id = $2 AND s.revoked_reason = 'others'
+		    AND NOT EXISTS (SELECT 1 FROM auth_events e
+		                     WHERE e.user_id = s.user_id AND e.writer_id = s.writer_id AND e.at = s.revoked_at
+		                       AND e.kind = ANY($3::text[]))`,
+		c.user, writerID, stepUpSignOutKinds).Scan(&signedOut); err != nil {
 		return Wake{}, err
 	}
 	if signedOut != nil && signedOut.After(now.Add(-deviceFreezeBackdate)) {
@@ -356,10 +426,14 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 	if err != nil {
 		return Wake{}, err
 	}
+	held, err := a.Hold.Tx(ctx, tx, freezeEntry(c.user, trigger, now))
+	if err != nil {
+		return Wake{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Wake{}, err
 	}
-	a.recordFreeze(c.user, trigger, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(c.user, writerID, revoked), nil
 }

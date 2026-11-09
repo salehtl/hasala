@@ -332,10 +332,12 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 	if s.Passkeys != nil {
 		s.Passkeys.StepUp = s.StepUp
 		s.Passkeys.Record = s.recordRestore
+		s.Passkeys.Hold = s.holdRestore
 	}
 	s.Writers.StepUp = s.StepUp
 	s.Writers.Record = s.recordRestore
-	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp}
+	s.Writers.Hold = s.holdRestore
+	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp, Record: s.recordRestore, Hold: s.holdRestore}
 	s.Sessions.Max = cfg.Auth.SessionMax
 	return s, nil
 }
@@ -392,7 +394,7 @@ func (s *Server) Handler() http.Handler {
 		s.Writers.StepUp = s.StepUp
 	}
 	if s.AccountKeys == nil {
-		s.AccountKeys = &auth.AccountKeys{Pool: s.Pool, StepUp: s.StepUp}
+		s.AccountKeys = &auth.AccountKeys{Pool: s.Pool, StepUp: s.StepUp, Record: s.recordRestore, Hold: s.holdRestore}
 	}
 	if s.PullByteBudget <= 0 {
 		s.PullByteBudget = pullByteBudget

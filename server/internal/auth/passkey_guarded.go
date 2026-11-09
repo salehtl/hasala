@@ -24,13 +24,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // AddBegin is #10: step-up passkey.add, then a registration ceremony whose
@@ -189,12 +189,12 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 		return 0, err
 	}
 	var (
-		revoked   int64
-		removedAt time.Time
+		revoked int64
+		held    purgeledger.Held
 	)
 	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		var err error
-		removedAt = p.now()
+		removedAt := p.now()
 		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
 			return err
 		}
@@ -202,11 +202,14 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 		if err != nil {
 			return err
 		}
-		return recordEventTx(ctx, tx, p.Mail, session.UserID, AuthEvent{Kind: EventPasskeyRemoved, CredentialID: credentialID}, p.now())
+		if held, err = p.Hold.Tx(ctx, tx, passkeyRemovalEntries(session.UserID, [][]byte{credentialID}, removedAt)...); err != nil {
+			return err
+		}
+		return recordEventTx(ctx, tx, p.Mail, session.UserID, AuthEvent{Kind: EventPasskeyRemoved, WriterID: session.WriterID, CredentialID: credentialID}, removedAt)
 	})
 	if err != nil {
 		return revoked, err
 	}
-	recordPasskeyRemovals(p.Record, session.UserID, [][]byte{credentialID}, removedAt)
+	held.Release(p.Record)
 	return revoked, nil
 }

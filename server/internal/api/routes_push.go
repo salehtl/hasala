@@ -51,16 +51,10 @@ func (s *Server) wakeOthers(ctx context.Context, userID uuid.UUID, except string
 	s.waker().WakeOthers(context.WithoutCancel(ctx), userID, except, r)
 }
 
-// writerTokens and accountTokens read the tokens a deletion is about to take
-// with it (spec 02 §12.5: "collected before deletion"), so they can still be
-// woken once it commits. accountTokens skips except ("" = none). A failed read
-// costs only the wake, never the request.
-func (s *Server) writerTokens(ctx context.Context, userID uuid.UUID, writerID string) []pushv2.Target {
-	return s.tokensOrLog(userID, func(q pushv2.Querier) ([]pushv2.Target, error) {
-		return pushv2.WriterTokens(ctx, q, userID, writerID)
-	})
-}
-
+// accountTokens reads the tokens a deletion is about to take with it (spec 02
+// §12.5: "collected before deletion"), so they can still be woken once it
+// commits. It skips except ("" = none). A failed read costs only the wake,
+// never the request.
 func (s *Server) accountTokens(ctx context.Context, userID uuid.UUID, except string) []pushv2.Target {
 	return s.tokensOrLog(userID, func(q pushv2.Querier) ([]pushv2.Target, error) {
 		return pushv2.CollectTokens(ctx, q, userID, except)
@@ -175,10 +169,10 @@ func (s *Server) handlePutAPNs(w http.ResponseWriter, r *http.Request, userID uu
 		  WHERE a.token_hex = $1 AND NOT (a.user_id = $2 AND a.writer_id = $3)
 		    AND (a.user_id = $2
 		         OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.token_hash = a.session_hash
-		              AND s.revoked_at IS NULL AND s.expires_at > $4 AND s.last_used_at > $5)
+		              AND `+auth.LiveSessionSQL("s", "$4", "$5")+`)
 		         OR EXISTS (SELECT 1 FROM writers w WHERE w.user_id = a.user_id AND w.writer_id = a.writer_id
 		              AND w.revoked_at IS NOT NULL))`,
-		token, userID, info.WriterID, now, now.Add(-s.Sessions.TTL)); err != nil {
+		token, userID, info.WriterID, now, s.Sessions.IdleSince(now)); err != nil {
 		s.logf("api: put apns for %s: move: %v", userID, err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return

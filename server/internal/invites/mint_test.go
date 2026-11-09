@@ -67,7 +67,7 @@ func TestARetriedInviteEmailCarriesTheSameCode(t *testing.T) {
 	}}
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
-	q.Unsent = MailUnsent(nil)
+	q.Unsent = MailUnsent(nil, nil)
 	const addr = "retry@example.com"
 	_, invite := approved(t, pool, q, addr)
 	if _, err := q.Drain(bg); err != nil {
@@ -133,7 +133,7 @@ func TestARetryOfAReplacedInviteEmailLeavesTheNewerCodeLive(t *testing.T) {
 	}}
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
-	q.Unsent = MailUnsent(nil)
+	q.Unsent = MailUnsent(nil, nil)
 	const addr = "replaced@example.com"
 	_, invite := approved(t, pool, q, addr)
 	if _, err := q.Drain(bg); err != nil {
