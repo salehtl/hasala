@@ -1036,6 +1036,16 @@ let
     ) "AT-E3 Postgres must restart after it dies, within a start limit"
     ++ check (
       let
+        stopPost = (backupOf "hasala-postgresql").ExecStopPost or "";
+      in
+      lib.hasPrefix "+" stopPost
+      && lib.hasSuffix "/bin/hasala-postgresql-alert notify-failure@%n.service" stopPost
+    ) "AT-E3 a Postgres crash that systemd restarts must still start the alert units"
+    ++ check (
+      !((svc minimal "hasala-postgresql").serviceConfig ? ExecStopPost)
+    ) "AT-E3 with no alert units there is nothing for Postgres to start when it stops"
+    ++ check (
+      let
         timer = fullSys.config.systemd.timers.hasala-backup-offsite or { };
       in
       lib.elem "hasala.target" (timer.wantedBy or [ ])

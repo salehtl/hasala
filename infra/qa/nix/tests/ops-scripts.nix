@@ -99,6 +99,12 @@ let
     text = localPaths rendered.bumpGeneration;
   };
 
+  postgresAlert = pkgs.writeShellApplication {
+    name = "hasala-postgresql-alert";
+    runtimeInputs = stubs ++ [ pkgs.coreutils ];
+    text = builtins.unsafeDiscardStringContext rendered.postgresAlert;
+  };
+
   curlStub = stub "curl" ''
     out=/dev/null
     headers=/dev/null
@@ -325,6 +331,21 @@ pkgs.runCommand "hasala-ops-scripts"
     [ "$rc" = 0 ] || no "a clean backup with an old file exited $rc"
     [ ! -e backups/hasala-daily-seed29.dump.age ] || no "a clean backup kept a 29 day old dump"
     [ "$(count 'hasala-daily-2*.dump.age')" = 1 ] || no "retention removed the new dump"
+
+    scenario "a clean Postgres stop starts no alert unit"
+    rc=0
+    SERVICE_RESULT=success ${lib.getExe postgresAlert} notify-failure@hasala-postgresql.service > out.log 2>&1 || rc=$?
+    [ "$rc" = 0 ] || no "a clean stop exited $rc"
+    [ ! -s "$CALLS" ] || no "a clean stop called: $(cat "$CALLS")"
+
+    for result in exit-code signal core-dump oom-kill timeout watchdog; do
+      scenario "Postgres ending with $result starts every alert unit"
+      rc=0
+      SERVICE_RESULT="$result" ${lib.getExe postgresAlert} notify-failure@hasala-postgresql.service second-alert.service > out.log 2>&1 || rc=$?
+      [ "$rc" = 0 ] || no "$result exited $rc"
+      [ "$(cat "$CALLS")" = "systemctl start --no-block -- notify-failure@hasala-postgresql.service second-alert.service" ] \
+        || no "$result called: $(cat "$CALLS")"
+    done
 
     scenario "a command that fails twice and then succeeds is retried to success"
     cat > flaky <<'SH'
