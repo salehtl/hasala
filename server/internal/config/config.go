@@ -424,8 +424,8 @@ type MigrateArgs struct {
 // modeOrder is every mode cmd/hasalad dispatches (spec 02 §18.3, the subset
 // built so far). cmd/hasalad cross-checks its dispatch table against it on
 // every start (checkModeHandlers).
-var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "account", "waitlist", "email", "console",
-	"version"}
+var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "account", "mailbox", "waitlist", "email",
+	"console", "version"}
 
 // Modes returns every mode cmd/hasalad dispatches.
 func Modes() []string {

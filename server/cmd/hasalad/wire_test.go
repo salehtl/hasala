@@ -79,8 +79,12 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := srv.Push.Waker.(*pushv2.Dispatcher); !ok {
+	dispatcher, ok := srv.Push.Waker.(*pushv2.Dispatcher)
+	if !ok {
 		t.Fatalf("waker %T, want the dispatcher", srv.Push.Waker)
+	}
+	if dispatcher.SessionIdle != cfg.Auth.SessionIdle || dispatcher.SessionIdle == 0 {
+		t.Fatalf("dispatcher session idle %v, want %v", dispatcher.SessionIdle, cfg.Auth.SessionIdle)
 	}
 	if srv.Gmail == nil || srv.Gmail.Push == nil || srv.Gmail.Push.Topic != "projects/p/topics/t" || srv.Web == nil {
 		t.Fatalf("gmail %v push %v web %v", srv.Gmail != nil, srv.Gmail != nil && srv.Gmail.Push != nil, srv.Web != nil)

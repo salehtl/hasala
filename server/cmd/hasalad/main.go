@@ -54,6 +54,7 @@ var modeHandlers = map[string]func(env *runEnv, args []string) error{
 	"purge-user": runPurgeUser,
 	"invite":     runInvite,
 	"account":    runAccount,
+	"mailbox":    runMailbox,
 	"waitlist":   runWaitlist,
 	"email":      runEmail,
 	"console":    runConsole,

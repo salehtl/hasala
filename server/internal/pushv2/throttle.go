@@ -160,9 +160,10 @@ type trailing struct {
 }
 
 // due closes every window that has ended by now and returns the trailing wakes
-// owed, already counted against the caps; a trailing wake over a cap is
-// dropped and reported in dropped.
-func (th *throttle) due(now time.Time) (out []trailing, dropped []Reason) {
+// owed, which charge counts against the caps once they are sure to go out; a
+// trailing wake that is paused, cooling or over a cap is dropped and reported
+// in dropped.
+func (th *throttle) due(now time.Time, paused func(Target) bool) (out []trailing, dropped []Reason) {
 	for _, s := range th.states {
 		for r, end := range s.windowEnd {
 			if now.Before(end) {
@@ -173,18 +174,26 @@ func (th *throttle) due(now time.Time) (out []trailing, dropped []Reason) {
 				continue
 			}
 			s.pending[r] = false
-			if now.Before(s.coolUntil) || s.capped(r, now) {
+			if paused(s.t) || now.Before(s.coolUntil) || s.capped(r, now) {
 				dropped = append(dropped, r)
 				continue
 			}
 			// The trailing wake opens a new window of its own, so a steady
 			// stream of notices sends at most one wake per window.
 			s.windowEnd[r] = now.Add(windowFor(r))
-			s.count(r, now)
 			out = append(out, trailing{t: s.t, r: r, owner: s.owner[r]})
 		}
 	}
 	return out, dropped
+}
+
+func (th *throttle) charge(w trailing, now time.Time) bool {
+	s, ok := th.states[tokenKey(w.t)]
+	if !ok || s.capped(w.r, now) {
+		return false
+	}
+	s.count(w.r, now)
+	return true
 }
 
 // cool rests a token after a 429.

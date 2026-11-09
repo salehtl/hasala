@@ -177,13 +177,13 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 }
 
 // providerToken returns the cached JWT, regenerating it when it is older than
-// 40 minutes, or (force) when Apple called it expired and it is older than 20.
-func (c *Client) providerToken(force bool) (string, error) {
+// 40 minutes, or when it is the one Apple called expired and it is older than 20.
+func (c *Client) providerToken(refused string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.now()
 	age := now.Sub(c.jwtIssue)
-	if c.jwt != "" && age < jwtMaxAge && !(force && age >= jwtRegenerateFrom) {
+	if c.jwt != "" && age < jwtMaxAge && (c.jwt != refused || age < jwtRegenerateFrom) {
 		return c.jwt, nil
 	}
 	tok, err := SignJWT(c.key, c.keyID, c.teamID, now)
@@ -225,28 +225,31 @@ func SignJWT(key *ecdsa.PrivateKey, kid, team string, iat time.Time) (string, er
 // Send delivers the payload to one token and classifies the answer. It retries
 // exactly once, on 403 ExpiredProviderToken, with a regenerated JWT.
 func (c *Client) Send(ctx context.Context, t Target) Result {
-	r, reason := c.send(ctx, t, false)
+	r, reason, jwt := c.send(ctx, t, "")
 	if reason == "ExpiredProviderToken" {
-		r, _ = c.send(ctx, t, true)
+		r, _, _ = c.send(ctx, t, jwt)
 	}
 	return r
 }
 
-func (c *Client) send(ctx context.Context, t Target, forceJWT bool) (Result, string) {
+func (c *Client) send(ctx context.Context, t Target, refused string) (Result, string, string) {
 	base, ok := c.hosts[t.Environment]
 	if !ok || !ValidTokenHex(t.TokenHex) {
-		return ResultGone, "BadDeviceToken"
+		return ResultGone, "BadDeviceToken", ""
 	}
-	jwt, err := c.providerToken(forceJWT)
+	jwt, err := c.providerToken(refused)
 	if err != nil {
-		return ResultConfig, "sign"
+		return ResultConfig, "sign", ""
+	}
+	if refused != "" && jwt == refused {
+		return ResultConfig, "ExpiredProviderToken", jwt
 	}
 	ctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/3/device/"+t.TokenHex,
 		bytes.NewReader([]byte(Payload)))
 	if err != nil {
-		return ResultTransient, ""
+		return ResultTransient, "", jwt
 	}
 	// The pinned set, nothing else (spec 02 §12.2). Go adds Content-Length
 	// itself; the User-Agent is suppressed with an explicit empty value.
@@ -260,7 +263,7 @@ func (c *Client) send(ctx context.Context, t Target, forceJWT bool) (Result, str
 	h.Set("content-type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return ResultTransient, ""
+		return ResultTransient, "", jwt
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -268,7 +271,7 @@ func (c *Client) send(ctx context.Context, t Target, forceJWT bool) (Result, str
 		Reason string `json:"reason"`
 	}
 	_ = json.Unmarshal(body, &apnsErr)
-	return classify(resp.StatusCode, apnsErr.Reason), apnsErr.Reason
+	return classify(resp.StatusCode, apnsErr.Reason), apnsErr.Reason, jwt
 }
 
 // classify is spec 02 §12.3's table.
@@ -284,7 +287,7 @@ func classify(status int, reason string) Result {
 	case status == http.StatusForbidden && (reason == "BadEnvironmentKeyIdInToken" || reason == "BadEnvironmentKeyInToken" ||
 		reason == "BadCertificateEnvironment"):
 		return ResultEnvironment
-	case status == http.StatusForbidden && reason != "ExpiredProviderToken":
+	case status == http.StatusForbidden:
 		return ResultConfig
 	}
 	return ResultTransient

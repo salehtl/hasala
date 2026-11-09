@@ -371,7 +371,7 @@ func TestWakesStillQueuedAtStopGoOut(t *testing.T) {
 func TestTheDrainAtStopIsBounded(t *testing.T) {
 	s := &stuckSender{}
 	d := NewDispatcher(nil, s)
-	d.DrainFor = 50 * time.Millisecond
+	d.drainFor = 50 * time.Millisecond
 	for i := range 64 {
 		d.WakeTokens(bg, []Target{fixedTarget(byte(i))}, ReasonSecurity)
 	}
