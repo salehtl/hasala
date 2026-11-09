@@ -71,11 +71,13 @@ protocol TransactionModel: AnyObject, Observable {
 final class TransactionViewModel: TransactionModel {
   private let app: AppModel
   let id: TxnID
+  private let close: () -> Void
   @ObservationIgnored private var memo = Memo<Int, TransactionDetail?>()
 
-  init(app: AppModel, id: TxnID) {
+  init(app: AppModel, id: TxnID, close: (() -> Void)? = nil) {
     self.app = app
     self.id = id
+    self.close = close ?? { app.sheet = nil }
   }
 
   var detail: TransactionDetail? {
@@ -102,7 +104,7 @@ final class TransactionViewModel: TransactionModel {
   func markTransfer() { app.perform(.markTransfer(id)) }
 
   func setArchived(_ archived: Bool) {
-    if app.perform(.archive(id, archived)), archived { app.sheet = nil }
+    if app.perform(.archive(id, archived)), archived { close() }
   }
 
   func resolve(_ reason: TxnReviewReason, merge: Bool) {
@@ -110,10 +112,15 @@ final class TransactionViewModel: TransactionModel {
     switch reason {
     case .probableCopy: edit = .resolveCopy(id, merge: merge)
     case .samePurchase: edit = .resolveSamePurchase(id, same: merge)
-    case .mayRepeat: return
+    case .mayRepeat:
+      if !merge {
+        app.repeatAnswers.keep(id)
+        app.router.transaction.removeAll()
+      }
+      return
     }
     guard app.perform(edit) else { return }
-    if merge { app.sheet = nil } else { app.router.transaction.removeAll() }
+    if merge { close() } else { app.router.transaction.removeAll() }
   }
 
   func keepApart() { app.perform(.keepCombinedApart(id)) }

@@ -172,6 +172,14 @@ public enum RuleReach {
     inGroup(rows, group: group, direction: direction, home: home, where: waiting(_:samePurchase:))
   }
 
+  public static func forkRepairs(
+    _ notices: [ForkNotice], own: Set<String>, repaired: Set<String>
+  ) -> (open: [ForkNotice], repaired: Set<String>) {
+    let mine = notices.filter { own.contains($0.winnerOp) }
+    let kept = repaired.intersection(mine.map(\.loserOp))
+    return (mine.filter { !kept.contains($0.loserOp) }, kept)
+  }
+
   public static func pattern(_ merchantRaw: String) -> String? {
     let s = Canon.subject(merchantRaw)
     return Grammar.isRulePattern(s) && s.unicodeScalars.count >= MatchKind.exact.minRunes ? s : nil

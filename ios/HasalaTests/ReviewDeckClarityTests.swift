@@ -22,6 +22,35 @@ struct ReviewDeckClarityTests {
     #expect(app.toast?.title == "Kept both, sorted into \(name)")
   }
 
+  @Test func sortingAnUnansweredRepeatSaysItKeptBoth() throws {
+    let (app, deck) = Self.deck(at: "mail-twin", Scenario.mayaTexts.state)
+    #expect(deck.repeatAnswers.asks(try #require(deck.cards.first)))
+    #expect(deck.sort("mail-twin", into: "groceries", alwaysUse: false, project: nil))
+    let name = try #require(app.store.state.category("groceries")?.name)
+    #expect(app.toast?.title == "Kept both, sorted into \(name)")
+  }
+
+  @Test func aKeptRepeatStaysAnsweredWhenTheDeckOpensAgain() throws {
+    let (app, deck) = Self.deck(at: "mail-twin", Scenario.mayaTexts.state)
+    let card = try #require(deck.cards.first)
+    deck.keepText(card.id)
+    #expect(!deck.repeatAnswers.asks(card))
+    ReviewEntry.request(app, at: card.id)
+    let reopened = ReviewViewModel(app: app)
+    #expect(reopened.cards.first?.id == card.id)
+    #expect(!reopened.repeatAnswers.asks(card) && reopened.repeatAnswers.allowsUse(card))
+  }
+
+  @Test func keepBothOnTheTransactionPageAnswersTheCard() throws {
+    let (app, deck) = Self.deck(at: "mail-twin", Scenario.mayaTexts.state)
+    let card = try #require(deck.cards.first)
+    #expect(deck.repeatAnswers.asks(card))
+    app.router.transaction = [.reviewReason(.mayRepeat)]
+    TransactionViewModel(app: app, id: card.id).resolve(.mayRepeat, merge: false)
+    #expect(app.router.transaction.isEmpty)
+    #expect(!deck.repeatAnswers.asks(card) && !deck.repeatAnswers.holdsPills(card) && deck.repeatAnswers.allowsUse(card))
+  }
+
   @Test func sortingAPlainCardKeepsItsUsualToast() throws {
     let (app, deck) = Self.deck(at: "bl-alnoor-t-2", Scenario.mayaBacklog.state)
     #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: false, project: nil))
@@ -63,6 +92,20 @@ struct ReviewDeckClarityTests {
     #expect(deck.reached > 0 && deck.reached <= reach)
     #expect(ReviewDone.reachLine(5) == "New rules also sorted 5 other transactions.")
     #expect(ReviewDone.reachLine(0) == nil)
+  }
+
+  @Test func undoingAnAlwaysUseTakesItsReachOutOfTheEnd() throws {
+    let (app, deck) = Self.deck(at: "bl-alnoor-t-2", Scenario.mayaBacklog.state)
+    #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: true, project: nil))
+    #expect(deck.reached > 0)
+    app.toastAction()
+    #expect(deck.reached == 0)
+    #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: true, project: nil))
+    #expect(deck.reached > 0)
+    app.dismissToast()
+    deck.undoLast()
+    #expect(deck.reached == 0)
+    #expect(ReviewDone.reachLine(deck.reached) == nil)
   }
 
   @Test func skipsAreCountedAndTheEndSaysDoneForNow() throws {

@@ -1,6 +1,28 @@
 import CoreReplay
 import CoreTime
 
+extension OpAuthor.BillDraft {
+  public enum PauseRefusal: String, Error, Sendable {
+    case until
+    case overlap = "pauses overlap"
+  }
+
+  public mutating func startPause(from: CivilDate, until: CivilDate?, today: CivilDate) throws(PauseRefusal) {
+    var kept = pauses
+    var start = from
+    if let scheduled = kept.last, scheduled.from > today {
+      kept.removeLast()
+      start = min(start, scheduled.from)
+    }
+    if let until, until <= start { throw .until }
+    if let last = kept.last {
+      guard let lastUntil = last.until, lastUntil <= start else { throw .overlap }
+    }
+    kept.append(OpAuthor.BillPauseDraft(from: start, until: until))
+    pauses = kept
+  }
+}
+
 public struct BillTerms: Sendable, Equatable {
   public var variable: Bool
   public var amountMinor: Int64

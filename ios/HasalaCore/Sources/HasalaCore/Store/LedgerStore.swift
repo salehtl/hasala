@@ -413,7 +413,7 @@ public final class LedgerStore: Sendable {
   // MARK: - Pending ops (§5.4)
 
   /// Inserts `ops` in one transaction; durable when this returns.
-  public func enqueue(_ ops: [PendingOp]) throws(StoreError) {
+  public func enqueue(_ ops: [PendingOp], imports: [(domain: String, sinceMs: Int64)] = []) throws(StoreError) {
     try write { db in
       for op in ops {
         try db.execute(
@@ -423,6 +423,7 @@ public final class LedgerStore: Sendable {
             """,
           arguments: [op.opID, op.opJSON, op.opType, op.entityKind, op.entityID, op.enqueuedAt])
       }
+      try MailboxTableStore.add(imports: imports, db)
     }
   }
 

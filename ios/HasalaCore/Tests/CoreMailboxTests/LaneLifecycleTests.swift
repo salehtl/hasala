@@ -9,6 +9,24 @@ import Testing
 @Suite struct LaneLifecycleTests {
   let day: Int64 = 86_400_000
 
+  @Test func aSettledLaneHoldsNoImportProgress() {
+    let event = MailboxProgress(stage: .downloading, done: 3, total: 3)
+    for phase in [MailboxPhase.active, .unlinked, .otherDevice] {
+      #expect(MailboxProgress.following(event, after: nil, phase: phase) == nil)
+      #expect(MailboxProgress.following(.init(stage: .failed(.offline), done: 0, total: 0), after: event, phase: phase) == nil)
+    }
+  }
+
+  @Test func aLaneStillImportingFollowsEachEvent() {
+    let event = MailboxProgress(stage: .downloading, done: 25, total: 500)
+    for phase in [MailboxPhase?.none, .scanning, .awaitingCards, .authoringBackfill, .halted, .reconnectRequired] {
+      #expect(MailboxProgress.following(event, after: nil, phase: phase) == event)
+      #expect(
+        MailboxProgress.following(.init(stage: .failed(.offline), done: 0, total: 0), after: event, phase: phase)
+          == MailboxProgress(stage: .failed(.offline), done: 25, total: 500))
+    }
+  }
+
   @Test func aStoppedEngineRunsNoCycleAndLeavesTheSharedStateAlone() async {
     let rig = Rig()
     await rig.connectAndActivate()

@@ -354,6 +354,16 @@ public final class MailboxTableStore: Sendable {
     try db.read { db in try String.fetchAll(db, sql: "SELECT op_id FROM pending_ops ORDER BY local_seq") }
   }
 
+  static func add(imports: [(domain: String, sinceMs: Int64)], _ db: Database) throws {
+    for i in imports {
+      try db.execute(
+        sql: """
+          INSERT INTO mailbox_pending_import (domain, since_ms) VALUES (?, ?)
+          ON CONFLICT(domain) DO UPDATE SET since_ms = min(since_ms, excluded.since_ms)
+          """, arguments: [i.domain, i.sinceMs])
+    }
+  }
+
   public func commit(_ w: MailboxWrite) throws {
     try db.write { db in
       if w.clearAll {
@@ -463,13 +473,7 @@ public final class MailboxTableStore: Sendable {
           sql: "INSERT OR REPLACE INTO bank_health (domain, last_email_at, month, read_this_month) VALUES (?, ?, ?, ?)",
           arguments: [h.domain, last, month, count])
       }
-      for i in w.addImports {
-        try db.execute(
-          sql: """
-            INSERT INTO mailbox_pending_import (domain, since_ms) VALUES (?, ?)
-            ON CONFLICT(domain) DO UPDATE SET since_ms = min(since_ms, excluded.since_ms)
-            """, arguments: [i.domain, i.sinceMs])
-      }
+      try Self.add(imports: w.addImports, db)
       for a in w.senderAddresses {
         try db.execute(
           sql: "INSERT OR IGNORE INTO mailbox_sender_address (address, at) VALUES (?, ?)", arguments: [a.address, a.at])

@@ -108,6 +108,23 @@ struct OutboxTests {
     #expect(fired.value == 1)
   }
 
+  @Test("a sender's pending import is written with its ops, or not at all")
+  func enqueueWithImports() async throws {
+    let store = try LedgerStore.inMemory()
+    let tables = MailboxTableStore(writer: store.db)
+    let box = Outbox(store: store, clock: FakeClock(), onAuthored: {})
+    try await box.enqueue([op("a")], importing: [(domain: "emiratesnbd.com", sinceMs: 5_000)])
+    #expect(try store.pendingOps().map(\.opID) == ["a"])
+    #expect(try tables.pendingImports().map(\.domain) == ["emiratesnbd.com"])
+    await #expect(throws: OutboxError.self) {
+      try await box.enqueue([op("b"), op("a")], importing: [(domain: "dib.ae", sinceMs: 5_000)])
+    }
+    #expect(try store.pendingOps().map(\.opID) == ["a"])
+    #expect(try tables.pendingImports().map(\.domain) == ["emiratesnbd.com"])
+    try await box.enqueue([op("c")], importing: [(domain: "emiratesnbd.com", sinceMs: 9_000)])
+    #expect(try tables.pendingImports().map(\.sinceMs) == [5_000])
+  }
+
   @Test("several enqueues inside the debounce window fire one authored trigger")
   func debounce() async throws {
     let store = try LedgerStore.inMemory()

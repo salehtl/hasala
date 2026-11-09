@@ -29,6 +29,25 @@ struct DuplicateCopyProjectionTests {
     return try r.moneyLines(from: d, to: d).filter { $0.flow == .spend }.reduce(0) { $0 + ($1.signedHome ?? 0) }
   }
 
+  @Test("a merged copy reports its head, so an undo after a peer's edit names the right parent")
+  func mergedCopyHead() throws {
+    typealias T = TransferPairProjectionTests
+    let peer = #"{"v":4,"type":"txn_categorized","op_id":"op-peer","authored_at":"2026-10-02T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(2))"},"parent_version":2,"payload":{"category":"groceries","needs_review":false,"source":{"kind":"user"}}}"#
+    let log = [Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.alert(2, grant: M.b, at: "08:06:00"), Self.resolve("merge", parent: 1)]
+    #expect(try M.reader(try M.fold(log)).mergedCopyVersion(M.ulid(2)) == 2)
+    let edited = log + [peer]
+    let r = try M.reader(try M.fold(edited))
+    #expect(try r.txn(M.ulid(2)) == nil)
+    let head = try #require(try r.mergedCopyVersion(M.ulid(2)))
+    #expect(head == 3)
+    let undone = try M.fold(edited + [T.resolve(2, other: 1, nil, parent: Int(head), op: "op-undo")])
+    #expect(undone.forks.isEmpty)
+    let back = try M.reader(undone)
+    #expect(try back.txn(M.ulid(2))?.heldCopy == true)
+    #expect(try back.mergedCopyVersion(M.ulid(2)) == nil)
+    #expect(try back.mergedCopyVersion(M.ulid(1)) == nil)
+  }
+
   @Test("a held probable copy is in review and out of every total; keep both counts it")
   func heldThenKept() throws {
     let s = try M.fold([Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.alert(2, grant: M.b, at: "08:06:00")])

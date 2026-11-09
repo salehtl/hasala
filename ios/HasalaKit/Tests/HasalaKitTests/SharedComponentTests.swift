@@ -14,6 +14,84 @@ struct SharedComponentTests {
     #expect(picture.shown(for: nil) == nil)
   }
 
+  @Test func aPanKeepsTheOffsetItStartedFrom() {
+    var pan = SwipeRowPan()
+    #expect(pan.isIdle && !pan.isPanning)
+    let first = pan.moved(at: -88)
+    #expect(first == -88 && pan.isPanning && !pan.isIdle)
+    let second = pan.moved(at: -120)
+    #expect(second == -88)
+    let lifted = pan.released()
+    #expect(lifted == -88 && pan.isIdle)
+    let again = pan.released()
+    #expect(again == nil)
+    let committing = pan.commit()
+    #expect(committing)
+    pan.committed()
+    #expect(pan.isIdle)
+  }
+
+  @Test func aTapOnTheButtonMidPanLeavesNoPanBehind() {
+    var pan = SwipeRowPan()
+    _ = pan.moved(at: -88)
+    let first = pan.commit()
+    let second = pan.commit()
+    #expect(first && !second)
+    #expect(!pan.isIdle && !pan.isPanning)
+    let during = pan.moved(at: -300)
+    let lifted = pan.released()
+    #expect(during == nil && lifted == nil)
+    pan.committed()
+    #expect(pan.isIdle)
+    let next = pan.moved(at: 0)
+    #expect(next == 0)
+  }
+
+  @Test func aPanStillDownWhenTheCommitEndsWaitsToBeLifted() {
+    var pan = SwipeRowPan()
+    _ = pan.moved(at: -88)
+    _ = pan.commit()
+    pan.committed()
+    #expect(!pan.isIdle && !pan.isPanning)
+    let stale = pan.moved(at: 0)
+    #expect(stale == nil)
+    let tapped = pan.commit()
+    #expect(tapped)
+    pan.committed()
+    #expect(!pan.isIdle)
+    let lifted = pan.released()
+    #expect(lifted == nil && pan.isIdle)
+  }
+
+  @Test func aLostTouchLetsTheToastGoAndTheNextTouchHoldsAgain() {
+    var touch = ToastTouch()
+    let down = touch.moved()
+    let moved = touch.moved()
+    #expect(down == .hold && moved == nil)
+    let lost = touch.lost()
+    let lostAgain = touch.lost()
+    #expect(lost == .resume && lostAgain == nil)
+    let next = touch.moved()
+    #expect(next == .hold)
+  }
+
+  @Test func aLiftedTouchResumesTheToastOrSendsItAway() {
+    var touch = ToastTouch()
+    _ = touch.moved()
+    let short = touch.ended(pulled: 24)
+    let afterShort = touch.lost()
+    #expect(short == .resume && afterShort == nil)
+    _ = touch.moved()
+    let long = touch.ended(pulled: 25)
+    let afterLong = touch.lost()
+    #expect(long == .dismiss && afterLong == nil)
+    _ = touch.moved()
+    let lost = touch.lost()
+    let pulledLate = touch.ended(pulled: 30)
+    let shortLate = touch.ended(pulled: 0)
+    #expect(lost == .resume && pulledLate == .dismiss && shortLate == nil)
+  }
+
   @Test func biometryWordingFollowsTheDevice() {
     #expect(HBiometry.faceID.signInTitle == "Sign in with Face ID")
     #expect(HBiometry.touchID.signInTitle == "Sign in with Touch ID")

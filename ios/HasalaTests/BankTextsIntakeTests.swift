@@ -902,6 +902,41 @@ struct BankTextsIntakeTests {
     }
   }
 
+  @Test func aMailboxLinkedWhileTheNoticeWaitsCountsTheTextsAsIgnored() {
+    let r = rig()
+    setCopy(r, linked: false)
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    let l = lane(r)
+    l.refresh()
+    #expect(l.lockedNotice == 2 && l.offersPaste)
+    setCopy(r, linked: true)
+    l.reload()
+    #expect(l.lockedNotice == nil && !l.offersPaste)
+    #expect(r.marker.read() == nil)
+    #expect(l.ignoredLast30Days == 2)
+  }
+
+  @Test func aLinkedAccountWhoseCountCannotBeSavedClearsTheNoticeAndKeepsTheMarker() throws {
+    let r = rig()
+    setCopy(r, linked: false)
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    let l = lane(r)
+    l.refresh()
+    #expect(l.lockedNotice == 1)
+    setCopy(r, linked: true)
+    let factsDir = r.dir.appendingPathComponent("facts")
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: factsDir.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path) }
+    l.reload()
+    #expect(l.lockedNotice == nil && r.marker.read()?.count == 1)
+    #expect(l.ignoredLast30Days == 0)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path)
+    l.refresh()
+    #expect(l.lockedNotice == nil && r.marker.read() == nil)
+    #expect(l.ignoredLast30Days == 1)
+  }
+
   @Test func afterTheUnlockALinkedAccountCountsTheMarkerAsIgnored() {
     let r = rig()
     setCopy(r, linked: true)

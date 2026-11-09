@@ -169,12 +169,20 @@ struct TransactionHost: View {
   let app: AppModel
   @State private var model: TransactionViewModel
 
-  init(app: AppModel, id: TxnID) {
+  init(app: AppModel, id: TxnID, close: (() -> Void)? = nil) {
     self.app = app
-    _model = State(initialValue: TransactionViewModel(app: app, id: id))
+    _model = State(initialValue: TransactionViewModel(app: app, id: id, close: close))
   }
 
   var body: some View { TransactionSheet(app: app, model: model) }
+}
+
+extension View {
+  func nestedTransactionSheet<Item: Identifiable>(item: Binding<Item?>, app: AppModel) -> some View where Item.ID == TxnID {
+    sheet(item: item, onDismiss: { app.router.transaction = [] }) { opened in
+      TransactionHost(app: app, id: opened.id) { item.wrappedValue = nil }
+    }
+  }
 }
 
 /// Change a budget keeps one view model while it is up.

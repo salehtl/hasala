@@ -512,6 +512,42 @@ struct ActivityTransactionChoiceTests {
     #expect(txn.detail?.archived == false)
   }
 
+  @Test func archivingFromANestedSheetClosesOnlyThatSheet() {
+    let app = AppModel(store: InMemoryLedger())
+    app.sheet = .search
+    var closed = 0
+    let txn = TransactionViewModel(app: app, id: "carrefour", close: { closed += 1 })
+    txn.setArchived(true)
+    #expect(txn.detail?.archived == true)
+    #expect(closed == 1 && app.sheet == .search)
+    #expect(app.toast?.title == "Archived" && app.toast?.actionTitle == "Undo")
+    app.toastAction()
+    #expect(txn.detail?.archived == false)
+  }
+
+  @Test func mergingFromANestedSheetClosesOnlyThatSheet() {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaCopy.state))
+    app.sheet = .search
+    var closed = 0
+    let txn = TransactionViewModel(app: app, id: "starbucks-copy", close: { closed += 1 })
+    txn.resolve(.probableCopy, merge: true)
+    #expect(app.store.state.txn("starbucks-copy") == nil)
+    #expect(closed == 1 && app.sheet == .search)
+    #expect(app.toast?.actionTitle == "Undo")
+  }
+
+  @Test func keepingBothOrRestoringLeavesANestedSheetUp() {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaCopy.state))
+    app.sheet = .search
+    var closed = 0
+    let txn = TransactionViewModel(app: app, id: "starbucks-copy", close: { closed += 1 })
+    txn.resolve(.probableCopy, merge: false)
+    txn.setArchived(true)
+    #expect(closed == 1)
+    txn.setArchived(false)
+    #expect(closed == 1 && app.sheet == .search)
+  }
+
   @Test func moneyOutNeverOffersRefunds() {
     let app = AppModel(store: InMemoryLedger())
     let groups = CategoryGroup.all(app.store.state, direction: .out)

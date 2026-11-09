@@ -194,6 +194,50 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var fromText: Bool = false
 }
 
+public struct ReviewRepeatAnswers: Sendable, Equatable {
+  private var kept: Set<TxnID> = []
+
+  public init() {}
+
+  public mutating func keep(_ id: TxnID) { kept.insert(id) }
+
+  public func isKept(_ id: TxnID) -> Bool { kept.contains(id) }
+
+  public func asks(_ card: ReviewCardModel) -> Bool {
+    card.copyLine == nil && card.reviewReason == .mayRepeat && !isKept(card.id)
+  }
+
+  public func holdsPills(_ card: ReviewCardModel) -> Bool { card.copyLine != nil || asks(card) }
+
+  public func allowsUse(_ card: ReviewCardModel) -> Bool {
+    card.reviewReason == nil || (card.reviewReason == .mayRepeat && card.copyLine == nil && isKept(card.id))
+  }
+}
+
+public struct ReviewReachTally: Sendable, Equatable {
+  private struct Filing: Sendable, Equatable {
+    let category: CategoryID
+    let others: [TxnID]
+  }
+
+  private var filings: [TxnID: Filing] = [:]
+
+  public init() {}
+
+  public mutating func record(_ card: TxnID, into category: CategoryID, others: [TxnID]) {
+    filings[card] = others.isEmpty ? nil : Filing(category: category, others: others)
+  }
+
+  public func count(_ s: LedgerState) -> Int {
+    var moved = Set<TxnID>()
+    for (card, filing) in filings {
+      guard let t = s.txn(card), !t.inReview, t.categoryID == filing.category else { continue }
+      moved.formUnion(filing.others.filter { s.txn($0)?.categoryID == filing.category })
+    }
+    return moved.count
+  }
+}
+
 public struct ReviewMonth: Sendable, Hashable, Identifiable {
   public var month: YearMonth
   public var title: String

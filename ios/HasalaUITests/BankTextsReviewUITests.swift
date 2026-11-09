@@ -88,6 +88,35 @@ final class BankTextsReviewUITests: XCTestCase {
   }
 
   @MainActor
+  func testKeepBothInAboutThisAlertAnswersTheCard() throws {
+    let app = launch(scenario: "mayaTexts")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    tap(app, "review.tab.row.mail-twin", opening: "review.sameText")
+    XCTAssertFalse(el(app, "review.pill.want").exists)
+    tap(app, "review.reason.may_repeat", opening: "reason.sort")
+    tap(app, "reason.sort")
+    XCTAssertTrue(el(app, "review.sameText").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "review.pill.want").waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testKeepBothOnTheTransactionAnswersTheCard() throws {
+    let app = launch(scenario: "mayaTexts")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    tap(app, "txn.mail-twin", opening: "txn.reviewReason.may_repeat")
+    tap(app, "txn.reviewReason.may_repeat", opening: "reason.sort")
+    tap(app, "reason.sort")
+    XCTAssertTrue(el(app, "reason.sort").waitForNonExistence(timeout: uiWait))
+    tap(app, "txn.close")
+    XCTAssertTrue(el(app, "txn.close").waitForNonExistence(timeout: uiWait))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    tap(app, "review.tab.row.mail-twin", opening: "review.pill.want")
+    XCTAssertFalse(el(app, "review.sameText").exists)
+  }
+
+  @MainActor
   func testSamePaymentOnTheCardArchivesIt() throws {
     let app = launch(scenario: "mayaTexts")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))

@@ -103,6 +103,18 @@ struct SamePurchaseFlowTests {
     #expect(other.txn("amazon-aed")?.note == "Lunch")
   }
 
+  @Test func editingTheNoteOfAMergedAlertIsRefused() throws {
+    var s = Scenario.mayaSamePurchase.state
+    _ = try LiveLedgerStore.patch(.resolveSamePurchase("amazon-aed", same: true), &s, now: MayaLedger.now)
+    let note = s.txn("amazon-aed")?.note
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) {
+      try LiveLedgerStore.patch(.setNote("amazon-aed", "Mine"), &s, now: MayaLedger.now)
+    }
+    #expect(s.txn("amazon-aed")?.note == note && s.txn("amazon-aed")?.mergedInto == "amazon-usd")
+    _ = try LiveLedgerStore.patch(.setNote("amazon-usd", "Mine"), &s, now: MayaLedger.now)
+    #expect(s.txn("amazon-usd")?.note == "Mine")
+  }
+
   @Test func theMapperMarksAMergedAlert() throws {
     var a = OpAuthor(AuthorContext(writerID: "ios-w", nowMs: 1_791_625_200_000, ownLastMs: nil, maxAuthored: [:], random: SystemRandom()))
     a.setHomeCurrency("AED")

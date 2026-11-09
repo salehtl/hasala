@@ -23,6 +23,46 @@ import Testing
     #expect(try await rig.store.pendingImports().isEmpty)
   }
 
+  @Test func aSenderWrittenPendingIsImportedByTheNextCycleWithNoBackfillCall() async throws {
+    let rig = Rig()
+    await activeWithENBDTrusted(rig)
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "old", dateMs: rig.clock.nowMs() - 20 * day))
+    let window = await rig.engine.importWindow(senders: ["EmiratesNBD.com"])
+    #expect(window.map(\.domain) == ["emiratesnbd.com"])
+    #expect(window.map(\.sinceMs) == [rig.clock.nowMs() - 90 * day])
+    var c = MailboxCommit()
+    c.addImports = window.map { PendingImport(domain: $0.domain, sinceMs: $0.sinceMs) }
+    try await rig.store.commit(c)
+    rig.clock.advance(60_000)
+    let cycle = await rig.engine.runCycle(trigger: .launch)
+    #expect(cycle.ops == 1 && cycle.completed)
+    #expect(await rig.accounted("old") == .op)
+    #expect(try await rig.store.pendingImports().isEmpty)
+  }
+
+  @Test func aStoppedLaneStillNamesTheWindowSoTheWriteCanKeepIt() async throws {
+    let rig = Rig()
+    await activeWithENBDTrusted(rig)
+    await rig.engine.stop()
+    #expect(await rig.engine.importWindow(senders: ["emiratesnbd.com"]).map(\.domain) == ["emiratesnbd.com"])
+  }
+
+  @Test func thereIsNoWindowBeforeTheFirstScanHasFinished() async throws {
+    let rig = Rig()
+    #expect(await rig.engine.importWindow(senders: ["emiratesnbd.com"]).isEmpty)
+  }
+
+  @Test func theWindowKeepsTheOnlyNewMailFloor() async throws {
+    let rig = Rig()
+    await activeWithENBDTrusted(rig)
+    var s = await rig.state()
+    s.readFromMs = rig.clock.nowMs() - 5 * day
+    var c = MailboxCommit()
+    c.state = s
+    try await rig.store.commit(c)
+    #expect(await rig.engine.importWindow(senders: ["emiratesnbd.com"]).map(\.sinceMs) == [rig.clock.nowMs() - 5 * day])
+  }
+
   @Test func aBackfillCutOfflineIsFinishedByALaterCycle() async throws {
     let rig = Rig()
     await activeWithENBDTrusted(rig)

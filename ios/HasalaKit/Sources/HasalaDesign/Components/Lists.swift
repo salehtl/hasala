@@ -6,6 +6,71 @@ import SwiftUI
 // the same lanes. Rows never scale on press; the fill changes instead. At the accessibility
 // sizes a row stacks: the leading item above, the trailing value under the supporting line.
 
+public struct SwipeRowPan: Sendable, Equatable {
+  private enum Phase: Sendable, Equatable {
+    case idle
+    case panning(from: CGFloat)
+    case committing(fingerDown: Bool)
+    case spent
+  }
+
+  private var phase = Phase.idle
+
+  public init() {}
+
+  public var isIdle: Bool { phase == .idle }
+
+  public var isPanning: Bool {
+    if case .panning = phase { return true }
+    return false
+  }
+
+  public mutating func moved(at offset: CGFloat) -> CGFloat? {
+    switch phase {
+    case .idle:
+      phase = .panning(from: offset)
+      return offset
+    case .panning(let from):
+      return from
+    case .committing, .spent:
+      return nil
+    }
+  }
+
+  public mutating func released() -> CGFloat? {
+    switch phase {
+    case .panning(let from):
+      phase = .idle
+      return from
+    case .committing:
+      phase = .committing(fingerDown: false)
+      return nil
+    case .spent:
+      phase = .idle
+      return nil
+    case .idle:
+      return nil
+    }
+  }
+
+  public mutating func commit() -> Bool {
+    switch phase {
+    case .idle:
+      phase = .committing(fingerDown: false)
+    case .panning, .spent:
+      phase = .committing(fingerDown: true)
+    case .committing:
+      return false
+    }
+    return true
+  }
+
+  public mutating func committed() {
+    guard case .committing(let fingerDown) = phase else { return }
+    phase = fingerDown ? .spent : .idle
+  }
+}
+
 /// A white list card, radius 24, no shadow, no padding of its own: rows fill it edge to edge
 /// and its corners clip the first and last row.
 public struct HListCard<Content: View>: View {
