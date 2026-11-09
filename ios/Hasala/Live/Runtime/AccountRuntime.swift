@@ -174,13 +174,16 @@ final class AccountRuntime {
   }
 
   func reading(
-    textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool = LiveReading.backgroundRefreshOff
+    textsChosen: Bool, textsLastRunMs: Int64?, textsTestMissed: Bool = false,
+    backgroundRefreshOff: Bool = LiveReading.backgroundRefreshOff
   ) -> ReadingState {
-    LiveReading.state(readingInputs(textsChosen: textsChosen, textsLastRunMs: textsLastRunMs,
+    LiveReading.state(readingInputs(textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, textsTestMissed: textsTestMissed,
                                     backgroundRefreshOff: backgroundRefreshOff))
   }
 
-  func readingInputs(textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool) -> LiveReading.Inputs {
+  func readingInputs(
+    textsChosen: Bool, textsLastRunMs: Int64?, textsTestMissed: Bool, backgroundRefreshOff: Bool
+  ) -> LiveReading.Inputs {
     let provider = lane?.provider ?? .gmail
     let status = lane == nil ? nil : store.mailboxStatus
     if status != nil, let phase = store.mailboxPhase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
@@ -192,7 +195,7 @@ final class AccountRuntime {
     return LiveReading.Inputs(
       nowMs: context.clock.nowMs(), known: store.loaded && (lane == nil || status != nil),
       sample: store.holdsSample || reviewAccount, status: status, provider: provider, progress: store.importProgress,
-      heldElsewhere: held, textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, trustedBanks: trusted,
+      heldElsewhere: held, textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, textsTestMissed: textsTestMissed, trustedBanks: trusted,
       newestMailRowMs: (try? projection.reader.newestMailboxPostedMs()) ?? nil, txns: store.state.txns,
       backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: movedAwayMs)
   }
@@ -366,7 +369,7 @@ final class AccountRuntime {
     store.readingSource = { [weak rt] in
       guard let rt else { return nil }
       let texts = bankTextFacts.read(nowMs: context.clock.nowMs())
-      return rt.reading(textsChosen: texts.chosen, textsLastRunMs: texts.lastRunMs)
+      return rt.reading(textsChosen: texts.chosen, textsLastRunMs: texts.lastRunMs, textsTestMissed: bankTextFacts.testMissed)
     }
     await store.reload()
     await rt.followImports()

@@ -20,7 +20,7 @@ import Observation
 @MainActor
 @Observable
 final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
-  static let pairedTransfer = "This is one side of a matched transfer."
+  static let pairedTransfer = RefundEdit.refusedMatchedTransfer
   private(set) var state: LedgerState
   private(set) var now: LocalDateTime
   private(set) var revision = 0
@@ -357,7 +357,9 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].categoryID = undo ? nil : "transfer"
       s.txns[i].categorySource = undo ? nil : .user
       s.txns[i].isTransfer = !undo
+      s.txns[i].isRefund = false
       s.txns[i].needsReview = undo
+      s.txns[i].priorFiling = nil
       if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, undo ? nil : "transfer") }
       return (
         undo ? "No longer a transfer" : "Marked as a transfer",

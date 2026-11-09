@@ -75,7 +75,7 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(next14.waitForExistence(timeout: uiWait))
     XCTAssertEqual(next14.label, "AED 1,039.15")
     XCTAssertTrue(app.navigationBars["Recurring"].exists)
-    XCTAssertTrue(el(app, "bills.attention.axa").exists)
+    XCTAssertTrue(el(app, "bills.attention.late.axa").exists)
     try audit(app)
     attachPage(app, "Recurring", screens: 5)
     let track = el(app, "bills.track.apple-bill")
@@ -139,7 +139,7 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(el(app, "bills.detail.reactivate").waitForExistence(timeout: uiWait), "the page shows it ended")
     back(app)
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
-    XCTAssertFalse(el(app, "bills.attention.axa").exists)
+    XCTAssertFalse(el(app, "bills.attention.late.axa").exists)
     XCTAssertTrue(el(app, "bills.ended.toggle").exists)
   }
 

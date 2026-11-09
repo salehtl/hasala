@@ -135,6 +135,20 @@ struct CategoryManagementTests {
     #expect(ledger.state.category(coffee)?.archived == false)
   }
 
+  @Test func archivingEndsNextMonthsBudgetAndLeavesLaterMonthsSetByHand() throws {
+    let ledger = InMemoryLedger()
+    let coffee = try add(ledger, "Coffee")
+    let november = MayaLedger.october.next
+    let december = november.next
+    try ledger.apply(.setBudget(coffee, november, .aed(50_00)))
+    try ledger.apply(.setBudget(coffee, december, .aed(70_00)))
+    #expect(ledger.state.plan.budget(coffee, MayaLedger.october) == .aed(0))
+    try ledger.apply(.archiveCategory(coffee, moveTo: "dining"))
+    #expect(ledger.state.plan.budget(coffee, november) == .aed(0))
+    #expect(ledger.state.plan.budget("dining", november) == MayaLedger.state.plan.budget("dining", november))
+    #expect(ledger.state.plan.budget(coffee, december) == .aed(70_00))
+  }
+
   @Test func countsAsOffersTheThreeBuckets() {
     let s = MayaLedger.state
     let fresh = CategoriesEngine.countsAsOptions(s, keeping: [nil])

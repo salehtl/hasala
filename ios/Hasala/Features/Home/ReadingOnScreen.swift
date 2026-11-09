@@ -50,13 +50,18 @@ enum ReadingOnScreen {
     case .elsewhere(let newest, true, _):
       return ReadingHold(
         caption: newest.map { "spent up to \($0.short)" },
-        line: "Nothing new from your other iPhone\(since(newest, today: r.today)). Newer payments aren't counted.",
+        line: quietElsewhereLine(r),
         link: .seeWhy, warns: true)
     case .importing:
       return ReadingHold(caption: "spent so far · still reading this month")
     default:
       return ReadingHold()
     }
+  }
+
+  static func quietElsewhereLine(_ reading: ReadingState?) -> String? {
+    guard let r = reading, case .elsewhere(let newest, true, _) = r.kind else { return nil }
+    return "Nothing new from your other iPhone\(since(newest, today: r.today)). Newer payments aren't counted."
   }
 
   static func on(_ day: LocalDate?, today: LocalDate) -> String {

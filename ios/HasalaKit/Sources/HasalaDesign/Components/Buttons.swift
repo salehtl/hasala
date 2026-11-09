@@ -74,6 +74,17 @@ public struct PillButtonStyle: ButtonStyle {
     self.greysWhenDisabled = greysWhenDisabled
   }
 
+  enum Leading: Equatable {
+    case empty
+    case icon(HIcon)
+    case spinner
+  }
+
+  static func leading(icon: HIcon?, loading: Bool, spinnerDue: Bool) -> Leading {
+    if loading && spinnerDue { return .spinner }
+    return icon.map(Leading.icon) ?? .empty
+  }
+
   public func makeBody(configuration: Configuration) -> some View {
     PillButtonBody(configuration: configuration, kind: kind, size: size, fill: fill, loading: loading,
                    leadingIcon: leadingIcon, greysWhenDisabled: greysWhenDisabled)
@@ -116,10 +127,13 @@ struct PillButtonBody: View {
   var body: some View {
     let pressed = configuration.isPressed && !loading
     HStack(spacing: leadingIcon == .faceID ? 10 : 8) {
-      if loading && showsSpinner {
+      switch PillButtonStyle.leading(icon: leadingIcon, loading: loading, spinnerDue: showsSpinner) {
+      case .spinner:
         Spinner(size: size == .small ? 16 : 20, tint: foreground, track: spinnerTrack)
-      } else if let leadingIcon, !loading {
-        HIconView(leadingIcon, size: leadingIcon == .faceID ? 22 : HSpacing.iconInline, color: foreground)
+      case .icon(let icon):
+        HIconView(icon, size: icon == .faceID ? 22 : HSpacing.iconInline, color: foreground)
+      case .empty:
+        EmptyView()
       }
       configuration.label
         .multilineTextAlignment(.center)

@@ -72,6 +72,34 @@ struct UXSetupbanktextsTests {
     #expect(BankTextsTestScreen.nothingYetNote(windowOpen: false) == "Hasala stopped watching. Tap Send the test again.")
   }
 
+  @Test func aMissedTestStaysKnownToTheReadingStateUntilTheNextTest() {
+    let r = rig(hintDelay: .seconds(60))
+    r.lane.startTest()
+    #expect(!r.facts.testMissed)
+    r.clock.now = Self.t0.addingTimeInterval(11 * 60)
+    r.lane.reload()
+    #expect(r.facts.testMissed)
+    r.lane.startTest()
+    #expect(!r.facts.testMissed)
+    r.clock.now = Self.t0.addingTimeInterval(22 * 60)
+    r.lane.reload()
+    #expect(r.facts.testMissed)
+    r.facts.forget()
+    #expect(!r.facts.testMissed)
+  }
+
+  @Test func aPassedTestIsNotMissed() throws {
+    let r = rig(hintDelay: .seconds(60))
+    r.lane.startTest()
+    let passed = BankTextIntake.ms(Self.t0.addingTimeInterval(120))
+    _ = try r.facts.update(nowMs: passed) {
+      $0.testPassedMs = passed
+      $0.testOpenedMs = nil
+    }
+    r.lane.reload()
+    #expect(!r.facts.testMissed)
+  }
+
   @Test func theAutomationStepsSayAlmostEveryTextReachesHasala() throws {
     let link = try #require(URL(string: "https://www.icloud.com/shortcuts/test"))
     let subtitle =

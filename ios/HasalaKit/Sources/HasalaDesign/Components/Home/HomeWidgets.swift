@@ -684,7 +684,7 @@ public struct HomeCanvasItemView: View {
     if let widget = item.widget {
       HomeWidgetView(widget, hidden: hidden)
     } else {
-      WaitingWidgetView(title: item.kind.title, sentence: item.kind.waitingSentence)
+      WaitingWidgetView(title: item.kind.title, sentence: item.waitingSentence)
     }
   }
 }

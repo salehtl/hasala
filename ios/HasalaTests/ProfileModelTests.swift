@@ -136,8 +136,8 @@ struct ProfileModelTests {
   @Test func thePostersDrawTheSameGlyphAsTheRowAndHero() throws {
     let app = AppModel(store: InMemoryLedger())
     let looks = BillsViewModel(app: app).snapshot.needsALook
-    let axa = try #require(looks.first { $0.id == "axa" })
-    let du = try #require(looks.first { $0.id == "du" })
+    let axa = try #require(looks.first { $0.billID == "axa" })
+    let du = try #require(looks.first { $0.billID == "du" })
     #expect(BillsView.posterGlyph(axa) == .icon(axa.glyph.icon))
     #expect(BillsView.posterGlyph(du) == .icon(du.glyph.icon))
   }

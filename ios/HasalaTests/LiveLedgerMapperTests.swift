@@ -581,6 +581,37 @@ struct LiveLedgerMapperTests {
     }
   }
 
+  @Test func aRowWithATransferPeerIsAMatchedTransferAndCannotBecomeARefund() async throws {
+    let wall = Int64(1_791_633_600_000)
+    var credit = ""
+    var debit = ""
+    var live = try await Self.foldedState { o throws(AuthorError) in
+      credit = try o.manualEntry(amountMinor: 500_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Own account", category: nil)
+      debit = try o.manualEntry(amountMinor: 500_00, currency: "AED", direction: "debit", localWallMs: wall, merchant: "Own account", category: nil)
+      o.annotate(txnID: credit, set: [("transfer_peer", debit)])
+    }
+    let matched = try #require(live.txns.first { $0.id == credit })
+    #expect(matched.isTransfer && matched.isMatchedTransfer)
+    #expect(live.txns.first { $0.id == debit }?.isMatchedTransfer == false)
+    #expect(throws: ActionError.refused(RefundEdit.refusedMatchedTransfer)) {
+      _ = try LiveLedgerStore.patch(.markRefund(credit), &live, now: MayaLedger.now)
+    }
+    #expect(live.txns.first { $0.id == credit } == matched)
+  }
+
+  @Test func theOptimisticTransferEndsARefundAndTheRuleFilingBehindIt() throws {
+    var s = MayaLedger.state
+    var row = Txn(
+      id: "rule-refund", merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+      categoryID: "refunds", categorySource: .rule(pattern: "TEST STORE"), isRefund: true)
+    row.ruleID = "r"
+    row.priorFiling = PriorFiling(categoryID: nil, categorySource: nil, ruleID: nil, needsReview: true)
+    s.txns.append(row)
+    _ = try LiveLedgerStore.patch(.markTransfer(row.id), &s, now: MayaLedger.now)
+    let t = try #require(s.txn(row.id))
+    #expect(t.isTransfer && !t.isRefund && t.priorFiling == nil)
+  }
+
   @Test func aWriteThatFailsIsReportedAndItsUndoDropped() async throws {
     let a = try Self.account()
     for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }

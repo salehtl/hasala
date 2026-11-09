@@ -7,6 +7,13 @@ import Testing
 @Suite("Shared components")
 @MainActor
 struct SharedComponentTests {
+  @Test func anAvatarPictureOnlyShowsForTheAddressItWasLoadedFor() {
+    let picture = AvatarPicture(image: Image(systemName: "person"), email: "a@example.com")
+    #expect(picture.shown(for: "a@example.com") != nil)
+    #expect(picture.shown(for: "b@example.com") == nil)
+    #expect(picture.shown(for: nil) == nil)
+  }
+
   @Test func biometryWordingFollowsTheDevice() {
     #expect(HBiometry.faceID.signInTitle == "Sign in with Face ID")
     #expect(HBiometry.touchID.signInTitle == "Sign in with Touch ID")
@@ -33,6 +40,22 @@ struct SharedComponentTests {
     #expect(PillButtonStyle.Size.small.height + 2 * PillButtonStyle.Size.small.hitOutset >= 44)
     #expect(PillButtonStyle.Size.medium.hitOutset == 0)
     #expect(PillButtonStyle.Size.large.hitOutset == 0)
+  }
+
+  @Test func aPillKeepsItsIconUntilTheSpinnerTakesItsPlace() {
+    let leading = PillButtonStyle.leading
+    #expect(leading(.faceID, false, false) == .icon(.faceID))
+    #expect(leading(.faceID, true, false) == .icon(.faceID))
+    #expect(leading(.faceID, true, true) == .spinner)
+    #expect(leading(.faceID, false, true) == .icon(.faceID))
+  }
+
+  @Test func aPillWithNoIconShowsOnlyTheSpinner() {
+    let leading = PillButtonStyle.leading
+    #expect(leading(nil, false, false) == .empty)
+    #expect(leading(nil, true, false) == .empty)
+    #expect(leading(nil, true, true) == .spinner)
+    #expect(leading(nil, false, true) == .empty)
   }
 
   @Test func aDisabledOnGroupedPillCanReadAsOff() {

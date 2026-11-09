@@ -12,18 +12,22 @@ public struct RefundFiling: Sendable, Hashable {
     t.needsReview = needsReview
     t.refundOf = refundOf
     t.isRefund = isRefund
+    t.isTransfer = t.isMatchedTransfer
+    t.priorFiling = nil
   }
 }
 
 public enum RefundEdit {
   public static let refusedOut = "Only money in can be a refund."
   public static let refusedTarget = "Choose a payment out to match this refund."
+  public static let refusedMatchedTransfer = "This is one side of a matched transfer."
 
   public static func mark(_ t: Txn, in s: LedgerState) throws(ActionError) -> RefundFiling {
     if t.isRefund {
       return RefundFiling(categoryID: nil, needsReview: true, refundOf: nil, isRefund: false, title: "No longer a refund")
     }
     guard t.direction == .in else { throw .refused(refusedOut) }
+    guard !t.isMatchedTransfer else { throw .refused(refusedMatchedTransfer) }
     let keep = t.splits.isEmpty && Spending.counts(s.category(t.categoryID))
     return RefundFiling(
       categoryID: keep ? t.categoryID : Spending.refundsID, needsReview: false, refundOf: nil, isRefund: true,
@@ -34,6 +38,7 @@ public enum RefundEdit {
     -> RefundFiling
   {
     guard t.direction == .in else { throw .refused(refusedOut) }
+    guard !t.isMatchedTransfer else { throw .refused(refusedMatchedTransfer) }
     guard Spending.counts(s.category(c)) else { throw .notFound }
     if let target {
       guard target != t.id, let p = s.txn(target), p.direction == .out, !p.archived else { throw .refused(refusedTarget) }
