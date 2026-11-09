@@ -268,6 +268,121 @@ struct AccountLifecycleTests {
     #expect(Boot.decide(Boot.gather(env)) == .signedOut)
   }
 
+  func stoppedSignup(_ w: World, _ env: AccountEnvironment) async throws -> UserID {
+    let signup = try await AccountCreation.beginSignup(
+      env, inviteCode: invite, email: "maya@example.com", displayName: "Maya", inviteLinkKey: nil)
+    try await AccountCreation.verifySignup(env, signup, code: try #require(w.server.lastCode))
+    w.server.misreportEmail(user: signup.userID, "someone@example.com")
+    let keys = try NewAccountKeys.generate(random: env.random)
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountCreation.createWithPassword(env, signup: signup, password: password, keys: keys)
+    }
+    #expect(try env.secrets.binding() == nil)
+    #expect(try hasLedger(env, signup.userID))
+    #expect(Boot.decide(Boot.gather(env)) == .onboardingKeys)
+    return signup.userID
+  }
+
+  @Test("signing out of an enrolment that stopped before its binding ends at sign-in, with its store gone")
+  func aStoppedEnrolmentLeavesNothingAfterSignOut() async throws {
+    let w = World()
+    let dir = temporaryDirectory("stopped-enrolment")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("a"), dir)
+    let user = try await stoppedSignup(w, env)
+
+    #expect(await AccountSignIn.signOut(env))
+
+    #expect(try !hasLedger(env, user))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+  }
+
+  @Test("a sign-out that cannot reach the server still clears a stopped enrolment's store")
+  func aStoppedEnrolmentLeavesNothingAfterAnOfflineSignOut() async throws {
+    let w = World()
+    let dir = temporaryDirectory("stopped-enrolment-offline")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("a"), dir)
+    let user = try await stoppedSignup(w, env)
+    w.server.refuseNext("POST /api/v1/auth/logout", status: 503, code: "unavailable")
+
+    #expect(await AccountSignIn.signOut(env) == false)
+
+    #expect(try env.secrets.session()?.pending_logout == true)
+    #expect(try !hasLedger(env, user))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+  }
+
+  @Test("an enrolment started again after the sign-out creates its store anew")
+  func anEnrolmentStartsAgainAfterTheSignOut() async throws {
+    let w = World()
+    let dir = temporaryDirectory("stopped-enrolment-again")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let a = w.phone("a")
+    let env = onDisk(w, a, dir)
+    let (account, words, _) = try await w.passwordAccount(a)
+    #expect(try env.secrets.binding() != nil)
+    try a.keychain.delete(.accountBinding)
+    try FileManager.default.createDirectory(
+      at: try #require(env.storeDirectory(for: account.userID)), withIntermediateDirectories: true)
+
+    #expect(await AccountSignIn.signOut(env))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+
+    _ = try await enrol(env, account.userID, words)
+    #expect(try hasLedger(env, account.userID))
+    #expect(try env.secrets.binding() != nil)
+  }
+
+  @Test("a sign-out on a bound iPhone keeps its store")
+  func aBoundIPhoneKeepsItsStoreAtSignOut() async throws {
+    let w = World()
+    let (account, words, _) = try await w.passwordAccount(w.phone("a"))
+    let dir = temporaryDirectory("bound-sign-out")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("b"), dir)
+    _ = try await enrol(env, account.userID, words)
+
+    #expect(await AccountSignIn.signOut(env))
+
+    #expect(try hasLedger(env, account.userID))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+  }
+
+  @Test("a sign-out keeps the store when the binding cannot be read")
+  func anUnreadableBindingKeepsTheStoreAtSignOut() async throws {
+    let w = World()
+    let (account, words, _) = try await w.passwordAccount(w.phone("a"))
+    let dir = temporaryDirectory("unreadable-binding")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let b = w.phone("b")
+    let env = onDisk(w, b, dir)
+    _ = try await enrol(env, account.userID, words)
+    try b.keychain.write(.accountBinding, Data("not a binding".utf8))
+
+    await AccountSignIn.signOut(env)
+
+    #expect(try hasLedger(env, account.userID))
+  }
+
+  @Test("a sign-out leaves another account's leftover files for the wall that removes them")
+  func anotherAccountsLeftoverStaysVisibleAfterSignOut() async throws {
+    let w = World()
+    let dir = temporaryDirectory("other-leftover")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("a"), dir)
+    let other = try #require(UserID("6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d"))
+    let leftover = try #require(env.storeDirectory(for: other))
+    try FileManager.default.createDirectory(at: leftover, withIntermediateDirectories: true)
+    let user = try await stoppedSignup(w, env)
+    #expect(user != other)
+
+    #expect(await AccountSignIn.signOut(env))
+
+    #expect(FileManager.default.fileExists(atPath: leftover.path))
+    #expect(Boot.decide(Boot.gather(env)) == .foreignData)
+  }
+
   @Test("gathering the launch facts reports the store's owner and does not touch the store")
   func gatheringLeavesTheStoreAlone() async throws {
     let w = World()

@@ -170,6 +170,7 @@ public enum AccountSignIn {
       return false
     }
     guard let s = stored else { return true }
+    removeUnboundStore(env, of: s)
     do {
       try await env.client.logout(bearer: s.token)
     } catch {
@@ -184,6 +185,16 @@ public enum AccountSignIn {
     }
     try? env.secrets.deleteSession()
     return true
+  }
+
+  private static func removeUnboundStore(_ env: AccountEnvironment, of session: SessionRecord) {
+    guard let user = UserID(session.user_id), let dir = env.storeDirectory(for: user) else { return }
+    do {
+      if try env.secrets.binding() != nil { return }
+    } catch {
+      return
+    }
+    try? FileManager.default.removeItem(at: dir)
   }
 }
 
