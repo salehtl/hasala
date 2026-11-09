@@ -34,11 +34,14 @@ printf '%s\n' "\$*" >>"$work/calls"
 [ "\$1" = altool ] || exit 64
 case "\$2" in
 --validate-app)
+	if [ -n "\${STUB_VALIDATE_RECORDS:-}" ]; then echo "\$STUB_VALIDATE_RECORDS" >"\$HASALA_BUILD_DIR/last-build-number"; fi
 	echo '{"stub": "validate"}'
 	exit "\${STUB_VALIDATE_RC:-0}"
 	;;
 --upload-package)
 	cat "\$HASALA_BUILD_DIR/last-build-number" >"$work/recorded-at-upload" 2>/dev/null || echo none >"$work/recorded-at-upload"
+	cat "\$(dirname "\$(dirname "\$3")")/upload-state" >"$work/state-at-upload" 2>/dev/null || echo none >"$work/state-at-upload"
+	if [ -n "\${STUB_UPLOAD_KILLS_PARENT:-}" ]; then kill -TERM "\$PPID"; exit 0; fi
 	echo '{"stub": "upload"}'
 	exit "\${STUB_UPLOAD_RC:-1}"
 	;;
@@ -187,11 +190,14 @@ equal "$(cat "$root/last-build-number")" 991231.12356 "...a validation records n
 
 upload "validation fails" 50 STUB_VALIDATE_RC=1 -- "$ipa" --yes
 equal "$(cat "$root/last-build-number")" 991231.12356 "...a failed validation records no build number"
+equal "$(cat "$root/$b/upload-state" 2>/dev/null || echo none)" none "...and no upload state"
 
 : >"$work/calls"
 upload "the upload fails" 60 ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" STUB_UPLOAD_RC=1 -- "$ipa" --yes
 equal "$(cat "$work/recorded-at-upload")" "$b" "...the build number was recorded before the upload started"
 equal "$(cat "$root/last-build-number")" "$b" "...and stays recorded after the upload failed"
+equal "$(cat "$work/state-at-upload")" uploading "...the upload state said uploading while altool ran"
+equal "$(cat "$root/$b/upload-state")" "failed 1" "...and says failed, with altool's exit code, afterwards"
 equal "$(sed -n 2p "$work/calls")" "altool --upload-package $ipa --api-key TESTKEY000 --api-issuer $issuer --p8-file-path $key --wait --output-format json" \
 	"...altool --upload-package <ipa> --api-key --api-issuer --p8-file-path --wait"
 upload "the same build again after a failed upload" 21 -- "$ipa" --yes
@@ -201,6 +207,7 @@ make_build "$b2"
 summary "$b2" pass
 upload "a newer build uploads" 0 STUB_UPLOAD_RC=0 -- "$root/$b2/export/Hasala.ipa" --yes
 equal "$(cat "$root/last-build-number")" "$b2" "...and is recorded"
+equal "$(cat "$root/$b2/upload-state")" uploaded "...and its upload state says uploaded"
 
 # HASALA_BUILD_DIR outside test mode: refused (2) before anything, even for a newer,
 # inspected build with a key that would upload.
@@ -214,6 +221,38 @@ said "refusing to run with HASALA_BUILD_DIR set outside test mode" "refused for 
 equal "$(cat "$work/calls")" "" "...before it ran xcrun"
 equal "$(cat "$root/last-build-number")" "$b2" "...or recorded the build"
 upload "HASALA_BUILD_DIR with HASALA_TEST_MODE=yes" 2 HASALA_TEST_MODE=yes -- "$root/$b3/export/Hasala.ipa"
+
+mkdir -p "$work/apple"
+printf '\317\372\355\376' >"$work/apple/xcrun"
+chmod +x "$work/apple/xcrun"
+: >"$work/calls"
+upload "builds moved to a test directory with a real xcrun first on PATH" 2 PATH="$work/apple:$work/stub:$PATH" STUB_UPLOAD_RC=0 \
+	ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" -- "$root/$b3/export/Hasala.ipa" --yes
+said "refusing to reach the real xcrun" "refused for the real xcrun"
+equal "$(cat "$work/calls")" "" "...before it ran the stub"
+equal "$(cat "$root/last-build-number")" "$b2" "...or recorded the build"
+equal "$(cat "$root/$b3/upload-state" 2>/dev/null || echo none)" none "...or started an upload"
+
+: >"$work/calls"
+newer=991231.12400
+upload "a newer build recorded while this one validated" 21 ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" \
+	STUB_UPLOAD_RC=0 STUB_VALIDATE_RECORDS="$newer" -- "$root/$b3/export/Hasala.ipa" --yes
+said "is not newer than the recorded $newer" "names the newer build"
+equal "$(cat "$root/last-build-number")" "$newer" "...the record does not move backwards"
+if grep -q -- --upload-package "$work/calls"; then
+	echo "FAIL the older build went on to upload"
+	fail=1
+else
+	echo "ok   ...and the older build does not upload"
+fi
+
+b4=991231.12401
+make_build "$b4"
+summary "$b4" pass
+upload "an upload interrupted while altool runs" 143 STUB_UPLOAD_KILLS_PARENT=1 \
+	ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" -- "$root/$b4/export/Hasala.ipa" --yes
+equal "$(cat "$root/$b4/upload-state")" uploading "...leaves the upload state at uploading"
+equal "$(cat "$root/last-build-number")" "$b4" "...and the build recorded"
 
 upload "an extra argument" 2 -- "$ipa" --yes --force
 exit "$fail"

@@ -204,9 +204,10 @@ let hashMarker = "public static let paperHash = \""
 let recordedHash = existing.range(of: hashMarker).map { start in
   String(existing[start.upperBound...].prefix { $0 != "\"" })
 }
-if let recordedHash, recordedHash != file.hash, !acceptHash {
+if recordedHash != file.hash, !acceptHash {
+  let recorded = recordedHash.map { "was generated from \($0)" } ?? "records no token set"
   fail("""
-    \(inputPath) is token set \(file.hash) but Tokens.swift was generated from \(recordedHash); \
+    \(inputPath) is token set \(file.hash) but Tokens.swift \(recorded); \
     re-run with --accept-hash to take the new set
     """)
 }

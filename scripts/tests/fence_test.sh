@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

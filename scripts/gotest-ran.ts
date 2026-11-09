@@ -8,8 +8,8 @@
 // top-level test, fuzz test and example each one has. Each RECORD.json is a
 // `go test -json` stream that step 4 (or the oracle step) teed to a file. Exits 1
 // unless, for every package in LIST: it lists at least one test, a RECORD has the
-// package passing, and every listed test has a result there, pass or skip (a
-// t.Skip of its own, such as a real-corpus test without the private fixtures).
+// package passing, and every listed test has a result there: a pass, or a skip
+// that says it is a real-corpus test or a TestWrite* fixture writer left switched off.
 // So a package left out of step 4, or a top-level test of one that step 4 did not
 // run (a -run, a -skip, a KNOWN_FAILING entry that matches it), fails here just
 // as a second run of it would have. Subtests are not listed by `go test -list`;
@@ -42,13 +42,28 @@ for (const e of await events(listFile)) {
 // package -> its result, and "package test" -> that test's result
 const pkgResult = new Map<string, string>();
 const testResult = new Map<string, string>();
+const testOutput = new Map<string, string>();
 for (const file of recordFiles) {
   for (const e of await events(file)) {
+    if (e.Action === "output" && e.Package && e.Test !== undefined && !e.Test.includes("/")) {
+      const k = `${e.Package} ${e.Test}`;
+      testOutput.set(k, (testOutput.get(k) ?? "") + (e.Output ?? ""));
+    }
     if (!e.Package || !["pass", "fail", "skip"].includes(e.Action)) continue;
     if (e.Test === undefined) pkgResult.set(e.Package, e.Action);
     else if (!e.Test.includes("/")) testResult.set(`${e.Package} ${e.Test}`, e.Action);
   }
 }
+
+const expectedSkip = (pkg: string, test: string): boolean => {
+  const said = testOutput.get(`${pkg} ${test}`) ?? "";
+  return said.includes("[real-corpus]") || (test.startsWith("TestWrite") && said.includes("HASALA_WRITE_CONFORMANCE"));
+};
+
+const proven = (pkg: string, test: string): boolean => {
+  const result = testResult.get(`${pkg} ${test}`);
+  return result === "pass" || (result === "skip" && expectedSkip(pkg, test));
+};
 
 const problems: string[] = [];
 if (listed.size === 0) problems.push(`${listFile} lists no package`);
@@ -62,8 +77,11 @@ for (const [pkg, tests] of listed) {
     problems.push(`${pkg}: ${pkgResult.has(pkg) ? pkgResult.get(pkg) : "not run"} in step 4, not pass`);
     continue;
   }
-  const missing = tests.filter((t) => !["pass", "skip"].includes(testResult.get(`${pkg} ${t}`) ?? ""));
-  for (const t of missing) problems.push(`${pkg} ${t}: ${testResult.get(`${pkg} ${t}`) ?? "did not run"} in step 4`);
+  const missing = tests.filter((t) => !proven(pkg, t));
+  for (const t of missing) {
+    const result = testResult.get(`${pkg} ${t}`) ?? "did not run";
+    problems.push(`${pkg} ${t}: ${result} in step 4${result === "skip" ? ", and it is neither a real-corpus test nor a fixture writer" : ""}`);
+  }
   total += tests.length;
 }
 if (problems.length > 0) {

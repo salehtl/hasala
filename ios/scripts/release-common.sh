@@ -14,6 +14,11 @@
 # shellcheck disable=SC2034 # read by the scripts that source this file
 HASALA_TRIAL_MARKER="TRIAL"
 
+# I12: the API endpoint a release talks to, exactly: Info.plist's HasalaAPIBaseURL,
+# which Xcode fills in from HASALA_API_BASE_URL (ios/Config/Shared.xcconfig).
+# shellcheck disable=SC2034
+RELEASE_API_BASE_URL=https://api.hasala.app
+
 # hasala_build_root IOS_DIR: the directory that holds <BUILD>/ (one per archive) and
 # last-build-number: IOS_DIR/build. The offline script tests move it with
 # HASALA_BUILD_DIR, which counts only together with HASALA_TEST_MODE=1 (and is then
@@ -62,11 +67,26 @@ hasala_build_newer() {
 }
 
 # hasala_record_build ROOT BUILD: write BUILD to ROOT/last-build-number, atomically
-# (a new file renamed over the old one), so a crash never leaves it half-written.
+# (a new file renamed over the old one), so a crash never leaves it half-written, and
+# only when BUILD is newer than what is recorded, under a lock the kernel drops when
+# the holder dies. Refused, saying why, when it is not.
 hasala_record_build() {
 	local root="$1" build="$2"
-	mkdir -p -- "$root" &&
-		printf '%s\n' "$build" >"$root/last-build-number.tmp" &&
+	mkdir -p -- "$root" || return 1
+	/usr/bin/lockf -k -t 30 "$root/last-build-number.lock" "$BASH" -c \
+		'source "$1" && hasala_record_build_locked "$2" "$3"' _ "${BASH_SOURCE[0]}" "$root" "$build"
+}
+
+hasala_record_build_locked() {
+	local root="$1" build="$2" last
+	if [[ -f "$root/last-build-number" ]]; then
+		last="$(cat -- "$root/last-build-number")" || return 1
+		if ! hasala_build_newer "$build" "$last"; then
+			echo "build $build is not newer than the recorded $last" >&2
+			return 1
+		fi
+	fi
+	printf '%s\n' "$build" >"$root/last-build-number.tmp" &&
 		mv -f -- "$root/last-build-number.tmp" "$root/last-build-number"
 }
 
@@ -106,6 +126,40 @@ hasala_sha256() {
 	out="${out%% *}"
 	[[ "$out" =~ ^[0-9a-f]{64}$ ]] || return 1
 	printf '%s\n' "$out"
+}
+
+hasala_sample_manifest_sha256() {
+	local line
+	[[ -f "$1" ]] || return 1
+	line="$(grep -E '^[[:space:]]*public static let sha256 = "[0-9a-f]{64}"' -- "$1" || true)"
+	[[ "$line" =~ \"([0-9a-f]{64})\" ]] || return 1
+	printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+hasala_sample_pinned() {
+	local ios="$1" golden="$1/scripts/golden/maya-v1.sha256" want="" pinned="" got=""
+	local resources="$1/HasalaCore/Sources/HasalaCore/Resources"
+	if [[ -f "$golden" ]]; then want="$(head -n 1 -- "$golden")"; fi
+	if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
+		echo "golden/maya-v1.sha256 is missing or is not one SHA-256 in hex" >&2
+		return 1
+	fi
+	if ! pinned="$(hasala_sample_manifest_sha256 "$resources/SampleManifest.swift")"; then
+		echo "cannot read SampleManifest.sha256 from ${resources#"$ios/"}/SampleManifest.swift" >&2
+		return 1
+	fi
+	if [[ "$want" != "$pinned" ]]; then
+		echo "golden/maya-v1.sha256 ($want) is not SampleManifest.sha256 ($pinned); regenerate the seed (HASALA_WRITE_SAMPLE=1) and update both" >&2
+		return 1
+	fi
+	if ! got="$(hasala_sha256 "$resources/sample/maya-v1.json" 2>/dev/null)"; then
+		echo "cannot hash sample/maya-v1.json" >&2
+		return 1
+	fi
+	if [[ "$got" != "$want" ]]; then
+		echo "sample/maya-v1.json has SHA-256 $got, not golden/maya-v1.sha256's $want" >&2
+		return 1
+	fi
 }
 
 # hasala_is_macho FILE: true when FILE starts with a Mach-O or universal-binary magic

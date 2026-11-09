@@ -32,8 +32,9 @@
 #   2 usage, MARKETING_VERSION cannot be read from ios/Config, or HASALA_BUILD_DIR is
 #     set without HASALA_TEST_MODE=1 (see hasala_build_root in release-common.sh)
 #   10 dirty tree   11 branch is not main   13 the gate failed: an IntegrationStub is
-#   left under ios/, or privacy-lint.sh failed (spec 06 §5.4: a required-reason API the
-#   privacy manifest doesn't declare)   14 key or asc.env missing or unsafe
+#   left under ios/, privacy-lint.sh failed (spec 06 §5.4: a required-reason API the
+#   privacy manifest doesn't declare), or the sample seed disagrees with
+#   golden/maya-v1.sha256 or SampleManifest.sha256   14 key or asc.env missing or unsafe
 #   16 Xcode is not 27.x   21 build number not newer than the last upload, or
 #   ios/build/<BUILD>/ exists already (a second archive in the same UTC minute)
 #   30 archive failed   31 export failed   40 the exported .ipa failed inspection (§10.3)
@@ -115,6 +116,30 @@ if ! "$here/privacy-lint.sh" >&2; then
 	echo "archive: privacy-lint.sh failed; declare the API in ios/Hasala/PrivacyInfo.xcprivacy or stop using it" >&2
 	exit 13
 fi
+if ! hasala_sample_pinned "$ios"; then
+	echo "archive: the sample seed and its two pins disagree, so this build would fail inspection (I6b)" >&2
+	exit 13
+fi
+if ((${#trial[@]} == 0)); then
+	author="$(sed -nE 's/^[[:space:]]*public static let author = ([0-9]+)$/\1/p' "$ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift")"
+	if [[ ! "$author" =~ ^[0-9]+$ ]]; then
+		echo "archive: cannot read SchemaVersion.author from ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift" >&2
+		exit 13
+	fi
+	if ! meta="$(curl --fail --silent --show-error --proto =https --max-time 20 "$RELEASE_API_BASE_URL/api/v1/meta")"; then
+		echo "archive: cannot read op_version_ceiling from $RELEASE_API_BASE_URL/api/v1/meta" >&2
+		exit 13
+	fi
+	if [[ ! "$meta" =~ \"op_version_ceiling\"[[:space:]]*:[[:space:]]*([0-9]+) ]]; then
+		echo "archive: cannot read op_version_ceiling from $RELEASE_API_BASE_URL/api/v1/meta" >&2
+		exit 13
+	fi
+	ceiling="${BASH_REMATCH[1]}"
+	if ((10#$ceiling < 10#$author)); then
+		echo "archive: this build writes op schema $author, but $RELEASE_API_BASE_URL reports op_version_ceiling $ceiling; raise OpVersionCeiling and deploy hasalad first" >&2
+		exit 13
+	fi
+fi
 asc_resolve_key || exit 14
 xcode="$(xcodebuild -version 2>/dev/null || true)"
 xcode="${xcode%%$'\n'*}"
@@ -177,6 +202,16 @@ if ! xcodebuild archive \
 	grep -E 'error:|No profiles|No signing|Provisioning|certificate|Automatic signing' "$OUT/archive.log" | sort -u | head -40 >&2 || true
 	echo "archive: full log: $OUT/archive.log" >&2
 	exit 30
+fi
+
+if ((${#trial[@]} == 0)); then
+	tree_after="$(git -C "$repo" status --porcelain)"
+	sha_after="$(git -C "$repo" rev-parse --short=12 HEAD)"
+	branch_after="$(git -C "$repo" branch --show-current)"
+	if [[ -n "$tree_after" || "$sha_after" != "$SHA" || "$branch_after" != "$branch" ]]; then
+		echo "archive: the checkout changed while xcodebuild was building $SHA on $branch, so this archive is not exported; archive again from a worktree nothing else uses" >&2
+		exit 10
+	fi
 fi
 
 # --- export (re-signs for distribution) --------------------------------------------

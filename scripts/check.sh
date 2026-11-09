@@ -172,6 +172,14 @@ fi
 step "real-mail fence self-test"
 "$ROOT/scripts/tests/fence_test.sh"
 
+step "gate run self-test"
+"$ROOT/scripts/tests/gate_run_test.sh"
+"$ROOT/scripts/tests/gotest_ran_test.sh"
+"$ROOT/scripts/tests/git_env_test.sh"
+
+GATE_STEPS="real-mail fence, toolchain, fence"
+NOT_RUN=()
+
 # --- 0b. HasalaCore source lints ------------------------------------------------
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source
 # scan and the R2/R3/R7/R8 grep lints. The half of check-imports.sh that
@@ -201,6 +209,10 @@ for f in "$seed"/*.json; do
 done
 echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
+step "the template manifest names every seed by its hash"
+"$ROOT/scripts/tests/templates_manifest_test.sh"
+"$ROOT/scripts/check-templates-manifest.sh"
+
 GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay sms-extract)
 step "golden fixtures change only with a Swift test change"
 cd "$ROOT"
@@ -209,8 +221,12 @@ if [[ -n "$CI_RUN" ]]; then
 else
 	golden_base="$(git merge-base HEAD origin/main 2>/dev/null || true)"
 fi
-if [[ -z "$golden_base" ]]; then
-	echo "no base commit to compare with (CI: HEAD^1, locally: the merge base with origin/main); skipped"
+if [[ -z "$golden_base" && -n "$CI_RUN" ]]; then
+	echo "check: no base commit (HEAD^1), so the golden-fixture rule cannot run; the gate job's checkout needs fetch-depth 2" >&2
+	exit 1
+elif [[ -z "$golden_base" ]]; then
+	echo "no base commit to compare with (the merge base with origin/main); skipped"
+	NOT_RUN+=("the golden-fixture rule (no merge base with origin/main)")
 else
 	golden_paths=()
 	for s in "${GOLDEN_SETS[@]}"; do golden_paths+=("conformance/$s"); done
@@ -249,6 +265,7 @@ echo "go $have (floor go$want)"
 
 # --- 1b. the private fixtures, if this run has them -------------------------------
 step "private fixtures (HASALA_PRIVATE_FIXTURES)"
+"$ROOT/scripts/tests/private_fixtures_lock_test.sh"
 if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 	if [[ ! -d "$HASALA_PRIVATE_FIXTURES" ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES=$HASALA_PRIVATE_FIXTURES is not a directory" >&2
@@ -285,8 +302,10 @@ go test -count=1 -run '^TestFence' ./cmd/hasalad
 step "govulncheck ./cmd/hasalad/..."
 if [[ -n "$CI_RUN" ]]; then
 	echo "skipped in CI: the vuln job runs govulncheck ./... in server/ and server/oracle/"
+	NOT_RUN+=("govulncheck (the vuln job runs it)")
 else
 	govulncheck ./cmd/hasalad/...
+	GATE_STEPS+=", govulncheck"
 fi
 
 # --- 3. one throwaway Postgres cluster -------------------------------------------
@@ -296,6 +315,7 @@ PG_STOP=""
 PG_LOG="$(mktemp "${TMPDIR:-/tmp}/hasala-check-pg.XXXXXX")"
 # Real-corpus counts from step 4.
 REAL_GO="$(mktemp)"
+REAL_ORACLE="$(mktemp)"
 # Step 4's `go test -json` streams (server/ and server/oracle/), which step 6
 # checks the conformance packages against, and step 6's `go test -list`. Step 6
 # relies on step 4 running every test exactly as a run of its own would (only
@@ -309,7 +329,7 @@ cleanup() {
 	if [[ -n "$PG_STOP" && -x "$PG_STOP" ]]; then
 		"$PG_STOP" || true
 	fi
-	rm -f "$REAL_GO" "$GO_RECORD" "$ORACLE_RECORD" "$GO_LIST"
+	rm -f "$REAL_GO" "$REAL_ORACLE" "$GO_RECORD" "$ORACLE_RECORD" "$GO_LIST"
 	if [[ "$status" -eq 0 ]]; then
 		rm -f "$PG_LOG"
 	else
@@ -325,32 +345,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Reap clusters a PREVIOUS run leaked. The EXIT trap cannot run on SIGKILL (the
-# OOM killer), and on ledgerd's 4 GB box stranded clusters piled up for days.
-# Only this user's orphans (parent gone, PPID 1) whose data directory is a
-# pgtest- scratch directory under the temp dir are touched.
-reap_orphaned_clusters() {
-	local pid ppid dir reaped=0 tmp="${TMPDIR:-/tmp}"
-	tmp="${tmp%/}"
-	while read -r pid ppid dir; do
-		[[ "$ppid" == 1 ]] || continue
-		[[ "$dir" == "$tmp"/pgtest-*/data ]] || continue
-		kill -QUIT "$pid" 2>/dev/null || true
-		rm -rf "${dir%/data}" 2>/dev/null || true
-		reaped=$((reaped + 1))
-	done < <(ps -u "$(id -u)" -o pid=,ppid=,args= | awk '/postgres -D .*\/pgtest-/ {for (i=1;i<=NF;i++) if ($i=="-D") print $1, $2, $(i+1)}')
-	if [[ "$reaped" -gt 0 ]]; then
-		echo "check: reaped $reaped orphaned scratch cluster(s) from an earlier run"
-	fi
-	return 0
-}
-
 step "postgres"
-reap_orphaned_clusters
 # Captured, then checked: `eval "$(go run ...)"` alone would swallow a failed
 # boot (empty stdout, eval "" succeeds) and every package would quietly boot
 # its own cluster instead.
-BOOT_OUT="$(go run ./internal/pgtest/cmd/boot 2>"$PG_LOG")" || {
+BOOT_OUT="$(go run ./internal/pgtest/cmd/boot -owner "$$" 2>"$PG_LOG")" || {
 	cat "$PG_LOG" >&2
 	echo "check: failed to boot the postgres cluster (see the error above)" >&2
 	exit 1
@@ -364,7 +363,7 @@ echo "cluster up (unix socket only; listen_addresses is empty)"
 # NAME in step 4 so the rest of the run stays a gate, and re-run on its own in
 # step 7, where it must still fail: the day it passes, the gate fails until the
 # entry is removed, so nothing healthy stays skipped. Format:
-# "module dir (under server/)|package|regexp". The regexp names top-level tests
+# "module dir (under server/)|package|regexp|the failure text it must print". The regexp names top-level tests
 # only (no "/"): step 6 proves the conformance packages' tests ran in step 4 from
 # `go test -list`, which lists top-level tests, so a subtest skipped here would
 # go unseen there. A pattern with a slash fails the gate below.
@@ -377,7 +376,7 @@ echo "cluster up (unix socket only; listen_addresses is empty)"
 # (`go test -skip` applies its pattern in every package; each name below is
 # unique in both modules, so it skips exactly the one test.)
 KNOWN_FAILING=(
-	"oracle|./v1ref/store|^TestSelectMonthlyTotals\$"
+	"oracle|./v1ref/store|^TestSelectMonthlyTotals\$|june = {Period: SpentFils:0 IncomeFils:0}, want spent 8000 income 100000"
 )
 skip_re="$(printf '%s\n' "${KNOWN_FAILING[@]}" | cut -d'|' -f3 | paste -sd'|' -)"
 if [[ "$skip_re" == */* ]]; then
@@ -396,7 +395,6 @@ go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$GO_RECORD"
 
 # The oracle module (spec 02 §4.3): the frozen v1 reference packages and the
 # corpus gates. Its real-corpus tests are counted with the server's.
-REAL_ORACLE="$(mktemp)"
 step "oracle: go vet ./... and go test ./..."
 (
 	cd oracle
@@ -405,16 +403,13 @@ step "oracle: go vet ./... and go test ./..."
 )
 read -r s_ran s_skipped <"$REAL_GO"
 read -r o_ran o_skipped <"$REAL_ORACLE"
-rm -f "$REAL_ORACLE"
 echo "$((s_ran + o_ran)) $((s_skipped + o_skipped))" >"$REAL_GO"
 
 # --- 5. the assist worker -----------------------------------------------------------
 # `--bun` runs node-shebang tools (tsc) on Bun, so nothing needs a host Node.
 step "assist worker (infra/assist)"
 cd "$ROOT/infra/assist"
-if [[ ! -d node_modules ]]; then
-	bun install --frozen-lockfile
-fi
+bun install --frozen-lockfile
 bun run --bun typecheck
 bun test
 
@@ -430,7 +425,7 @@ bun test
 # internal/api again, for the same verdict against the same cluster). Instead
 # `go test -list` names every test of each package in the table, and
 # scripts/gotest-ran.ts requires each package to have passed in step 4's record
-# and each of those tests to have a result there (pass, or its own skip). A
+# and each of those tests to have a result there (pass, or a real-corpus or fixture-writer skip). A
 # package left out of step 4, or one of its tests that step 4 did not run (a
 # -run, a -skip, a KNOWN_FAILING pattern that also matches it), fails here.
 #
@@ -509,7 +504,7 @@ bun "$ROOT/scripts/gotest-ran.ts" "$GO_LIST" "$GO_RECORD" "$ORACLE_RECORD"
 step "known failures"
 cd "$ROOT/server"
 for entry in "${KNOWN_FAILING[@]}"; do
-	IFS='|' read -r mod pkg re <<<"$entry"
+	IFS='|' read -r mod pkg re reason <<<"$entry"
 	if out="$(cd "$ROOT/server/$mod" && go test -count=1 -v -run "$re" "$pkg" 2>&1)"; then
 		echo "check: $pkg $re now PASSES; remove it from KNOWN_FAILING in scripts/check.sh" >&2
 		exit 1
@@ -519,11 +514,17 @@ for entry in "${KNOWN_FAILING[@]}"; do
 		echo "check: $pkg $re did not run to a FAIL (see above); it is not the recorded failure" >&2
 		exit 1
 	fi
+	if [[ -z "$reason" ]] || ! grep -qF -- "$reason" <<<"$out"; then
+		printf '%s\n' "$out" >&2
+		echo "check: $pkg $re failed, but not with its recorded reason ('$reason'); fix the new failure or record it in KNOWN_FAILING" >&2
+		exit 1
+	fi
 	echo "still failing, as recorded: $pkg $re"
 	{ grep -E '^\s+\S+_test\.go:[0-9]+:' <<<"$out" || true; } | sed 's/^/    /'
 done
 
 # --- the real corpus, accounted for -----------------------------------------------
+GATE_STEPS+=", go vet, go test, assist worker, conformance"
 read -r go_ran go_skipped <"$REAL_GO"
 corpus="go ${go_ran} ran / ${go_skipped} skipped"
 echo
@@ -533,10 +534,15 @@ if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES is set, so every real-corpus test must run and none may skip" >&2
 		exit 1
 	fi
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance; real corpus included)"
+	echo "check: OK ($GATE_STEPS; real corpus included)"
 	ci_report "Real corpus included" "$corpus."
 else
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance)"
+	echo "check: OK ($GATE_STEPS)"
 	echo "check: WITHOUT the real corpus: HASALA_PRIVATE_FIXTURES is unset, so the tests above that read real bank mail were skipped"
 	ci_report "Real corpus skipped" "$corpus. HASALA_PRIVATE_FIXTURES is unset, so every test that reads real bank mail skipped by name (listed in the log); this run is the gate without the real corpus."
+fi
+if ((${#NOT_RUN[@]})); then
+	not_run="$(printf '%s; ' "${NOT_RUN[@]}")"
+	echo "check: NOT RUN: ${not_run%; }"
+	ci_report "Gate steps not run" "${not_run%; }"
 fi
