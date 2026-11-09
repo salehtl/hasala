@@ -21,6 +21,8 @@ public enum SyncTrigger: String, Sendable, Hashable, CaseIterable {
   /// `authored` run follows the user's own edit and keeps the pinned roster
   /// (R1 still re-fetches it for an unknown writer).
   public var refreshesRoster: Bool { self != .authored }
+
+  public var retestsALatch: Bool { self == .launch || self == .foreground || self == .refresh }
 }
 
 public struct RunOutcome: Sendable, Hashable {
@@ -195,7 +197,7 @@ public actor SyncEngine {
 
   private func resumeAfterLatch(_ trigger: SyncTrigger) throws(SyncStop) {
     let state = try context.storeCall { () throws(StoreError) in try context.store.syncState() }
-    let asked = trigger == .launch || trigger == .foreground || trigger == .refresh
+    let asked = trigger.retestsALatch
     switch state.latch {
     case .accountFull:
       if !asked, let at = accountFullAtMs, context.clock.nowMs() - at < Self.accountFullPauseMs { return }

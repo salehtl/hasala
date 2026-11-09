@@ -235,7 +235,7 @@ actor WorkCoordinator {
   /// waits and how long a run it starts may take (a silent push or a refresh task gets
   /// 25 s); nil waits until done.
   @discardableResult
-  func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
+  func run(_ trigger: Trigger, budget: Duration? = nil, retestingLatch: Bool = false) async -> Outcome {
     guard !closed else { return .notRun }
     if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return .notRun }
     guard !paused else {
@@ -245,8 +245,8 @@ actor WorkCoordinator {
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {
-      if !Self.joins(trigger, running: current, queued: rerun) {
-        if Self.queues(trigger, over: rerun) { rerun = trigger }
+      if !Self.joins(trigger, running: current, queued: rerun, retestingLatch: retestingLatch) {
+        if retestingLatch || Self.queues(trigger, over: rerun) { rerun = trigger }
         rerunLimit = rerunLimit.widened(by: deadline)
       }
       task = t
@@ -265,8 +265,10 @@ actor WorkCoordinator {
     return out
   }
 
-  static func joins(_ trigger: Trigger, running: Trigger?, queued: Trigger?) -> Bool {
-    trigger == .refresh && [running, queued].contains { $0?.mailbox != nil }
+  static func joins(_ trigger: Trigger, running: Trigger?, queued: Trigger?, retestingLatch: Bool = false) -> Bool {
+    let runs = [running, queued]
+    if retestingLatch { return runs.contains { $0?.sync.retestsALatch == true } }
+    return trigger == .refresh && runs.contains { $0?.mailbox != nil }
   }
 
   static func queues(_ trigger: Trigger, over queued: Trigger?) -> Bool {

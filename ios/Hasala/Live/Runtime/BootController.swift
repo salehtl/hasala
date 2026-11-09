@@ -381,7 +381,7 @@ final class BootController {
     guard syncHalt != nil, !retryingSync, let rt = runtime else { return }
     retryingSync = true
     Task {
-      let out = await rt.coordinator.run(.refresh)
+      let out = await rt.coordinator.run(.refresh, retestingLatch: true)
       let latch = await rt.engine.status.latch
       retryingSync = false
       guard runtime === rt else { return }

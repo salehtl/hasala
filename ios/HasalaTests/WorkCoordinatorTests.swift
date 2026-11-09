@@ -400,6 +400,80 @@ struct WorkCoordinatorTests {
     #expect(!WorkCoordinator.joins(.silentPush, running: .launch, queued: nil))
   }
 
+  @Test(arguments: [WorkCoordinator.Trigger.silentPush, .bgRefresh, .bgProcessing, .authored])
+  func aWallRetryRunsAfterARunThatLeavesTheLatch(running: WorkCoordinator.Trigger) async {
+    let log = Log()
+    let c = Self.coordinator(log, delay: .milliseconds(80))
+    let first = Task { await c.run(running) }
+    while await c.runs == 0 { await Task.yield() }
+    let retry = await c.run(.refresh, retestingLatch: true)
+    _ = await first.value
+    #expect(await c.runs == 2)
+    #expect(log.all.filter { $0.hasPrefix("sync.") } == ["sync.\(running.sync.rawValue)", "sync.refresh"])
+    #expect(retry.ran)
+    #expect(!WorkCoordinator.joins(.refresh, running: running, queued: nil, retestingLatch: true))
+  }
+
+  @Test(arguments: [WorkCoordinator.Trigger.launch, .foreground, .refresh, .retryMail])
+  func aWallRetryJoinsARunThatTestsTheLatchAgain(asked: WorkCoordinator.Trigger) {
+    #expect(WorkCoordinator.joins(.refresh, running: asked, queued: nil, retestingLatch: true))
+    #expect(WorkCoordinator.joins(.refresh, running: .silentPush, queued: asked, retestingLatch: true))
+    #expect(!WorkCoordinator.joins(.refresh, running: .silentPush, queued: .bgRefresh, retestingLatch: true))
+    #expect(!WorkCoordinator.joins(.refresh, running: nil, queued: nil, retestingLatch: true))
+  }
+
+  static func eventually(_ condition: () async -> Bool) async throws {
+    while await !condition() { try await Task.sleep(for: .milliseconds(5)) }
+  }
+
+  @Test(.timeLimit(.minutes(1)), arguments: [WorkCoordinator.Trigger.silentPush, .bgRefresh, .bgProcessing, .authored])
+  func aWallRetryTakesThePlaceOfAQueuedBackgroundRun(queued: WorkCoordinator.Trigger) async throws {
+    let log = Log()
+    let door = ModelSuggestionStageTests.Door()
+    let sync: WorkCoordinator.SyncStage = { trigger, _ in
+      log.add("sync.\(trigger.rawValue)")
+      await door.pass()
+      return (newData: true, stop: nil)
+    }
+    let c = WorkCoordinator(stages: .init(sync: sync, mailbox: nil, committed: {}, stopped: { _ in }))
+    defer { door.open() }
+    let first = Task { await c.run(.authored) }
+    try await Self.eventually { await c.runs == 1 }
+    let background = Task { await c.run(queued) }
+    try await Self.eventually { await c.queued == queued }
+    let retry = Task { await c.run(.refresh, retestingLatch: true) }
+    try await Self.eventually { await c.queued == .refresh }
+    door.open()
+    _ = await (first.value, background.value, retry.value)
+    #expect(log.all == ["sync.authored", "sync.refresh"])
+  }
+
+  @Test func aWallRetryHearsWhatItsOwnRunFound() async {
+    let log = Log()
+    let sync: WorkCoordinator.SyncStage = { trigger, _ in
+      log.add("sync.\(trigger.rawValue)")
+      if trigger == .silentPush {
+        try? await Task.sleep(for: .milliseconds(80))
+        return (newData: false, stop: .latched(.chainBreak))
+      }
+      return (newData: true, stop: nil)
+    }
+    let c = WorkCoordinator(stages: .init(sync: sync, mailbox: nil, committed: {}, stopped: { _ in }))
+    let first = Task { await c.run(.silentPush) }
+    while await c.runs == 0 { await Task.yield() }
+    let retry = await c.run(.refresh, retestingLatch: true)
+    _ = await first.value
+    #expect(log.all == ["sync.silentPush", "sync.refresh"])
+    #expect(retry.stop == nil)
+  }
+
+  @Test func aWallRetryRunsThePullsStages() async {
+    let log = Log()
+    let c = Self.coordinator(log, delay: .zero)
+    _ = await c.run(.refresh, retestingLatch: true)
+    #expect(log.all == ["sync.refresh", "mail.refresh", "committed"])
+  }
+
   @Test func aRunThatWentThroughSaysUpdated() async {
     let out = await Self.coordinator(Log()).run(.refresh)
     #expect(out.ran)
