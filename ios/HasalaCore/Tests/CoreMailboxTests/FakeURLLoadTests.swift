@@ -4,36 +4,45 @@ import Foundation
 import Synchronization
 import Testing
 
-@Suite struct FakeURLLoadTests {
-  final class HeldAnswer: HTTPExchange {
-    struct State {
-      var entered = false
-      var cancelled = false
-      var released = false
-      var returned = false
-    }
+@Suite(.timeLimit(.minutes(1))) struct FakeURLLoadTests {
+  struct Signal: Sendable {
+    private let events = AsyncStream<Never>.makeStream()
 
-    let state = Mutex(State())
+    func fire() { events.continuation.finish() }
+    func wait() async { for await _ in events.stream {} }
+  }
+
+  final class HeldAnswer: HTTPExchange {
+    let entered = Signal()
+    let cancelled = Signal()
+    let returned = Signal()
+    private let gate = Gate()
 
     func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
-      state.withLock { $0.entered = true }
-      while !state.withLock({ $0.released }) {
-        if Task.isCancelled { state.withLock { $0.cancelled = true } }
-        await Task.yield()
+      entered.fire()
+      await withTaskCancellationHandler {
+        await gate.pass()
+      } onCancel: {
+        cancelled.fire()
       }
-      state.withLock { $0.returned = true }
+      returned.fire()
       return HTTPResponse(status: 200)
     }
 
-    func release() { state.withLock { $0.released = true } }
+    func release() { gate.open() }
   }
 
   final class Answer: HTTPExchange {
+    let gone = Signal()
+
+    deinit { gone.fire() }
+
     func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse { HTTPResponse(status: 200) }
   }
 
   final class RecordingClient: NSObject, URLProtocolClient {
     let calls = Mutex<[String]>([])
+    let ended = Signal()
 
     func note(_ call: String) { calls.withLock { $0.append(call) } }
     func urlProtocol(_ protocol: URLProtocol, wasRedirectedTo request: URLRequest, redirectResponse: URLResponse) { note("redirect") }
@@ -42,22 +51,19 @@ import Testing
       note("response")
     }
     func urlProtocol(_ protocol: URLProtocol, didLoad data: Data) { note("data") }
-    func urlProtocolDidFinishLoading(_ protocol: URLProtocol) { note("finished") }
-    func urlProtocol(_ protocol: URLProtocol, didFailWithError error: any Error) { note("failed") }
+    func urlProtocolDidFinishLoading(_ protocol: URLProtocol) {
+      note("finished")
+      ended.fire()
+    }
+    func urlProtocol(_ protocol: URLProtocol, didFailWithError error: any Error) {
+      note("failed")
+      ended.fire()
+    }
     func urlProtocol(_ protocol: URLProtocol, didReceive challenge: URLAuthenticationChallenge) { note("challenge") }
     func urlProtocol(_ protocol: URLProtocol, didCancel challenge: URLAuthenticationChallenge) { note("cancel") }
   }
 
   static let url = URL(string: "https://gmail.googleapis.com/x")!
-
-  func eventually(_ condition: () -> Bool) async -> Bool {
-    let deadline = ContinuousClock.now + .seconds(5)
-    while ContinuousClock.now < deadline {
-      if condition() { return true }
-      try? await Task.sleep(for: .milliseconds(2))
-    }
-    return condition()
-  }
 
   func load(_ fake: any HTTPExchange, client: RecordingClient) -> (FakeGmailURLProtocol, String) {
     let id = FakeGmailURLProtocol.register(fake)
@@ -70,14 +76,13 @@ import Testing
     let held = HeldAnswer()
     let http = FakeGmailURLProtocol.exchange(for: held)
     let task = Task { try? await http.send(HTTPRequest(method: .get, url: Self.url)) }
-    #expect(await eventually { held.state.withLock { $0.entered } })
+    await held.entered.wait()
 
     task.cancel()
 
-    let cancelled = await eventually { held.state.withLock { $0.cancelled } }
+    await held.cancelled.wait()
     held.release()
     _ = await task.value
-    #expect(cancelled)
   }
 
   @Test func afterStopLoadingTheClientHearsNothing() async throws {
@@ -86,12 +91,12 @@ import Testing
     let (loading, id) = load(held, client: client)
     defer { FakeGmailURLProtocol.forget(id) }
     loading.startLoading()
-    #expect(await eventually { held.state.withLock { $0.entered } })
+    await held.entered.wait()
 
     loading.stopLoading()
     held.release()
 
-    #expect(await eventually { held.state.withLock { $0.returned } })
+    await held.returned.wait()
     try await Task.sleep(for: .milliseconds(100))
     #expect(client.calls.withLock { $0 }.isEmpty)
   }
@@ -103,17 +108,18 @@ import Testing
 
     loading.startLoading()
 
-    #expect(await eventually { client.calls.withLock { $0 } == ["response", "data", "finished"] })
+    await client.ended.wait()
+    #expect(client.calls.withLock { $0 } == ["response", "data", "finished"])
   }
 
   @Test func anExchangeThatIsGoneReleasesItsFake() async throws {
-    weak var released: Answer?
+    let gone: Signal
     do {
       let fake = Answer()
-      released = fake
+      gone = fake.gone
       let http = FakeGmailURLProtocol.exchange(for: fake)
       #expect(try await http.send(HTTPRequest(method: .get, url: Self.url)).status == 200)
     }
-    #expect(await eventually { released == nil })
+    await gone.wait()
   }
 }
