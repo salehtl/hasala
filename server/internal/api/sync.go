@@ -423,8 +423,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		return
 	}
 
-	seqs, stored, err := s.Appender.AppendClientStored(r.Context(), userID, req.WriterID, req.Stream, rows, headSig)
-	if !stored {
+	seqs, outcome, err := s.Appender.AppendClientOutcome(r.Context(), userID, req.WriterID, req.Stream, rows, headSig)
+	if outcome == oplog.AppendAddedNothing {
 		s.SyncUploadBytes.RefundN(userID.String(), float64(uploadBytes))
 	}
 	if err != nil {

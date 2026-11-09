@@ -420,11 +420,18 @@ func bindSessionTx(ctx context.Context, tx pgx.Tx, sessionHash []byte, userID uu
 // ReapSessions is spec 02 §9.7's sessions sweep.
 func (s *Sessions) ReapSessions(ctx context.Context) (int64, error) {
 	now := s.now()
+	forgotten, err := s.Pool.Exec(ctx,
+		`DELETE FROM apns_tokens WHERE session_hash IN (SELECT token_hash FROM sessions
+		   WHERE revoked_at IS NOT NULL OR expires_at <= $1 OR last_used_at <= $2)`,
+		now, now.Add(-s.TTL))
+	if err != nil {
+		return 0, fmt.Errorf("auth: forget push tokens of ended sessions: %w", err)
+	}
 	tag, err := s.Pool.Exec(ctx,
 		`DELETE FROM sessions WHERE revoked_at < $1 OR expires_at < $1 OR last_used_at < $2`,
 		now.Add(-30*24*time.Hour), now.Add(-s.TTL-30*24*time.Hour))
 	if err != nil {
-		return 0, fmt.Errorf("auth: reap sessions: %w", err)
+		return forgotten.RowsAffected(), fmt.Errorf("auth: reap sessions: %w", err)
 	}
-	return tag.RowsAffected(), nil
+	return forgotten.RowsAffected() + tag.RowsAffected(), nil
 }

@@ -246,6 +246,18 @@ type QueueingWaker interface {
 	TryWakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r pushv2.Reason) bool
 }
 
+func ForgetUnrelayedWatches(ctx context.Context, pool *pgxpool.Pool, relayed ...string) error {
+	if relayed == nil {
+		relayed = []string{}
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE mailbox_links SET watch_expires_at = NULL, updated_at = now()
+		  WHERE watch_expires_at IS NOT NULL AND provider <> ALL($1)`, relayed); err != nil {
+		return fmt.Errorf("gmailpush: forget watches: %w", err)
+	}
+	return nil
+}
+
 // Nudge is spec 02 §13.7, run every 15 minutes: a holder whose watch was never
 // reported (an hour after linking) or expires within 36 hours gets one nudge
 // wake, and no second one for 12 hours. The mark is taken back for a wake w

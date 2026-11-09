@@ -281,7 +281,7 @@ func (a *Appender) appendRows(ctx context.Context, rows []Row, prepare prepareFu
 		return nil, a.budget().RecordRefusal(ctx, err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("oplog: append: commit: %w", err)
+		return nil, fmt.Errorf("oplog: append: commit: %w: %w", errCommitUnanswered, err)
 	}
 	return seqs, nil
 }
