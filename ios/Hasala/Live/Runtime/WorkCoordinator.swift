@@ -231,11 +231,11 @@ actor WorkCoordinator {
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
     guard !closed else { return .notRun }
+    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return .notRun }
     guard !paused else {
       hold(trigger)
       return .notRun
     }
-    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return .notRun }
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {

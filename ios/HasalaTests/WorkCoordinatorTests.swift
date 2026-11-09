@@ -504,6 +504,49 @@ struct WorkCoordinatorTests {
     #expect(await c.resume() == nil)
   }
 
+  @Test(arguments: [WorkCoordinator.Trigger.authored, .silentPush])
+  func aSpacedForegroundDuringAPauseDoesNotTakeOverWhatWasHeld(_ trigger: WorkCoordinator.Trigger) async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    _ = await c.run(.foreground)
+    await c.pause()
+    _ = await c.run(trigger)
+    _ = await c.run(.foreground)
+    let held = await c.resume()
+    #expect(held == trigger)
+    if let held { _ = await c.run(held) }
+    #expect(await c.runs == 2)
+  }
+
+  @Test(arguments: [WorkCoordinator.Trigger.authored, .silentPush])
+  func aSpacedForegroundBeforeTheHeldWorkIsNotKept(_ trigger: WorkCoordinator.Trigger) async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    _ = await c.run(.foreground)
+    await c.pause()
+    _ = await c.run(.foreground)
+    _ = await c.run(trigger)
+    #expect(await c.resume() == trigger)
+  }
+
+  @Test func aSpacedForegroundAloneDuringAPauseLeavesNothingToRun() async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    _ = await c.run(.foreground)
+    await c.pause()
+    let out = await c.run(.foreground)
+    #expect(!out.ran && out.stop == .notNow)
+    #expect(await c.resume() == nil)
+  }
+
+  @Test func aForegroundDueDuringAPauseRunsAtResume() async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    await c.pause()
+    _ = await c.run(.authored)
+    _ = await c.run(.foreground)
+    let held = await c.resume()
+    #expect(held == .foreground)
+    if let held { _ = await c.run(held) }
+    #expect(await c.runs == 1)
+  }
+
   static func slowStop(_ log: Log, _ stop: SyncStop, after: Duration = .milliseconds(150)) -> WorkCoordinator {
     WorkCoordinator(
       stages: .init(
