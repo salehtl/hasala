@@ -397,14 +397,20 @@ enum ReviewEntry {
 
   /// Opens the deck, at `card` when given, in the app's period.
   static func open(_ app: AppModel, at card: TxnID?) {
-    request(app, at: card)
     app.startReview()
+    request(app, at: card)
   }
 
   /// The next session for `app` starts at `card` (the cover opens it).
   static func request(_ app: AppModel, at card: TxnID?) {
     requester = app
     start = card
+  }
+
+  static func forget(_ app: AppModel) {
+    guard requester === app else { return }
+    requester = nil
+    start = nil
   }
 
   /// The card a new session for `app` starts at; the request is used up.

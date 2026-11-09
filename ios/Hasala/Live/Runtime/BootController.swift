@@ -93,6 +93,7 @@ final class BootController {
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
       hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(),
       unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard),
+      finishRows: FinishSetupRows(defaults: .standard),
       bankTexts: LiveBankTexts(runtime: { holder.boot?.runtime }))
     let first = AccountSession(services: services, phase: .signedOut)
     session = first

@@ -51,6 +51,22 @@ struct ActivityReviewModelTests {
     #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
   }
 
+  @Test func aRowTappedOverAnOpenDeckDoesNotSeedALaterPlainStart() {
+    let app = AppModel(store: InMemoryLedger())
+    ReviewEntry.open(app, at: "lulu")
+    _ = ReviewViewModel(app: app)
+    ReviewEntry.open(app, at: "atm")
+    app.cover = nil
+    app.startReview()
+    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
+    ReviewEntry.open(app, at: "atm")
+    app.cover = nil
+    app.startReview(over: .allTime)
+    #expect(ReviewViewModel(app: app).cards.first?.id != "atm")
+    ReviewEntry.open(app, at: "lulu")
+    #expect(ReviewViewModel(app: app).cards.first?.id == "lulu")
+  }
+
   /// A swipe or a pill asks which category; the bucket's list keeps its own order with the
   /// suggestion in its place, and so do the projects; the sheet's sort files it and VoiceOver
   /// hears where the deck stands.

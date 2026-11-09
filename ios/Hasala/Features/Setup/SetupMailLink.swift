@@ -42,6 +42,7 @@ final class SetupMailLink: MailboxConnecting {
   var capabilities: MailboxCapabilities { base.capabilities }
   var mailboxes: [MailboxSnapshot] { base.mailboxes }
   var offer: MailOffer? { base.offer }
+  var offerKnown: Bool { base.offerKnown }
   var linkedProvider: MailProviderKind? { base.linkedProvider }
   var heldElsewhere: MailProviderKind? { base.heldElsewhere }
   var offersSampleData: Bool { base.offersSampleData }

@@ -24,8 +24,12 @@ final class NotificationReads {
 
   func unread(_ items: [NotificationItem]) -> [NotificationItem] { items.filter { !isRead($0) } }
 
-  func markAllRead(_ items: [NotificationItem]) {
-    reads = Dictionary(items.map(entry), uniquingKeysWith: max)
+  func markAllRead(_ items: [NotificationItem], keeping held: [NotificationItem] = []) {
+    var next = Dictionary(items.map(entry), uniquingKeysWith: max)
+    for (key, _) in held.map(entry) where next[key] == nil {
+      next[key] = reads[key]
+    }
+    reads = next
     defaults?.set(reads.map { "\($0.key)|\($0.value)" }.sorted(), forKey: Self.key)
   }
 

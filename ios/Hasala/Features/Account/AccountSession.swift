@@ -235,5 +235,6 @@ struct AccountServices {
   var cloudSort: CloudSortOffering?
   var unseenPhrase: any UnseenPhraseNoting = InMemoryUnseenPhrase()
   var manualEntry = ManualEntryChoice()
+  var finishRows = FinishSetupRows()
   var bankTexts: (any BankTextsConnecting)?
 }

@@ -2,6 +2,7 @@ import Foundation
 import HasalaMocks
 import HasalaModels
 import Testing
+import UIKit
 
 @testable import Hasala
 
@@ -58,6 +59,52 @@ struct BillsScreenTests {
     #expect(model.isDirty)
   }
 
+  private func appleModel(_ app: AppModel) -> AddRecurringModel {
+    let model = AddRecurringModel(app: app, decimalSeparator: ".")
+    model.name = "Apple"
+    model.keys = ["apple.com"]
+    model.amountText = "14.99"
+    return model
+  }
+
+  @Test func theLinkCountIsWhatWillBeLinked() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let model = appleModel(app)
+    #expect(model.suggestions.map(\.id) == ["apple"])
+    #expect(model.linkTitle == "Add without them")
+    model.ticked = ["apple"]
+    #expect(model.linkTitle == "Add and link 1 payment")
+    model.ticked = ["apple", "not-suggested"]
+    #expect(model.linkable == ["apple"] && model.linkTitle == "Add and link 1 payment")
+    model.amountText = "15.50"
+    #expect(model.suggestions.isEmpty && model.linkable.isEmpty && model.linkTitle == "Add without them")
+    model.amountText = "14.99"
+    #expect(model.linkTitle == "Add and link 1 payment")
+    #expect(model.save())
+    let added = try #require(app.store.state.bills.last { $0.name == "Apple" })
+    #expect(added.payments.compactMap(\.txnID) == ["apple"])
+  }
+
+  @Test func aSecondAddDoesNotAddItAgain() {
+    let app = AppModel(store: InMemoryLedger())
+    let model = appleModel(app)
+    let before = app.store.state.bills.count
+    #expect(model.save())
+    #expect(!model.save())
+    #expect(app.store.state.bills.count == before + 1)
+  }
+
+  @Test func anAddThatCouldNotStartCanBeTriedAgain() {
+    let app = AppModel(store: InMemoryLedger())
+    let model = AddRecurringModel(app: app, decimalSeparator: ".")
+    let before = app.store.state.bills.count
+    #expect(!model.save())
+    model.name = "Gym"
+    model.amountText = "200"
+    #expect(model.save())
+    #expect(app.store.state.bills.count == before + 1)
+  }
+
   @Test func editFormsCompareWithWhatTheyOpenedWith() throws {
     let state = MayaLedger.state
     let dewa = try #require(state.bill("dewa"))
@@ -74,6 +121,56 @@ struct BillsScreenTests {
     var later = salary
     later.payday = salary.payday == 1 ? 2 : 1
     #expect(later != salary)
+  }
+
+  private final class SheetDelegate: NSObject, UIAdaptivePresentationControllerDelegate {}
+
+  private func sheet(_ delegate: SheetDelegate) -> UIPresentationController {
+    let controller = UIPresentationController(presentedViewController: UIViewController(), presenting: nil)
+    controller.delegate = delegate
+    return controller
+  }
+
+  @Test func aGuardWithNothingToGuardLeavesTheSheetAlone() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    let attempt = DismissAttempt.Controller()
+    attempt.setEnabled(false, on: presentation)
+    #expect(presentation.delegate === delegate)
+  }
+
+  @Test func aGuardHandsTheSheetBackWhenItStopsGuarding() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    let attempt = DismissAttempt.Controller()
+    attempt.setEnabled(true, on: presentation)
+    #expect(presentation.delegate === attempt.proxy && attempt.proxy.original === delegate)
+    attempt.setEnabled(false)
+    #expect(presentation.delegate === delegate && attempt.proxy.original == nil)
+    attempt.setEnabled(true, on: presentation)
+    #expect(presentation.delegate === attempt.proxy && attempt.proxy.original === delegate)
+  }
+
+  @Test func aGuardRemovedWhileGuardingHandsTheSheetBack() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    do {
+      let attempt = DismissAttempt.Controller()
+      attempt.setEnabled(true, on: presentation)
+      DismissAttempt.dismantleUIViewController(attempt, coordinator: ())
+    }
+    #expect(presentation.delegate === delegate)
+  }
+
+  @Test func aGuardLeavesASheetAnotherGuardHasTaken() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    let attempt = DismissAttempt.Controller()
+    attempt.setEnabled(true, on: presentation)
+    let later = SheetDelegate()
+    presentation.delegate = later
+    attempt.setEnabled(false)
+    #expect(presentation.delegate === later)
   }
 
   @Test func pauseAndEndAreFittedSheets() {

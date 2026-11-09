@@ -28,6 +28,7 @@ final class ProjectAddModel {
   var candidates: [MiniTxnRow] { PlanEngine.projectCandidates(project, app.store.state, filter: filter) }
   var narrowed: Bool { filter.narrowed }
   var shown: [MiniTxnRow] { narrowed ? candidates : [] }
+  var chosen: [MiniTxnRow] { PlanEngine.projectChosen(project, app.store.state, selected: selected) }
 
   var categories: [CategoryOption] { app.store.state.budgetCategoryOptions }
 
@@ -41,8 +42,8 @@ final class ProjectAddModel {
 
   func selectAll(_ rows: [MiniTxnRow]) { selected.formUnion(rows.map(\.id)) }
 
-  func add(_ rows: [MiniTxnRow]) {
-    let ids = rows.map(\.id).filter(selected.contains)
+  func add() {
+    let ids = chosen.map(\.id)
     guard !ids.isEmpty, app.perform(.assignProject(ids, project)) else { return }
     selected = []
     app.leaveAddToProject(project)
@@ -62,7 +63,7 @@ struct ProjectAddTransactionsView: View {
   var body: some View {
     let matches = model.shown
     let rows = Array(matches.prefix(ProjectAddModel.shownLimit))
-    let chosen = rows.filter { model.selected.contains($0.id) }
+    let chosen = model.chosen
     PlanDetailScreen(app: app, title: "Add transactions", wash: .hue(.peach)) {
       filters
         .padding(.horizontal, HSpacing.insetPage)
@@ -70,7 +71,7 @@ struct ProjectAddTransactionsView: View {
         ReflowingRow(alignment: .firstTextBaseline) {
           CountedTitle(title: "Not in this project", count: model.narrowed ? matches.count : model.candidates.count)
         } trailing: {
-          if model.narrowed, !rows.isEmpty, chosen.count < rows.count {
+          if model.narrowed, !rows.isEmpty, !rows.allSatisfy({ model.selected.contains($0.id) }) {
             Button("Select all") { model.selectAll(rows) }
               .buttonStyle(.inlineLink)
               .frame(minWidth: 44)
@@ -113,7 +114,7 @@ struct ProjectAddTransactionsView: View {
           }
         }
         Button(chosen.isEmpty ? "Choose transactions to add" : "Add \(chosen.count) to \(model.name)") {
-          model.add(rows)
+          model.add()
         }
         .buttonStyle(.pill(.primary, fill: true))
         .disabled(chosen.isEmpty)

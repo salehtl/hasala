@@ -179,6 +179,13 @@ final class AccountRuntime {
       provider: lane.provider)
   }
 
+  var mailOfferKnown: Bool {
+    guard lane != nil else { return true }
+    guard store.loaded, let phase = store.mailboxPhase else { return false }
+    return LiveMailboxConnecting.offerKnown(
+      phase: phase, sampleLoaded: store.holdsSample || reviewAccount, serverLink: serverLink)
+  }
+
   @ObservationIgnored private(set) var moveNote = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: nil)
 
   func startMoveNote(current: MailboxPhase?) {

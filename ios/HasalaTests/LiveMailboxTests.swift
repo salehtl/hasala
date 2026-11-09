@@ -48,6 +48,19 @@ struct LiveMailboxTests {
     #expect(offer(.halted, halt: .noMailbox) == Self.signInAgain)
   }
 
+  @Test func theOfferIsUnknownOnlyWhileAnUnlinkedIPhoneWaitsForTheServer() {
+    func known(_ phase: MailboxPhase, sample: Bool = false, link: MailboxLinkStatus? = nil) -> Bool {
+      LiveMailboxConnecting.offerKnown(phase: phase, sampleLoaded: sample, serverLink: link)
+    }
+    #expect(!known(.unlinked))
+    #expect(known(.unlinked, link: .noLink))
+    #expect(known(.unlinked, link: .holder(isThisDevice: false, watchExpiresAtMs: nil)))
+    #expect(known(.unlinked, sample: true))
+    for phase in MailboxPhase.allCases where phase != .unlinked {
+      #expect(known(phase))
+    }
+  }
+
   /// The offer names the lane's provider (main's `theOfferNamesTheLanesProvider`): Outlook's
   /// broken link is signed in again as Outlook. v2 has no `.change`: a working link offers
   /// nothing, and a switch is Bank alerts' "Use another email".

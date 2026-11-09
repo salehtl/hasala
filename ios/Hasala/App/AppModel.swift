@@ -175,6 +175,8 @@ final class AppModel {
   /// mail needs it.
   var mailOffer: MailOffer? { usesBankTexts ? nil : mailbox?.offer }
 
+  var mailOfferKnown: Bool { usesBankTexts || mailbox?.offerKnown ?? true }
+
   private var reviewPeriodOverride: Period?
 
   var period: Period {
@@ -359,11 +361,13 @@ final class AppModel {
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
   func startReview(afterSheetCloses: Bool = false) {
+    ReviewEntry.forget(self)
     reviewPeriodOverride = nil
     if afterSheetCloses { router.nextCover = .review } else { cover = .review }
   }
 
   func startReview(over preset: PeriodPreset) {
+    ReviewEntry.forget(self)
     reviewPeriodOverride = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
     cover = .review
   }

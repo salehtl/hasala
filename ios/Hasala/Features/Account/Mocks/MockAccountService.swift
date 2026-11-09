@@ -302,9 +302,12 @@
 
     // MARK: Signed in
 
+    var securityStateFailure: AuthFailure?
+
     func securityState() async throws(AuthFailure) -> SecurityState {
       await pause()
       if !refuseSecurity.isEmpty { throw refuseSecurity.removeFirst() }
+      if let securityStateFailure { throw securityStateFailure }
       return security
     }
 
