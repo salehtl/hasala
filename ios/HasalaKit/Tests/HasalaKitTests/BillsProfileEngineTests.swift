@@ -71,6 +71,26 @@ struct BillsProfileEngineParityTests {
     #expect(d.footnote == "Recurring payments are found from your history. Nothing is shared with AXA Insurance.")
   }
 
+  @Test func aPaymentThatLeftBeforeTheMonthTurnedCountsAgainstItsOwnDue() throws {
+    var state = s
+    let i = try #require(state.bills.firstIndex { $0.id == "rent" })
+    #expect(state.bills[i].usualDay == 1)
+    state.bills[i].nextDue = LocalDate(2026, 12, 1)
+    state.bills[i].history = [LocalDate(2026, 10, 31), LocalDate(2026, 9, 30), LocalDate(2026, 9, 1)]
+    state.bills[i].payments = []
+    let d = try #require(BillsEngine.detail(state, now: LocalDateTime(2026, 12, 4, 9, 0), bill: "rent"))
+    #expect(d.isLate)
+    #expect(d.historyNote == "3 on time")
+    #expect(d.noticed?.rendered(hidden: false)
+      == "Your last 3 payments arrived between the 30th and 1st. This month there's no bank email yet.")
+
+    state.bills[i].history = [LocalDate(2026, 11, 8), LocalDate(2026, 9, 30), LocalDate(2026, 9, 1)]
+    let late = try #require(BillsEngine.detail(state, now: LocalDateTime(2026, 12, 4, 9, 0), bill: "rent"))
+    #expect(late.historyNote == "2 of 3 on time")
+    #expect(late.noticed?.rendered(hidden: false)
+      == "Your last 3 payments arrived between the 30th and 8th. This month there's no bank email yet.")
+  }
+
   /// The other bills open the same page: a price change leads with its news, an upcoming bill
   /// with when it's due, income with when it's expected; a bill no longer tracked is gone.
   @Test func everyTrackedBillHasADetail() throws {

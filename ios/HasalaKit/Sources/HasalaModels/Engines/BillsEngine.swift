@@ -399,7 +399,7 @@ public enum BillsEngine {
 
   // MARK: One bill
 
-  /// A payment counts as on time within this many days of the usual day.
+  /// A payment counts as on time within this many days of its due.
   static let onTimeWindow = 3
 
   public static func detail(_ s: LedgerState, now: LocalDateTime, bill id: BillID) -> BillDetail? {
@@ -461,7 +461,7 @@ public enum BillsEngine {
     }
     steps += paidSteps(b, s)
 
-    let onTime = b.history.filter { abs($0.day - b.usualDay) <= onTimeWindow }.count
+    let onTime = arrivals(b).filter { abs($0.offset) <= onTimeWindow }.count
     let historyNote: String? = b.history.isEmpty
       ? nil : onTime == b.history.count ? "\(onTime) on time" : "\(onTime) of \(b.history.count) on time"
 
@@ -574,15 +574,19 @@ public enum BillsEngine {
 
   /// "Your last 6 payments arrived between the 6th and 8th." (or on one day, or the usual day).
   static func lateNotice(_ b: Bill) -> String {
-    let days = b.history.map(\.day)
-    guard let low = days.min(), let high = days.max() else {
+    let order = arrivals(b).sorted { ($0.offset, $0.date.day) < ($1.offset, $1.date.day) }
+    guard let low = order.first?.date.day, let high = order.last?.date.day else {
       return "It usually arrives on the \(PlanEngine.ordinal(b.usualDay))."
     }
-    let count = days.count
+    let count = order.count
     let subject = count == 1 ? "Your last payment" : "Your last \(count) payments"
     return low == high
       ? "\(subject) arrived on the \(PlanEngine.ordinal(low))."
       : "\(subject) arrived between the \(PlanEngine.ordinal(low)) and \(PlanEngine.ordinal(high))."
+  }
+
+  static func arrivals(_ b: Bill) -> [(date: LocalDate, offset: Int)] {
+    b.history.map { ($0, BillDueDates.nearest(b, to: $0).days(until: $0)) }
   }
 
   /// What a past payment was: the bill's own transaction that day, or else the amount it
