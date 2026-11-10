@@ -119,6 +119,7 @@ actor FakeServer: MailboxServer {
   var linkRefusal: MailboxServerError?
   var deleteRefusal: MailboxServerError?
   var topicReads = 0
+  var afterPut: (@Sendable () -> Void)?
 
   func setLink(_ l: MailboxLinkStatus) { link = l }
   func setOffline(_ v: Bool) { offline = v }
@@ -126,6 +127,7 @@ actor FakeServer: MailboxServer {
   func setWatchRefusal(_ e: MailboxServerError?) { watchRefusal = e }
   func setLinkRefusal(_ e: MailboxServerError?) { linkRefusal = e }
   func setDeleteRefusal(_ e: MailboxServerError?) { deleteRefusal = e }
+  func setAfterPut(_ f: (@Sendable () -> Void)?) { afterPut = f }
 
   func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
     if offline { throw .offline }
@@ -148,6 +150,7 @@ actor FakeServer: MailboxServer {
     if let linkRefusal { throw linkRefusal }
     linkedProviders.append(provider)
     link = .holder(isThisDevice: true, watchExpiresAtMs: nil)
+    afterPut?()
     return MailboxLinkResult(status: link)
   }
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {

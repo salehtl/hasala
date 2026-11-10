@@ -126,17 +126,26 @@ import Testing
     #expect(try await rig.store.pendingRetires().isEmpty)
   }
 
-  @Test func aSwitchThatFailsAfterTheLinkMovedRecordsNoRemove() async throws {
+  @Test func aSwitchALockedKeychainStopsKeepsTheLinkRecordsNoRemoveAndAsksAgain() async throws {
     let rig = Rig()
     await helper.signedOutWithImports(rig)
+    let plan = try #require(await rig.engine.retirePlan())
     let puts = await rig.server.puts.count
     rig.keychain.locked = true
     #expect(await helper.connect(rig, SwitchAsks(.remove)) == .failed(.keychain))
     rig.keychain.locked = false
-    #expect(await rig.server.puts.count == puts + 1)
+    #expect(await rig.server.puts.count == puts)
     #expect(try await rig.store.pendingRetires().isEmpty)
-    _ = await rig.restarted().runCycle(trigger: .launch)
+    let restarted = rig.restarted()
+    _ = await restarted.runCycle(trigger: .launch)
     #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.state().address == helper.old)
+    let again = SwitchAsks(.remove)
+    #expect(
+      await restarted.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: again.confirm)
+        == .connected(address: helper.other, anotherAddress: true, retired: .removed(3)))
+    #expect(again.questions.count == 1)
+    #expect(await rig.ledger.retired == [plan])
   }
 
   @Test func aDisconnectThatStopsBeforeTheDeleteRecordsNoRemove() async throws {

@@ -139,6 +139,15 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     return prior
   }
 
+  public func checkWritable(for grant: MailTokenGrant) throws(MailAuthError) {
+    guard grant.refreshToken != nil else { throw .reconnectRequired }
+    do {
+      if let prior = try store.read() { try store.write(prior) } else { try store.delete() }
+    } catch {
+      throw .notNow
+    }
+  }
+
   public func restore(_ token: String?) {
     cached = nil
     if let token { try? store.write(token) } else { try? store.delete() }

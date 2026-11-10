@@ -519,10 +519,10 @@ public actor MailboxEngine {
       return .failed(.stepUpFailed)
     }
     var replacedToken: String?
-    if !otherMailbox {
-      do throws(MailAuthError) { replacedToken = try await tokens.replace(with: grant) } catch {
-        return .failed(.keychain)
-      }
+    do throws(MailAuthError) {
+      if otherMailbox { try await tokens.checkWritable(for: grant) } else { replacedToken = try await tokens.replace(with: grant) }
+    } catch {
+      return .failed(.keychain)
     }
     let link: MailboxLinkResult
     do throws(MailboxServerError) {

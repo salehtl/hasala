@@ -148,9 +148,14 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
   @Test func aSwitchThatFailsRetiresNothing() async throws {
     let locked = Rig()
     await signedOutWithImports(locked)
+    let before = await seen(locked)
     locked.keychain.locked = true
     #expect(await connect(locked, SwitchAsks(.remove)) == .failed(.keychain))
     locked.keychain.locked = false
+    var after = await seen(locked)
+    #expect(after.stepUps == before.stepUps + ["mailbox.link"])
+    after.stepUps = before.stepUps
+    #expect(after == before)
     #expect(await locked.ledger.retired.isEmpty)
 
     let refused = Rig()

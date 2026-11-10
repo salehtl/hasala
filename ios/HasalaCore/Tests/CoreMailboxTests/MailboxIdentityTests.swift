@@ -226,16 +226,39 @@ import Testing
     #expect(try await !rig.store.bankHealth().isEmpty)
   }
 
+  @Test func anotherAddressWithALockedKeychainChangesNothingAndAsksAgain() async throws {
+    let rig = Rig()
+    await linkedThenSignedOut(rig)
+    let before = await rig.state()
+    let puts = await rig.server.puts.count
+    rig.gmail.email = other
+    rig.keychain.locked = true
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
+        == .failed(.keychain))
+    rig.keychain.locked = false
+    #expect(await rig.state() == before)
+    #expect(await rig.server.puts.count == puts)
+    #expect(await rig.accounted("d1") == .op)
+    let asks = SwitchAsks(.keep)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: asks.confirm)
+        == .connected(address: other, anotherAddress: true))
+    #expect(asks.questions.count == 1)
+  }
+
   @Test func anotherAddressThatCannotBeKeptLeavesNothingToResume() async throws {
     let rig = Rig()
     await linkedThenSignedOut(rig)
     rig.gmail.remove("d1")
     rig.gmail.email = other
     rig.gmail.add(SyntheticMail.enbdAlert(id: "b-new", dateMs: Rig.t0 - 2 * day))
-    rig.keychain.locked = true
+    let keychain = rig.keychain
+    await rig.server.setAfterPut { keychain.locked = true }
     #expect(
       await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
         == .failed(.keychain))
+    await rig.server.setAfterPut(nil)
     rig.keychain.locked = false
     let s = await rig.state()
     #expect(s == MailboxState())
