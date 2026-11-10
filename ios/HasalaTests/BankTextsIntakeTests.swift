@@ -439,6 +439,36 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  @Test func aLaneStateThatCouldNotBeReadIsCheckingInBankAlertsAndProfileUntilItIsRead() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+
+    rt.store.noteMailbox(MailboxEngine.stateUnread, nowMs: rt.context.clock.nowMs())
+    await rt.store.reload()
+    #expect(!mailbox.mailboxesKnown && mailbox.mailboxes.isEmpty && mailbox.heldElsewhere == nil)
+    let unread = MailboxesSummary(
+      mailbox.mailboxes, health: rt.store.state.mailbox, offer: mailbox.offer, known: mailbox.mailboxesKnown)
+    #expect(unread.title == "Checking your email" && !unread.needsYou)
+    #expect(ProfileSheet.mailboxesValue(mailbox.mailboxes, known: mailbox.mailboxesKnown).text == "Checking")
+
+    await rt.refreshMailbox()
+    #expect(mailbox.mailboxesKnown && mailbox.mailboxes.isEmpty)
+    let read = MailboxesSummary(
+      mailbox.mailboxes, health: rt.store.state.mailbox, offer: mailbox.offer, known: mailbox.mailboxesKnown)
+    #expect(read.title == "Your email isn't connected")
+    await rt.close()
+  }
+
   static func bothProviders() throws -> BuildInfo {
     try BuildInfo(infoDictionary: [
       "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "1", "HasalaGitCommit": "unset",

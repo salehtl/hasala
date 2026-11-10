@@ -68,7 +68,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// Observed through the runtime: the lane's status is read when the account opens and
   /// after every run and connect.
   var mailboxes: [MailboxSnapshot] {
-    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return [] }
+    guard let rt = runtime(), let status = rt.store.readMailboxStatus else { return [] }
     return Self.mailboxes(status, provider: rt.lane?.provider ?? .gmail, nowMs: rt.context.clock.nowMs())
   }
 
@@ -77,7 +77,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// over, after the provider screen's confirmation. The holder may be an iPhone the person
   /// no longer has (the server can't tell), so this iPhone isn't left with no way to read.
   var heldElsewhere: MailProviderKind? {
-    guard let rt = runtime(), let lane = rt.lane, let phase = rt.store.mailboxStatus?.phase else { return nil }
+    guard let rt = runtime(), let lane = rt.lane, let phase = rt.store.readMailboxStatus?.phase else { return nil }
     return Self.heldElsewhere(phase: phase, link: rt.serverLink, provider: lane.provider)
   }
 
@@ -105,7 +105,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// has none to read).
   var mailboxesKnown: Bool {
     guard let rt = runtime() else { return false }
-    return rt.lane == nil || rt.store.mailboxStatus != nil
+    return rt.lane == nil || rt.store.readMailboxStatus != nil
   }
 
   /// Observed through the runtime: the review flag arrives with `GET /account`.
@@ -133,12 +133,12 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
 
   var firstScanFinished: Bool {
     guard let rt = runtime(), !rt.store.holdsSample else { return false }
-    return rt.store.mailboxPhase == .active && rt.store.mailboxStatus?.readFromMs == nil
+    return rt.store.mailboxPhase == .active && rt.store.readMailboxStatus?.readFromMs == nil
   }
 
   var pastMailDays: Int {
     guard let rt = runtime() else { return 90 }
-    if let status = rt.store.mailboxStatus, status.readFromMs != nil, let days = status.backfillDays { return days }
+    if let status = rt.store.readMailboxStatus, status.readFromMs != nil, let days = status.backfillDays { return days }
     return MailboxEngine.backfillDays(
       newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
   }
@@ -192,7 +192,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     }
   }
 
-  var unlistedSenders: [String] { runtime()?.store.mailboxStatus?.unlisted ?? [] }
+  var unlistedSenders: [String] { runtime()?.store.readMailboxStatus?.unlisted ?? [] }
 
   func addSenderAddress(_ typed: String, for domain: String) async -> SenderAddressOutcome {
     guard let rt = runtime(), let lane = rt.lane else { return .offline }
@@ -228,13 +228,13 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
 
   /// How long ago the lane's newest alert from `bank` arrived, from its bank health rows.
   func lastEmail(_ bank: SupportedBank) -> String? {
-    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return nil }
+    guard let rt = runtime(), let status = rt.store.readMailboxStatus else { return nil }
     return Self.lastEmail(bank, health: status.health, nowMs: rt.context.clock.nowMs())
   }
 
   /// The alerts the lane read this month, from its bank health rows.
   var readThisMonth: MonthRead? {
-    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return nil }
+    guard let rt = runtime(), let status = rt.store.readMailboxStatus else { return nil }
     return Self.readThisMonth(status.health, nowMs: rt.context.clock.nowMs())
   }
 

@@ -36,6 +36,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   /// The lane's last status, as read with its phase: the mailbox row comes from it
   /// (`LiveMailboxConnecting.mailboxes`). Read-only plumbing; nothing is authored from it.
   private(set) var mailboxStatus: MailboxStatus?
+  var readMailboxStatus: MailboxStatus? { mailboxStatus.flatMap { $0.stateUnread ? nil : $0 } }
   private(set) var importProgress: MailboxProgress?
   private(set) var importSeen = false
 
