@@ -507,15 +507,18 @@ public struct PlanCell: Sendable, Equatable, Codable {
   public var movesAll: Int64 = 0
   public var movesSinceSet: Int64 = 0
   public var latestSetWrite: PlanWrite?
+  public var latestSetPosition: OpPosition?
 
   public init(
-    latestSet: Int64? = nil, onwardSet: Int64? = nil, movesAll: Int64 = 0, movesSinceSet: Int64 = 0, latestSetWrite: PlanWrite? = nil
+    latestSet: Int64? = nil, onwardSet: Int64? = nil, movesAll: Int64 = 0, movesSinceSet: Int64 = 0, latestSetWrite: PlanWrite? = nil,
+    latestSetPosition: OpPosition? = nil
   ) {
     self.latestSet = latestSet
     self.onwardSet = onwardSet
     self.movesAll = movesAll
     self.movesSinceSet = movesSinceSet
     self.latestSetWrite = latestSetWrite
+    self.latestSetPosition = latestSetPosition
   }
 }
 

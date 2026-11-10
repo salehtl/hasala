@@ -20,7 +20,8 @@
 // that keeps the head's price change, and a second create of a detected bill
 // that is absorbed when it is the same and forks when it is not, and ops below
 // v4 on current rows (a category edit, a supersede of a row in a chain, and a
-// split of more than 16 parts).
+// split of more than 16 parts), and the undo of a budget move after another
+// writer set that category's budget again.
 //
 // The snapshot is the LZFSE-compressed JSON of `StateSnapshot`. Ordered maps
 // encode their insertion order, so a warm start projects the same `ord`
@@ -92,6 +93,9 @@ public enum FoldCanary {
 {"seq":"55","writer_id":"ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d","ops":[{"v":4,"type":"txn_ingested","op_id":"canary-v4-53","authored_at":"2020-02-05T00:00:00.000Z","entity":{"kind":"txn","id":"01JC0000000000000000000082"},"parent_version":null,"ingest_id":"00000000000000000000000000000000000000000000000000000000000000f2","payload":{"amount_minor":"1800","currency":"AED","direction":"debit","posted_at":"2020-02-05T08:00:00.000Z","merchant_raw":"CANARY OLD CHAIN","last4":"4412","category":null,"needs_review":true,"tier":"template"}}]}
 {"seq":"56","writer_id":"ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d","ops":[{"v":4,"type":"txn_superseded","op_id":"canary-v4-54","authored_at":"2020-02-05T00:00:00.000Z","entity":{"kind":"txn","id":"01JC0000000000000000000083"},"parent_version":null,"ingest_id":"00000000000000000000000000000000000000000000000000000000000000f2","payload":{"amount_minor":"1801","currency":"AED","direction":"debit","posted_at":"2020-02-05T08:00:00.000Z","merchant_raw":"CANARY OLD CHAIN","last4":"4412","category":null,"needs_review":true,"tier":"template"}}]}
 {"seq":"57","writer_id":"ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d","ops":[{"v":3,"type":"txn_superseded","op_id":"canary-v3-55","authored_at":"2020-02-05T00:00:00.000Z","entity":{"kind":"txn","id":"01JC0000000000000000000084"},"parent_version":null,"ingest_id":"00000000000000000000000000000000000000000000000000000000000000f2","payload":{"amount_minor":"1802","currency":"AED","direction":"debit","posted_at":"2020-02-05T08:00:00.000Z","merchant_raw":"CANARY OLD CHAIN","last4":"4412","needs_review":true,"tier":"template"}}]}
+{"seq":"58","writer_id":"ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d","ops":[{"v":4,"type":"budget_set","op_id":"canary-v4-56","authored_at":"2020-02-05T00:00:00.000Z","parent_version":null,"payload":{"category_id":"transport","month":"2026-11","amount_minor":"50000","scope":"only"}},{"v":4,"type":"budget_moved","op_id":"canary-v4-57","authored_at":"2020-02-05T00:00:00.000Z","parent_version":null,"payload":{"month":"2026-11","from_category_id":"transport","to_category_id":"dining","amount_minor":"20000","reason":"move","batch_id":null,"undoes":null}}]}
+{"seq":"59","writer_id":"ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e","ops":[{"v":4,"type":"budget_set","op_id":"canary-v4-58","authored_at":"2020-02-06T00:00:00.000Z","parent_version":null,"payload":{"category_id":"transport","month":"2026-11","amount_minor":"30000","scope":"only"}}]}
+{"seq":"60","writer_id":"ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d","ops":[{"v":4,"type":"budget_moved","op_id":"canary-v4-59","authored_at":"2020-02-06T00:00:00.000Z","parent_version":null,"payload":{"month":"2026-11","from_category_id":"dining","to_category_id":"transport","amount_minor":"20000","reason":"undo","batch_id":null,"undoes":"canary-v4-57"}}]}
 """
 
   /// The canary as blobs of ops, in seq order.

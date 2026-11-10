@@ -145,6 +145,15 @@ enum EdgeGoldens {
           ),
         ]),
       FoldGoldenCase(
+        name: "move-undo-after-a-newer-set",
+        note: "Dining has 500.00 and moves 200.00 to groceries. Another iPhone then sets dining to 300.00, and the Undo of the move lands after it: dining reads 300.00 as typed (the newer set already absorbed the move), its moves over all months net to zero, groceries gives the 200.00 back, and the move is undone with no notice.",
+        blobs: [
+          (1, G.w1, [budget("dining", "2026-10", "50000", "only", id: "op-set-dining"), budget("groceries", "2026-10", "90000", "only", id: "op-set-groceries")]),
+          (2, G.w1, [move("dining", "groceries", "20000", id: "op-move-1")]),
+          (3, G.w2, [budget("dining", "2026-10", "30000", "only", id: "op-set-dining-again")]),
+          (4, G.w1, [move("groceries", "dining", "20000", reason: "undo", undoes: "op-move-1", id: "op-undo-1")]),
+        ]),
+      FoldGoldenCase(
         name: "same-purchase-and-its-undo",
         note: "Confirming the pair gives the USD row the AED amount as its stated value and archives the AED posting with a note; the undo the app writes with the live rate thaws the stated value, sets the rate again so the row re-freezes at it, and clears the archive and the note. The pair is offered again.",
         blobs: [

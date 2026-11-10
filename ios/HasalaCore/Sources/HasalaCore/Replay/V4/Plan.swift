@@ -40,6 +40,7 @@ extension State {
     noteOverwrite("budget", c + "|" + m, cell.latestSetWrite, cell.latestSet.map { String($0) }, w, seq: e.seq)
     cell.latestSet = a
     cell.latestSetWrite = w
+    cell.latestSetPosition = e.position
     if scope == "onward" { cell.onwardSet = a }
     cell.movesSinceSet = 0
     plan.cells[c, default: [:]][m] = cell
@@ -58,6 +59,7 @@ extension State {
     if let f = from, let t = to, utf8Equal(f, t) { throw PayloadError("a move cannot go from a category to itself") }
     if (reason == "undo") != (undoes != nil) { throw PayloadError("reason undo goes with undoes, and only with it") }
 
+    var reversed: OpPosition?
     if let u = undoes {
       guard let rec = plan.moves[u], !rec.undone, rec.undoes == nil, utf8Equal(rec.month, m),
         rec.from == to, rec.to == from, rec.amount == a
@@ -65,14 +67,16 @@ extension State {
         anomaly(e.seq, "plan_undo_mismatch", "\(e.op.opID): undoes \(u), which it does not reverse")
         return
       }
+      reversed = rec.position
     }
     // Every new value is computed with checked arithmetic before any mutation.
     var staged: [(String, PlanCell)] = []
     for (leg, delta) in [(from, -a), (to, a)] {
       guard let leg else { continue }
       var cell = plan.cells[leg]?[m] ?? PlanCell()
+      let absorbed = reversed.map { r in cell.latestSetPosition.map { r < $0 } ?? false } ?? false
       let (all, o1) = cell.movesAll.addingReportingOverflow(delta)
-      let (since, o2) = cell.movesSinceSet.addingReportingOverflow(delta)
+      let (since, o2) = absorbed ? (cell.movesSinceSet, false) : cell.movesSinceSet.addingReportingOverflow(delta)
       if o1 || o2 {
         anomaly(e.seq, "money_overflow", "\(e.op.opID): the move overflows int64")
         return

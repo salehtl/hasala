@@ -1300,6 +1300,197 @@
       }
     },
     {
+      "name": "move-undo-after-a-newer-set",
+      "group": "fold_v4",
+      "note": "Dining has 500.00 and moves 200.00 to groceries. Another iPhone then sets dining to 300.00, and the Undo of the move lands after it: dining reads 300.00 as typed (the newer set already absorbed the move), its moves over all months net to zero, groceries gives the 200.00 back, and the move is undone with no notice.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-dining",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "dining",
+                "month": "2026-10",
+                "amount_minor": "50000",
+                "scope": "only"
+              }
+            },
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-groceries",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "groceries",
+                "month": "2026-10",
+                "amount_minor": "90000",
+                "scope": "only"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-move-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "dining",
+                "to_category_id": "groceries",
+                "amount_minor": "20000",
+                "reason": "move",
+                "batch_id": null,
+                "undoes": null
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-dining-again",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "dining",
+                "month": "2026-10",
+                "amount_minor": "30000",
+                "scope": "only"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": "dining",
+                "amount_minor": "20000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-move-1"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [],
+          "homeCurrency": null,
+          "liveByIngestID": [],
+          "pendingByCurrency": [],
+          "plan": {
+            "cells": [
+              {
+                "category_id": "dining",
+                "latest_set_minor": "30000",
+                "month": "2026-10",
+                "moves_all_minor": "0",
+                "moves_since_set_minor": "0",
+                "onward_set_minor": null,
+                "write": {
+                  "at_ms": "1790841600000",
+                  "op_id": "op-set-dining-again",
+                  "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+                }
+              },
+              {
+                "category_id": "groceries",
+                "latest_set_minor": "90000",
+                "month": "2026-10",
+                "moves_all_minor": "0",
+                "moves_since_set_minor": "0",
+                "onward_set_minor": null,
+                "write": {
+                  "at_ms": "1790841600000",
+                  "op_id": "op-set-groceries",
+                  "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+                }
+              }
+            ],
+            "income_sources": [],
+            "moves": [
+              {
+                "amount_minor": "20000",
+                "batch_id": null,
+                "from": "dining",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-move-1",
+                "reason": "move",
+                "seq": "2",
+                "to": "groceries",
+                "undoes": null,
+                "undone": true
+              },
+              {
+                "amount_minor": "20000",
+                "batch_id": null,
+                "from": "groceries",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-undo-1",
+                "reason": "undo",
+                "seq": "4",
+                "to": "dining",
+                "undoes": "op-move-1",
+                "undone": false
+              }
+            ],
+            "roles": []
+          },
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [],
+          "unreadable": []
+        },
+        "state_sha256": "4202c9c1ff7254c6db0c2cef5ebcbf9dca94515f5009aaf9caa3d98c8dae7385",
+        "anomaly_kinds": []
+      }
+    },
+    {
       "name": "same-purchase-and-its-undo",
       "group": "fold_v4",
       "note": "Confirming the pair gives the USD row the AED amount as its stated value and archives the AED posting with a note; the undo the app writes with the live rate thaws the stated value, sets the rate again so the row re-freezes at it, and clears the archive and the note. The pair is offered again.",
