@@ -412,9 +412,12 @@ a downgrade that build keeps the day ledger and the rows filed here.
   name is not sent when it shares a subject with a row that may not leave the phone.
 - Clef only. It never runs Apple's model. While a run is running, or paused for a 429 or
   a 503, the foreground sweep waits (`backlogActive`). While the run is paused on the day
-  cap, the sweep runs Apple's model only, so it can answer names Clef was not asked about
-  that day. When the day has fewer requests left than the sweep has names, Clef is asked
-  about as many as are left and Apple's model about the rest. Once the run ends, the
+  cap and the rolling window has not reopened, the sweep runs Apple's model only, so it can
+  answer names Clef was not asked about that day. From the pause's reopen time the sweep
+  asks Clef again within the same day ledger, even while the run still reads paused; a
+  paused record with no reopen time keeps the sweep on Apple's model. When the day has
+  fewer requests left than the sweep has names, Clef is asked about as many as are left
+  and Apple's model about the rest. Once the run ends, the
   foreground sweep runs Clef and then Apple's model, as before.
 - One request per distinct canonical subject, asked in a random (shuffled) order, not by
   date. Answers are reused for rows that load later with the same subject.
@@ -451,8 +454,9 @@ every 5 and the remainder at the end, so a kill can lose up to 4. A request coun
 the pass fails afterwards (a cache write, the re-read, the outbox or the re-projection),
 and a pass that enqueued some of its blobs before a failure keeps those rows among the rows
 filed here. The foreground sweep asks Clef for at most what is left of the day. While a run
-is paused on the day cap, the foreground sweep doesn't ask Clef at all; Apple's on-device
-model still runs. A record from a build with the run card keeps its day ledger and the rows
+is paused on the day cap and its reopen time has not come, the foreground sweep doesn't ask
+Clef at all; Apple's on-device model still runs. From the reopen time it asks Clef for what
+is left of the day, before the run resumes. A record from a build with the run card keeps its day ledger and the rows
 filed here; a run it had paused at the old per-run cap, or that the person stopped, reads as
 ended, and the next `ensure()` starts a new one.
 
