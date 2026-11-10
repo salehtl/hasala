@@ -5,7 +5,9 @@ public enum WidgetPreview {
   public static func reading(_ stored: StoredWidgetSnapshot, at date: Date, isPreview: Bool) -> WidgetReading {
     let reading = WidgetReading(stored, at: date)
     guard isPreview, reading.snapshot == nil else { return reading }
-    return WidgetReading(snapshot(asOf: WidgetClock.today(at: date)), at: date)
+    var shown = WidgetReading(snapshot(asOf: WidgetClock.today(at: date)), at: date)
+    shown.sample = true
+    return shown
   }
 
   public static func reading(_ stored: WidgetSnapshot?, at date: Date, isPreview: Bool) -> WidgetReading {

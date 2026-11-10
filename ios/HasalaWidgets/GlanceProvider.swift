@@ -18,7 +18,7 @@ struct GlanceEntry: TimelineEntry {
 
   init(date: Date, stored: StoredWidgetSnapshot, selection: String?, isPreview: Bool = false) {
     let reading = WidgetPreview.reading(stored, at: date, isPreview: isPreview)
-    self.init(date: date, snapshot: reading.snapshot, selection: selection, stale: reading.stale)
+    self.init(date: date, snapshot: reading.snapshot, selection: reading.selection(selection), stale: reading.stale)
   }
 
   private static func stored() -> StoredWidgetSnapshot {
