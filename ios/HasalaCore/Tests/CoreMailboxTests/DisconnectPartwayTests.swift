@@ -180,6 +180,37 @@ import Testing
     #expect(await rig.ledger.retired == [plan])
   }
 
+  @Test(arguments: [Backend.sqlite, .memory])
+  func aKeptRemovalEndsWhenThatMailboxIsConnectedAgain(_ backend: Backend) async throws {
+    let rig = Rig(backend: backend)
+    let plan = try await withPlan(rig)
+    await rig.ledger.setRetireFails(true)
+    #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
+    await rig.ledger.setRetireFails(false)
+    #expect(try await rig.store.heldRetires() == [plan])
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+      == .connected(address: SyntheticMail.defaultTo))
+    #expect(try await rig.store.heldRetires().isEmpty)
+    #expect(await rig.engine.status().heldRetires.isEmpty)
+    _ = await rig.engine.retryHeld(plan)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.engine.disconnect(removing: nil) == .disconnected)
+    #expect(await rig.engine.heldRetires().isEmpty)
+  }
+
+  @Test func aKeptRemovalOfTheMailboxLinkedNowIsNotOfferedOrWritten() async throws {
+    let rig = Rig()
+    let plan = try await withPlan(rig)
+    var held = MailboxCommit()
+    held.holdRetire = plan
+    try await rig.store.commit(held)
+    #expect(try await rig.store.heldRetires() == [plan])
+    #expect(await rig.engine.heldRetires().isEmpty)
+    #expect(await rig.engine.status().heldRetires.isEmpty)
+    #expect(await rig.engine.retryHeld(plan) == .failed)
+    #expect(await rig.ledger.retired.isEmpty)
+  }
+
   @Test func aLinkThatCouldNotBeDeletedRemovesNothing() async throws {
     let rig = Rig()
     let plan = try await withPlan(rig)

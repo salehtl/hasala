@@ -594,6 +594,7 @@ public actor MailboxEngine {
     }
     var c = commitState(s)
     c.clearAll = fresh
+    c.endRetire = ((try? await store.heldRetires()) ?? []).first { links(s, $0) }
     do { try await commitForgetting(c) } catch {
       if otherMailbox { await abandonSwitch() }
       return .failed(.keychain)
@@ -711,14 +712,25 @@ public actor MailboxEngine {
   }
 
   public func heldRetires() async -> [MailboxRetirePlan] {
-    (try? await store.heldRetires()) ?? []
+    let state = (try? await store.loadState()) ?? MailboxState()
+    return offered((try? await store.heldRetires()) ?? [], state)
+  }
+
+  private func offered(_ held: [MailboxRetirePlan], _ state: MailboxState) -> [MailboxRetirePlan] {
+    held.filter { !links(state, $0) }
+  }
+
+  private func links(_ state: MailboxState, _ plan: MailboxRetirePlan) -> Bool {
+    guard let linked = state.heldProvider, linked.rawValue == plan.provider else { return false }
+    return config.grantID(provider: linked, address: state.address) == plan.grantID
   }
 
   public func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome {
     let removed = MailboxRetireOutcome.removed(plan.countKnown ? plan.total : nil)
     let authored: Bool? = await exclusive {
-      guard let held = try? await store.heldRetires() else { return nil }
+      guard let held = try? await store.heldRetires(), let state = try? await store.loadState() else { return nil }
       guard held.contains(plan) else { return false }
+      guard !links(state, plan) else { return nil }
       do throws(MailboxLedgerError) { try await ledger.authorRetire(plan) } catch { return nil }
       await endRetire(plan)
       return true
@@ -1652,7 +1664,7 @@ public actor MailboxEngine {
       watchActive: state.watchExpiresAtMs.map { $0 > clock.nowMs() } ?? false,
       unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:],
       readFromMs: state.readFromMs, backfillDays: state.backfillDays,
-      connectedAtMs: state.scanStartedMs ?? state.readFromMs, heldRetires: (try? await store.heldRetires()) ?? [])
+      connectedAtMs: state.scanStartedMs ?? state.readFromMs, heldRetires: offered((try? await store.heldRetires()) ?? [], state))
     lastStatus = status
     return status
   }

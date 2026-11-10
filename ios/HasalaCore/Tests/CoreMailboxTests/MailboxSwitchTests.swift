@@ -198,6 +198,22 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
     #expect(done.phase == .active && done.ops == 1)
   }
 
+  @Test func switchingBackEndsTheRemovalKeptForThatMailbox() async throws {
+    let rig = Rig()
+    await signedOutWithImports(rig)
+    await rig.ledger.setRetireFails(true)
+    #expect(await connect(rig, SwitchAsks(.remove)) == .connected(address: other, anotherAddress: true, retired: .failed))
+    await rig.ledger.setRetireFails(false)
+    #expect(try await rig.store.heldRetires().map(\.grantID) == [oldGrant])
+    #expect(await rig.engine.status().heldRetires.map(\.address) == [old])
+    _ = await rig.engine.runCycle(trigger: .launch)
+    rig.gmail.email = old
+    #expect(await connect(rig, SwitchAsks(.keep)) == .connected(address: old, anotherAddress: true))
+    #expect(try await rig.store.heldRetires().isEmpty)
+    #expect(await rig.engine.status().heldRetires.isEmpty)
+    #expect(await rig.ledger.retired.isEmpty)
+  }
+
   @Test func theSameAddressAsksNothing() async throws {
     let rig = Rig()
     await signedOutWithImports(rig)
