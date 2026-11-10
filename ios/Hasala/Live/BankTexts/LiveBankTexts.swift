@@ -83,7 +83,8 @@ final class LiveBankTexts: BankTextsConnecting {
   }
 
   private func countAsIgnored(_ m: LockedTextsMarker) {
-    guard (try? facts.update(nowMs: nowMs) { $0.addIgnored(m.count, atMs: m.latestMinuteMs) }) != nil else { return }
+    guard (try? facts.update(nowMs: nowMs) { $0.addLockedRuns(m.count, latestMinuteMs: m.latestMinuteMs) }) != nil
+    else { return }
     marker.remove()
     reload()
   }

@@ -225,7 +225,10 @@ payment cannot arrive through two channels, and no merge is needed.
 - A disconnect that leaves the account with no mailbox link (Profile › Bank alerts has this
   today) puts the account on texts, as the source of truth says. Only a run since this
   device's last mailbox connect counts: the connect clears the last-run time, so a person
-  who deleted the automation as told is not told that it is still there. When this device
+  who deleted the automation as told is not told that it is still there. Runs before the
+  first unlock count too: when the D6 marker is added to the ignored count, its latest
+  arrival minute becomes the last-run time if it is not before the time the link copy
+  learned the link, which the connect sets. When this device
   has a last-run time, and no other mailbox stays, the disconnect alert says: "If your
   Shortcuts automation is still there, Hasala will add bank texts from now on." That
   disconnect also sets the texts-chosen flag on this iPhone, so Bank alerts shows the texts
@@ -562,9 +565,10 @@ On the device, outside the synced data, and never sent:
   mailbox link on a device that saw the automation run; `BankTextsFactsData.chosen`, read as
   `OnboardingStep.Facts.textsChosen`);
 - the time the automation last ran (one value, overwritten on each run, for every text
-  handed to the action while the person is signed in and after the first unlock, because
-  the app cannot see the automation any other way, and cleared by this device's mailbox
-  connect);
+  handed to the action while the person is signed in and after the first unlock, or, while
+  the account reads bank email, the D6 marker's latest arrival minute once the marker is
+  counted, because the app cannot see the automation any other way, and cleared by this
+  device's mailbox connect);
 - the time of the last text that Hasala added as a row (one value for every sender, overwritten
   on each new row; a time kept for each bank by an older build is folded into it);
 - for each bank sender ID (the sender as iOS gave it, with its bank), a count for each day

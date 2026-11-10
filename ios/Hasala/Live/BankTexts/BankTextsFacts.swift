@@ -101,6 +101,12 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     }
   }
 
+  mutating func addLockedRuns(_ n: Int, latestMinuteMs: Int64) {
+    addIgnored(n, atMs: latestMinuteMs)
+    guard n > 0, let link, link.linked, latestMinuteMs >= LockedTextsMarkerFile.minute(link.learnedAtMs) else { return }
+    lastRunMs = max(lastRunMs ?? latestMinuteMs, latestMinuteMs)
+  }
+
   func ignoredTotal(nowMs: Int64) -> Int {
     let today = Self.day(nowMs)
     return ignored.filter { today - $0.day < Self.keptDays }.reduce(0) { $0 + $1.count }

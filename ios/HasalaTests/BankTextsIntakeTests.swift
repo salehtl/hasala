@@ -1087,6 +1087,33 @@ struct BankTextsIntakeTests {
     #expect(l.ignoredLast30Days == 3)
   }
 
+  @Test func aRunWhileLockedCountsAsARunOnlyWhenItCameAfterTheConnect() {
+    let clock = Clock(BankTextIntake.ms(Self.t0) - 120_000)
+    let after = rig()
+    keeper(after, clock).connected()
+    after.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0) - 60_000)
+    let a = lane(after)
+    a.refresh()
+    #expect(a.lockedNotice == nil && a.ignoredLast30Days == 1 && a.sawAutomationRun)
+    #expect(after.factsData.lastRunMs == LockedTextsMarkerFile.minute(BankTextIntake.ms(Self.t0) - 60_000))
+    clock.ms += 1
+    keeper(after, clock).disconnected(.disconnected)
+    #expect(after.factsData.chosen)
+
+    let before = rig()
+    setCopy(before, linked: false)
+    before.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0) - 180_000)
+    let b = lane(before)
+    b.refresh()
+    #expect(b.lockedNotice == 1)
+    keeper(before, clock).connected()
+    b.reload()
+    #expect(b.lockedNotice == nil && b.ignoredLast30Days == 1 && !b.sawAutomationRun)
+    clock.ms += 1
+    keeper(before, clock).disconnected(.disconnected)
+    #expect(!before.factsData.chosen)
+  }
+
   @Test func aLinkedAccountKeepsTheMarkerWhenTheCountCannotBeSaved() throws {
     let r = rig()
     setCopy(r, linked: true)
