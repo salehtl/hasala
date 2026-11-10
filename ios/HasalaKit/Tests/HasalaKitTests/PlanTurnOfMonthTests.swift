@@ -104,6 +104,18 @@ struct PlanAssignTests {
     #expect(plan.expiredMovesLine == "2 moves from May have ended")
     #expect(plan.keepExpiredMoves(s) == [.setBudget("2", PlanTurnOfMonthTests.june, .aed(318_00)), .setBudget("4", PlanTurnOfMonthTests.june, .aed(100_00))])
   }
+
+  @Test func onlyTheMovesKeepCanKeepAreNamed() {
+    var s = PlanTurnOfMonthTests.ledger()
+    s.plan.expiredMoves = ["2": .aed(318_00), "3": .aed(-318_00)]
+    let plan = PlanEngine.snapshot(s, now: LocalDateTime(2026, 6, 1, 9, 0))
+    #expect(plan.expiredMovesLine == "1 move from May has ended")
+    #expect(plan.keepExpiredMoves(s) == [.setBudget("2", PlanTurnOfMonthTests.june, .aed(318_00))])
+    s.plan.expiredMoves = ["3": .aed(-318_00)]
+    #expect(PlanEngine.snapshot(s, now: LocalDateTime(2026, 6, 1, 9, 0)).expiredMovesLine == nil)
+    s.plan.expiredMoves = ["2": .aed(318_00)]
+    #expect(PlanEngine.snapshot(s, now: LocalDateTime(2026, 7, 1, 9, 0), month: PlanTurnOfMonthTests.june).expiredMovesLine == nil)
+  }
 }
 
 @Suite("Pace · fewer false alarms")

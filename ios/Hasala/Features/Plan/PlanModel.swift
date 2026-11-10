@@ -12,6 +12,7 @@ protocol PlanModel: AnyObject, Observable {
   func moveMoney(to category: CategoryID?)
   func autoAssign()
   func copyLastMonth()
+  func keepExpiredMoves()
   /// Pushes the category's month (Plan · Dining).
   func open(_ category: CategoryID)
   /// Pushes the project (Plan · Japan trip).
@@ -58,6 +59,12 @@ final class PlanViewModel: PlanModel {
     let edits = snap.lastMonthBudgets.sorted { $0.key < $1.key }.map { LedgerEdit.setBudget($0.key, snap.month, $0.value) }
     guard !edits.isEmpty else { return }
     app.perform(edits, title: edits.count == 1 ? nil : "\(edits.count) budgets copied from last month")
+  }
+
+  func keepExpiredMoves() {
+    let edits = snapshot.keepExpiredMoves(app.store.state)
+    guard !edits.isEmpty else { return }
+    app.perform(edits, title: edits.count == 1 ? nil : "\(edits.count) budgets changed")
   }
 
   func newProject() { app.editProject(nil) }

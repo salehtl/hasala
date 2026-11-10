@@ -208,7 +208,7 @@ public enum PlanEngine {
       splitName: s.plan.startingSplit.map(String.init).joined(separator: "/"),
       split: split, sections: sections, projects: projects, planned: .aed(planned),
       lastMonthBudgets: lastMonthBudgets, outsidePlan: outsidePlan(projects), incomeKnown: known, income: incomeState,
-      expiredMoves: month == current ? s.plan.expiredMoves : [:], phase: phase,
+      expiredMoves: month == current ? s.plan.expiredMoves.filter { $0.value.minor > 0 } : [:], phase: phase,
       selectableMonths: selectableMonths(s, today: now.date)
     )
   }

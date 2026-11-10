@@ -52,6 +52,19 @@ struct PlanModelTests {
     #expect(MoveMoneySheet.footnote(assigns: moves, month: "October") == "You can undo this right after.")
   }
 
+  @Test func keepingTheEndedMovesSetsThisMonthsBudgets() {
+    var state = MayaLedger.state
+    state.plan.expiredMoves = ["dining": .aed(100_00), "travel": .aed(-100_00)]
+    let app = AppModel(store: InMemoryLedger(state: state))
+    let model = PlanViewModel(app: app)
+    #expect(model.snapshot.expiredMovesLine == "1 move from September has ended")
+    let before = model.snapshot.row("dining")?.budget.minor ?? 0
+    let travel = model.snapshot.row("travel")?.budget
+    model.keepExpiredMoves()
+    #expect(model.snapshot.row("dining")?.budget.minor == before + 100_00)
+    #expect(model.snapshot.row("travel")?.budget == travel)
+  }
+
   @Test func moveMoneyAsksBeforeDiscardingOnlyAfterAChange() {
     func dirty(_ destination: CategoryID? = "groceries", _ draft: String = "318.00",
                _ source: CategoryID?? = nil) -> Bool {

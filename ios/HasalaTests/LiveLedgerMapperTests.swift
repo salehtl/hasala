@@ -216,6 +216,28 @@ struct LiveLedgerMapperTests {
     #expect(got.projects.map(\.dates) == want.projects.map(\.dates))
   }
 
+  @Test func anEndedMoveIsOfferedUntilItsCategoryHasItsOwnBudgetThisMonth() async throws {
+    let october = CivilMonth(year: 2026, month: 10)!
+    let november = CivilMonth(year: 2026, month: 11)!
+    let context = LedgerStateMapper.Context(
+      today: LocalDate(2026, 11, 2),
+      profile: ProfileInfo(displayName: "Maya Rahman", email: "maya@example.com", signIn: .password))
+    let base = try await Self.foldedState(context: context).plan.expiredMoves
+    let moved = try await Self.foldedState(context: context) { o throws(AuthorError) in
+      o.moveMoney(month: october, from: nil, to: "dining", amountMinor: 100_00)
+      o.moveMoney(month: october, from: nil, to: "groceries", amountMinor: 50_00)
+    }
+    #expect(moved.plan.expiredMoves["dining"]?.minor == (base["dining"]?.minor ?? 0) + 100_00)
+    #expect(moved.plan.expiredMoves["groceries"]?.minor == (base["groceries"]?.minor ?? 0) + 50_00)
+    let kept = try await Self.foldedState(context: context) { o throws(AuthorError) in
+      o.moveMoney(month: october, from: nil, to: "dining", amountMinor: 100_00)
+      o.moveMoney(month: october, from: nil, to: "groceries", amountMinor: 50_00)
+      o.setBudget(category: "groceries", month: november, amountMinor: 2_050_00)
+    }
+    #expect(kept.plan.expiredMoves["dining"] == moved.plan.expiredMoves["dining"])
+    #expect(kept.plan.expiredMoves["groceries"] == nil)
+  }
+
   @Test func incomeReceivedAboveTheSourceIsReadyToAssign() async throws {
     let wall = Int64(1_791_633_600_000)
     let base = PlanEngine.snapshot(try await Self.foldedState(), now: MayaLedger.now)

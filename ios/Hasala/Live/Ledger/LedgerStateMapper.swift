@@ -143,7 +143,9 @@ nonisolated enum LedgerStateMapper {
     for info in taxonomy.ordered where info.kind == .spending {
       guard let row = engine.plan.cells[info.id] else { continue }
       if row[month.wire]?.latestSet == 0 { zeroSet.insert(HasalaModels.PlanState.key(info.id, YearMonth(month.year, month.month))) }
-      if let p = previous, let moved = row[p.wire]?.movesAll, moved != 0 { expiredMoves[info.id] = .aed(moved) }
+      if let p = previous, let moved = row[p.wire]?.movesAll, moved != 0, row[month.wire]?.latestSet == nil {
+        expiredMoves[info.id] = .aed(moved)
+      }
     }
     let sources = engine.plan.incomeSources.values.filter(\.active)
     let split = try r.budgetTemplate()
