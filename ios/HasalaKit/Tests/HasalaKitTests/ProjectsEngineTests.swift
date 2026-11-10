@@ -61,6 +61,10 @@ struct ProjectsEngineTests {
     #expect(p.spent == .aed(0))
     #expect(p.pending == s.txns[carrefour].amount)
     #expect(p.categories.isEmpty)
+    #expect(p.transactions.contains { $0.id == s.txns[carrefour].id && $0.toReview })
+    let candidate = PlanEngine.projectCandidates("japan", s, filter: ProjectCandidateFilter())
+      .first { $0.id == s.txns[carrefour].id }
+    #expect(candidate?.toReview == true)
   }
 
   @Test func openEndedDatesReadOnTheirOwn() {

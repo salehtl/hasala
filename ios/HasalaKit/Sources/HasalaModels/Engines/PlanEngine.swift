@@ -875,7 +875,7 @@ public extension PlanEngine {
         var r = MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
           detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? ""), amount: t.amount,
-          isIncome: t.direction == .in, toReview: t.needsReview)
+          isIncome: t.direction == .in, toReview: t.inReview)
         r.showHome(t)
         return r
       },
@@ -907,7 +907,7 @@ public extension PlanEngine {
       var r = MiniTxnRow(
         id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
         detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? "") + other, amount: t.amount,
-        toReview: t.needsReview)
+        toReview: t.inReview)
       r.showHome(t)
       return r
     }
