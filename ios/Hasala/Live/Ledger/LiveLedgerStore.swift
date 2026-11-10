@@ -346,7 +346,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       guard s.category(c) != nil else { throw .notFound }
       let i = try index(id)
       let old = s.txns[i]
-      SortPatch.file(&s.txns[i], c, at: now)
+      SortPatch.file(&s, i, c, at: now)
       if let project { s.txns[i].projectID = project }
       var inverses: [LedgerEditAuthor.Inverse] = old.splits.isEmpty ? [] : [.split(txn: id, lines: old.splits)]
       if let project, project != old.projectID { inverses.append(.project(txn: id, project: old.projectID)) }

@@ -135,6 +135,23 @@ struct CategoryManagementTests {
     #expect(ledger.state.category(coffee)?.archived == false)
   }
 
+  @Test func movingRowsOutOfAnArchivedCategoryKeepsAMatchedTransferATransfer() throws {
+    let ledger = InMemoryLedger()
+    let coffee = try add(ledger, "Coffee")
+    var s = ledger.state
+    s.txns += [
+      Txn(
+        id: "matched", merchant: "Own account", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user, isRefund: true, isTransfer: true, isMatchedTransfer: true),
+      Txn(
+        id: "plain", merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user, isRefund: true),
+    ]
+    CategoriesEngine.apply(.archiveCategory(coffee, moveTo: "dining"), to: &s, month: MayaLedger.october)
+    #expect(s.txn("matched")?.categoryID == "dining" && s.txn("matched")?.isTransfer == true)
+    #expect(s.txn("plain")?.categoryID == "dining" && s.txn("plain")?.isTransfer == false && s.txn("plain")?.isRefund == true)
+  }
+
   @Test func archivingEndsNextMonthsBudgetAndLeavesLaterMonthsSetByHand() throws {
     let ledger = InMemoryLedger()
     let coffee = try add(ledger, "Coffee")

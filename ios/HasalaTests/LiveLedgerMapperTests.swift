@@ -614,6 +614,56 @@ struct LiveLedgerMapperTests {
     #expect(t.isTransfer && !t.isRefund && t.priorFiling == nil)
   }
 
+  static func credit(
+    _ id: TxnID, category: CategoryID?, refund: Bool = false, matched: Bool = false, ruled: Bool = false
+  ) -> HasalaModels.Txn {
+    HasalaModels.Txn(
+      id: id, merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now, categoryID: category,
+      categorySource: category == nil ? nil : .user, needsReview: category == nil, isRefund: refund,
+      isTransfer: matched || category == "transfer", isMatchedTransfer: matched, merchantGroup: "test store", ruled: ruled)
+  }
+
+  @Test func theOptimisticSortKeepsTheRefundAndMatchedTransferFlagsTheLedgerReads() throws {
+    var s = MayaLedger.state
+    s.txns += [
+      Self.credit("plain", category: nil), Self.credit("refund", category: "refunds", refund: true),
+      Self.credit("matched", category: nil, matched: true),
+    ]
+    _ = try LiveLedgerStore.patch(.categorize("plain", "dining", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    _ = try LiveLedgerStore.patch(.categorize("refund", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    _ = try LiveLedgerStore.patch(.categorize("matched", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.isRefund == true && s.txn("plain")?.isTransfer == false)
+    #expect(s.txn("refund")?.isRefund == false)
+    #expect(s.txn("matched")?.isTransfer == true && s.txn("matched")?.isRefund == false)
+
+    _ = try LiveLedgerStore.patch(.categorize("plain", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.isRefund == false)
+  }
+
+  @Test func theOptimisticRuleReachKeepsTheRefundAndMatchedTransferFlagsTheLedgerReads() throws {
+    var s = MayaLedger.state
+    s.txns += [
+      Self.credit("filed", category: nil, ruled: true), Self.credit("plain", category: nil, ruled: true),
+      Self.credit("matched", category: nil, matched: true, ruled: true),
+    ]
+    _ = try LiveLedgerStore.patch(.categorize("filed", "dining", learnRule: true, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.categoryID == "dining" && s.txn("matched")?.categoryID == "dining")
+    #expect(s.txn("plain")?.isRefund == true && s.txn("plain")?.isTransfer == false)
+    #expect(s.txn("matched")?.isTransfer == true)
+
+    _ = try LiveLedgerStore.patch(.returnToReview(["plain", "matched"]), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.categoryID == nil && s.txn("plain")?.isRefund == false)
+    #expect(s.txn("matched")?.categoryID == nil && s.txn("matched")?.isTransfer == true)
+
+    var refunds = MayaLedger.state
+    refunds.txns += [
+      Self.credit("filed", category: nil, ruled: true), Self.credit("refund", category: "refunds", refund: true, ruled: true),
+    ]
+    refunds.txns[refunds.txns.count - 1].needsReview = true
+    _ = try LiveLedgerStore.patch(.categorize("filed", "salary", learnRule: true, project: nil), &refunds, now: MayaLedger.now)
+    #expect(refunds.txn("refund")?.categoryID == "salary" && refunds.txn("refund")?.isRefund == false)
+  }
+
   @Test func aWriteThatFailsIsReportedAndItsUndoDropped() async throws {
     let a = try Self.account()
     for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }

@@ -314,7 +314,7 @@ public enum CategoriesEngine {
         for k in s.txns.indices where s.txns[k].categoryID == id && s.txns[k].splits.isEmpty && !s.txns[k].archived {
           s.txns[k].categoryID = t
           s.txns[k].categorySource = .user
-          s.txns[k].isTransfer = t == "transfer"
+          s.txns[k].isTransfer = RefundEdit.filedAsTransfer(s.txns[k])
           s.txns[k].isRefund = RefundEdit.filedAsRefund(s.txns[k], in: s)
         }
       }
