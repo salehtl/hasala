@@ -149,6 +149,7 @@ struct SharedComponentTests {
   @Test func mailboxChipStatesAStatus() {
     #expect(MailboxStatusChip.word(.needsSignIn) == "Sign-in ended")
     #expect(MailboxStatusChip.word(.connected) == "Connected")
+    #expect(MailboxStatusChip.word(.readingStopped) == "Reading stopped")
   }
 
   @Test func discsGrowWithTextUpToHalfAgain() {

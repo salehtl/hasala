@@ -45,13 +45,14 @@ public enum MailProviderKind: String, CaseIterable, Sendable, Identifiable, Coda
   }
 }
 
-/// Where one mailbox is (Paper page 15 "Mailbox row": four status chips).
+/// Where one mailbox is (Paper page 15 "Mailbox row": its status chips).
 public enum MailboxState: Hashable, Sendable {
   /// Connected and reading its first alerts: "Checking now".
   case syncing
   case connected
   /// The provider ended Hasala's access; a new sign-in fixes it.
   case needsSignIn
+  case readingStopped
   /// The person disconnected it. Past transactions stay.
   case disconnected
 }

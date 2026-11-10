@@ -383,9 +383,9 @@ struct LiveMailboxTests {
     #expect(row(.active)?.state == .connected && row(.active)?.meta == "Checked 4 min ago")
     #expect(row(.active)?.banks == ["DIB"] && row(.active)?.id == "gmail")
     #expect(row(.reconnectRequired)?.state == .needsSignIn)
-    #expect(row(.halted, halt: .gmail)?.state == .connected)
-    #expect(row(.halted, halt: nil)?.state == .connected)
-    #expect(row(.halted, halt: .accountFull)?.state == .connected && row(.halted, halt: .accountFull)?.note != nil)
+    #expect(row(.halted, halt: .gmail)?.state == .readingStopped)
+    #expect(row(.halted, halt: nil)?.state == .readingStopped)
+    #expect(row(.halted, halt: .accountFull)?.state == .readingStopped && row(.halted, halt: .accountFull)?.note == nil)
     #expect(row(.otherDevice)?.note == "Read on your other iPhone")
     // Read on the other iPhone: no Disconnect and no switch from here.
     #expect(row(.otherDevice)?.readElsewhere == true && row(.otherDevice)?.state == .connected)
@@ -398,7 +398,7 @@ struct LiveMailboxTests {
       provider: .outlook, nowMs: now
     ).first
     #expect(haltedOutlook?.note == MailConnectFailure.noMailboxLine(.outlook))
-    #expect(row(.halted, halt: .gmail)?.note == "Reading your bank alerts stopped.")
+    #expect(row(.halted, halt: .gmail)?.note == nil)
     // An Outlook lane's row: its id and provider, a personal Microsoft account.
     let outlook = LiveMailboxConnecting.mailboxes(
       phase: .active, halt: nil, address: "maya.k@example.com", lastSuccessAtMs: nil, bankDomains: [],
@@ -434,8 +434,8 @@ struct LiveMailboxTests {
     #expect(!lane.mailboxesKnown && lane.mailboxes.isEmpty)
   }
 
-  /// A lane halted for a reason a new sign-in doesn't fix: its row reads connected and
-  /// nothing is offered, but the Profile card and Bank alerts must not say it works.
+  /// A lane halted for a reason a new sign-in doesn't fix: its row reads "Reading stopped"
+  /// and nothing is offered, and the Profile card and Bank alerts must not say it works.
   /// (`LedgerStateMapper.health` gives every halted phase `.reconnect`: the lane's hero is
   /// "needs you".) Another iPhone reading the mailbox is still working.
   @Test func aHaltedLaneIsNotWorking() {
@@ -494,7 +494,7 @@ struct LiveMailboxTests {
 
     let hero = BankAlertsPage.Hero(summary: quiet, health: health, mailboxes: rows, offer: nil)
     #expect(hero.kind == .needsYou && hero.title == "Needs you" && hero.hue == .sand)
-    #expect(hero.detail == quiet.detail && hero.stoppedID == nil)
+    #expect(hero.detail == quiet.detail && hero.totalsLine == nil)
 
     let undated = summary(reading(newestRowDaysAgo: nil))
     #expect(undated.title == "Bank alerts went quiet" && undated.needsYou)

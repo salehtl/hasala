@@ -30,6 +30,8 @@ enum MailCopy {
 
   static let confirmNote = "You'll confirm it's you before it connects."
 
+  static let readingStopped = "Reading your bank alerts stopped."
+
   static let pastMailTitle = "Import your past email?"
 
   static func pastWindow(days: Int) -> String { days >= 365 ? "the last year" : "the last \(days) days" }

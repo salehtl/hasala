@@ -283,7 +283,10 @@
 
     func tryAgain(_ mailboxID: String) async {
       tryAgainCalls += 1
-      if let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) { mailboxes[i].note = nil }
+      if let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) {
+        mailboxes[i].note = nil
+        if mailboxes[i].state == .readingStopped { mailboxes[i].state = .connected }
+      }
     }
 
     func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {

@@ -649,12 +649,19 @@ struct MailboxFlowTests: AccountSuite {
     let gmail = hero([MockMailbox.needingSignIn(MockMailbox.gmail)],
                      offer: .signInAgain(mailboxID: "gmail-1", provider: .gmail))
     #expect(gmail.detail == "Google ended access to maya@example.com on Wed\u{00A0}7\u{00A0}Oct.")
-    #expect(working.stoppedID == nil && broken.stoppedID == nil)
+    #expect(working.totalsLine == nil && broken.totalsLine == nil)
     var halted = MockMailbox.outlook
-    halted.note = "Reading your bank alerts stopped."
+    halted.state = .readingStopped
+    halted.lastChecked = "Wed 7 Oct, 09:14"
     let stopped = hero([MockMailbox.gmail, halted], .reconnect)
-    #expect(stopped.kind == .needsYou && stopped.stoppedID == "outlook-1")
-    #expect(stopped.detail == "Hasala stopped reading maya.k@example.com. Your Gmail still works.")
+    #expect(stopped.kind == .stopped(mailboxID: "outlook-1") && stopped.hue == .sand)
+    #expect(stopped.title == "Bank alerts stopped" && stopped.glyph?.map(\.d) == PaperGlyph.alert.map(\.d))
+    #expect(stopped.detail == "Hasala stopped reading maya.k@example.com on Wed\u{00A0}7\u{00A0}Oct. Your Gmail still works.")
+    #expect(
+      stopped.totalsLine
+        == "Payments since then aren't in your totals yet. A new sign-in won't fix this. If Try again doesn't help, email support@hasala.app.")
+    halted.lastChecked = nil
+    #expect(hero([halted], .reconnect).detail == "Hasala stopped reading maya.k@example.com.")
     let none = hero([], .notConnected, offer: .connect)
     #expect(none.kind == .notConnected && none.detail == "Add a mailbox so Hasala can read your bank alerts.")
   }
@@ -859,9 +866,9 @@ struct MailboxFlowTests: AccountSuite {
     let importing = MailboxesSummary([syncing], health: MailboxHealth(status: .importing, lastEmail: "", banks: ""),
                                      offer: nil)
     #expect(importing.title == "Importing your bank alerts" && importing.detail == "Checking now" && !importing.needsYou)
-    // Reading stopped on a mailbox that still reads connected (a halt a sign-in doesn't fix).
+    // Reading stopped on a mailbox (a halt a sign-in doesn't fix).
     var halted = MockMailbox.gmail
-    halted.note = "Reading your bank alerts stopped."
+    halted.state = .readingStopped
     let stopped = MailboxesSummary(
       [halted, MockMailbox.outlook], health: MailboxHealth(status: .reconnect, lastEmail: "", banks: ""), offer: nil)
     #expect(stopped.title == "Bank alerts stopped")

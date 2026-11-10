@@ -351,8 +351,8 @@ struct MailboxesSummary: Equatable {
         needsYou: offer == .connect)
     } else if health.status == .reconnect {
       // The lane halted for a reason a new sign-in doesn't fix (a full account, missing
-      // templates): its row still reads connected, but nothing is being read.
-      let stopped = live.first { $0.note != nil } ?? live[0]
+      // templates): its row reads "Reading stopped".
+      let stopped = live.first { $0.state == .readingStopped } ?? live[0]
       let working = live.filter { $0.id != stopped.id && ($0.state == .connected || $0.state == .syncing) }
       var detail = "Hasala stopped reading \(stopped.address)."
       if let other = working.first { detail += " Your \(other.provider.appName) still works." }

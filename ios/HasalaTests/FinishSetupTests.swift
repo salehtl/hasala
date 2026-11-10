@@ -357,6 +357,12 @@ struct FinishSetupTests: AccountSuite {
     #expect(FinishSetupSection.stopped(m.stoppedMailbox).title == "Sign in to your email again")
     m.refresh(hasTransactions: true)
     #expect(m.isDone(.readingStopped) && m.items.first == .readingStopped)
+    var halted = MockMailbox.gmail
+    halted.state = .readingStopped
+    let stopped = FinishSetupModel(services: services(mailbox: MockMailbox(mailboxes: [halted])))
+    stopped.refresh(hasTransactions: false)
+    #expect(stopped.stoppedMailbox?.id == MockMailbox.gmail.id && stopped.items.first == .readingStopped)
+    #expect(FinishSetupSection.stopped(stopped.stoppedMailbox).title == "Reading your alerts stopped")
   }
 
   @Test func theTotalStaysTheSameOnceAnItemIsDone() async {

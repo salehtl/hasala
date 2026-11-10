@@ -161,7 +161,7 @@ struct ChooseEmailSheet: View {
        let broken = own.first(where: { $0.id == id }) {
       return "\(broken.address) needs a new sign-in. Sign in to \(provider.appName) again."
     }
-    if let connected = own.first(where: { $0.state == .connected || $0.state == .syncing }) {
+    if let connected = own.first(where: { [.connected, .syncing, .readingStopped].contains($0.state) }) {
       return oneLink
         ? "\(connected.address) is connected." : "\(connected.address) is connected. Add another \(provider.company) account."
     }

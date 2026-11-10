@@ -297,7 +297,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
         // Not the provider ending access: the account has no mailbox to read.
         if halt == .noMailbox { row.note = message(.noMailbox, provider: provider) }
       } else {
-        row.note = "Reading your bank alerts stopped."
+        row.state = .readingStopped
       }
     case .otherDevice:
       row.note = otherIPhone

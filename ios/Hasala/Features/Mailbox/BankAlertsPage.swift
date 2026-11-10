@@ -119,11 +119,11 @@ struct BankAlertsPage: View {
       /// The mailbox state is still being read.
       case checking
       case signInAgain(mailboxID: String, provider: MailProviderKind)
+      case stopped(mailboxID: String)
     }
 
     let kind: Kind
     let detail: String
-    let stoppedID: String?
 
     init(
       summary: MailboxesSummary, health: MailboxHealth, mailboxes: [MailboxSnapshot], offer: MailOffer?,
@@ -138,6 +138,8 @@ struct BankAlertsPage: View {
         kind = .signInAgain(mailboxID: broken.id, provider: broken.provider)
       } else if live.isEmpty {
         kind = .notConnected
+      } else if let stopped = live.first(where: { $0.state == .readingStopped && !$0.readElsewhere }) {
+        kind = .stopped(mailboxID: stopped.id)
       } else if summary.needsYou {
         kind = .needsYou
       } else if live.allSatisfy({ $0.state == .syncing }) || health.status == .importing {
@@ -147,8 +149,6 @@ struct BankAlertsPage: View {
       } else {
         kind = .working
       }
-      stoppedID = kind == .needsYou && health.status == .reconnect
-        ? (live.first { $0.note != nil && !$0.readElsewhere } ?? live.first { !$0.readElsewhere })?.id : nil
       switch kind {
       case .notConnected:
         detail = "Add a mailbox so Hasala can read your bank alerts."
@@ -156,6 +156,8 @@ struct BankAlertsPage: View {
         detail = summary.detail
       case .signInAgain(let id, _):
         detail = Self.signInDetail(live.first { $0.id == id }, live: live) ?? summary.detail
+      case .stopped(let id):
+        detail = Self.stoppedDetail(live.first { $0.id == id }, live: live) ?? summary.detail
       case .working where !health.lastEmail.isEmpty:
         // "Last email 4 min ago" over "214 read in October" (Paper 1NS8); the banks when
         // the month's count isn't known.
@@ -184,6 +186,26 @@ struct BankAlertsPage: View {
       return detail
     }
 
+    static func stoppedDetail(_ stopped: MailboxSnapshot?, live: [MailboxSnapshot]) -> String? {
+      guard let stopped else { return nil }
+      var detail = "Hasala stopped reading \(stopped.address)"
+      if let day = stopped.lastChecked?.split(separator: ",").first {
+        detail += " on " + day.replacingOccurrences(of: " ", with: "\u{00A0}")
+      }
+      detail += "."
+      let working = live.first { $0.id != stopped.id && ($0.state == .connected || $0.state == .syncing) }
+      if let working { detail += " Your \(working.provider.appName) still works." }
+      return detail
+    }
+
+    static let stoppedTotals =
+      "Payments since then aren't in your totals yet. A new sign-in won't fix this. If Try again doesn't help, email support@hasala.app."
+
+    var totalsLine: String? {
+      if case .stopped = kind { return Self.stoppedTotals }
+      return nil
+    }
+
     var title: String {
       switch kind {
       case .working: "Working"
@@ -192,13 +214,14 @@ struct BankAlertsPage: View {
       case .notConnected: "Not connected"
       case .checking: "Checking"
       case .signInAgain: "Sign in again"
+      case .stopped: "Bank alerts stopped"
       }
     }
 
     var hue: Hue {
       switch kind {
       case .working, .importing: .mint
-      case .needsYou, .signInAgain: .sand
+      case .needsYou, .signInAgain, .stopped: .sand
       case .notConnected, .checking: .sky
       }
     }
@@ -206,7 +229,7 @@ struct BankAlertsPage: View {
     var glyph: [PaperGlyph.Part]? {
       switch kind {
       case .working, .importing: PaperGlyph.check
-      case .needsYou, .signInAgain: PaperGlyph.alert
+      case .needsYou, .signInAgain, .stopped: PaperGlyph.alert
       case .notConnected, .checking: nil
       }
     }
@@ -240,6 +263,11 @@ struct BankAlertsPage: View {
         .accessibilityAddTraits(.isHeader)
         .accessibilityIdentifier("bankAlerts.status")
       }
+      if let totals = hero.totalsLine {
+        Text(totals).hType(.subheadline).foregroundStyle(HColor.textOnHueSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("bankAlerts.totals")
+      }
       if case .signInAgain(let id, let provider) = hero.kind, lane?.capabilities.contains(.signInAgain) == true,
          lane?.connectRefused != true {
         ProviderButton(provider: provider, loading: signIn?.busy ?? false) { signInAgain(id, provider) }
@@ -249,7 +277,7 @@ struct BankAlertsPage: View {
             .hTransition(.rise)
         }
       }
-      if let id = hero.stoppedID, lane?.capabilities.contains(.tryAgain) == true {
+      if case .stopped(let id) = hero.kind, lane?.capabilities.contains(.tryAgain) == true {
         Button("Try again") { tryAgain(id) }
           .buttonStyle(.pill(.primary, size: .large, fill: true, loading: retrying))
           .disabled(retrying)

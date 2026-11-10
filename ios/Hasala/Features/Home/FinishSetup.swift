@@ -121,7 +121,7 @@ final class FinishSetupModel {
   var stoppedMailbox: MailboxSnapshot? {
     guard ledgerEmpty, !services.mailbox.firstScanFinished,
       let m = services.mailbox.mailboxes.first(where: { $0.state != .disconnected }),
-      m.state == .needsSignIn || m.readElsewhere || m.note != nil
+      m.state == .needsSignIn || m.state == .readingStopped || m.readElsewhere || m.note != nil
     else { return nil }
     return m
   }

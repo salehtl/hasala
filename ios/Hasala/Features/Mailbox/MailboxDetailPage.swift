@@ -106,9 +106,9 @@ struct MailboxDetailPage: View {
       }
     }
     .accessibilityIdentifier("mailbox.card")
-    if let note = m.note, m.state == .connected, !m.readElsewhere {
+    if m.state == .readingStopped, !m.readElsewhere {
       VStack(alignment: .leading, spacing: 10) {
-        InlineStatus(tone: .warning, text: note, size: .regular)
+        InlineStatus(tone: .warning, text: MailCopy.readingStopped, size: .regular)
         if app.mailbox?.capabilities.contains(.tryAgain) == true {
           Button("Try again") { Task { await tryAgain(m) } }
             .buttonStyle(.pill(.primary, size: .large, fill: true, loading: work.tryAgainLoads))

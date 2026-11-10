@@ -1,12 +1,12 @@
 import HasalaModels
 import SwiftUI
 
-// Mailboxes (Paper page 15 §15.3 "Gmail or Outlook."): the mailbox row with its four states and
+// Mailboxes (Paper page 15 §15.3 "Gmail or Outlook."): the mailbox row with its states and
 // the provider rows of "Choose your email". In lists and settings the thing you connect is a
 // "mailbox"; in steps and buttons it is "your email" (page 07).
 
 /// A mailbox's status chip: 24 tall, 13/16 600. Connected is green, Syncing blue with a
-/// spinner, Sign in again amber, Disconnected grey. The word always says it.
+/// spinner, Sign in again and Reading stopped amber, Disconnected grey. The word always says it.
 public struct MailboxStatusChip: View {
   let state: MailboxState
 
@@ -33,12 +33,13 @@ public struct MailboxStatusChip: View {
     .accessibilityLabel(Self.word(state))
   }
 
-  /// "Connected", "Syncing", "Sign-in ended", "Disconnected".
+  /// "Connected", "Syncing", "Sign-in ended", "Reading stopped", "Disconnected".
   public static func word(_ state: MailboxState) -> String {
     switch state {
     case .connected: "Connected"
     case .syncing: "Syncing"
     case .needsSignIn: "Sign-in ended"
+    case .readingStopped: "Reading stopped"
     case .disconnected: "Disconnected"
     }
   }
@@ -47,7 +48,7 @@ public struct MailboxStatusChip: View {
     switch state {
     case .connected: HColor.statusSuccessForeground
     case .syncing: HColor.statusInfoForeground
-    case .needsSignIn: HColor.statusWarningForeground
+    case .needsSignIn, .readingStopped: HColor.statusWarningForeground
     case .disconnected: HColor.textSecondary
     }
   }
@@ -56,7 +57,7 @@ public struct MailboxStatusChip: View {
     switch state {
     case .connected: HColor.statusSuccessSurface
     case .syncing: HColor.statusInfoSurface
-    case .needsSignIn: HColor.statusWarningSurface
+    case .needsSignIn, .readingStopped: HColor.statusWarningSurface
     case .disconnected: HColor.surfaceGrouped
     }
   }
@@ -105,16 +106,18 @@ public struct MailboxRow: View {
       } else {
         ViewThatFits(in: .horizontal) {
           // Paper: the address and the chip on one line.
-          HStack(spacing: HSpacing.listRowGap) {
-            mark
-            VStack(alignment: .leading, spacing: 2) {
-              address.singleLineAtDefaultTextSize()
-              metaLine
-              noteLine
+          if mailbox.state != .readingStopped {
+            HStack(spacing: HSpacing.listRowGap) {
+              mark
+              VStack(alignment: .leading, spacing: 2) {
+                address.singleLineAtDefaultTextSize()
+                metaLine
+                noteLine
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
+              MailboxStatusChip(mailbox.state)
+              chevron
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            MailboxStatusChip(mailbox.state)
-            chevron
           }
           // The address on its own line; the chip beside the provider line.
           HStack(spacing: HSpacing.listRowGap) {
