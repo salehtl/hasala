@@ -178,9 +178,9 @@ nonisolated final class MailboxLane: Sendable {
     await work.cancelAll()
   }
 
-  func resume() async {
+  func resume(restartingCut restart: Bool) async {
     await engine.resume()
-    guard work.takeCut() else { return }
+    guard work.takeCut(), restart else { return }
     let engine = self.engine
     work.start { _ = await engine.runFirstScan(maxCycles: 50) }
   }
@@ -210,7 +210,10 @@ nonisolated final class MailboxLane: Sendable {
   }
   func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome { await engine.retire(plan) }
   /// The other provider's link replaced this one: end this provider's grant here.
-  func endGrant() async { await engine.endGrant() }
+  func endGrant() async {
+    _ = work.takeCut()
+    await engine.endGrant()
+  }
   func addSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {
     await engine.importSender(typed)
   }

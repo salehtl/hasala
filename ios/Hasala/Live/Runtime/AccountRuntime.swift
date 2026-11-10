@@ -262,7 +262,7 @@ final class AccountRuntime {
       let p = provider.flatMap({ MailboxProvider(rawValue: $0.rawValue) }), p != activeProvider
     {
       activate(p)
-      await lanes[p]?.resume()
+      await lanes[p]?.resume(restartingCut: false)
     }
     return link
   }
@@ -545,7 +545,8 @@ final class AccountRuntime {
 
   func resumeWork() async {
     mailboxLedger.textWrites.releaseHold()
-    for lane in lanes.values { await lane.resume() }
+    let running = lane
+    for other in lanes.values { await other.resume(restartingCut: other === running) }
     let held = await coordinator.resume()
     await backlog.releaseRuns()
     if let held { Task { await coordinator.run(held) } }

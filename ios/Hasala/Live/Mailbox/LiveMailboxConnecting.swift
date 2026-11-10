@@ -448,7 +448,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
       replacing: replaces, retiring: retiring, confirm: Self.confirm(ask, provider: provider))
     let nowReading: String?
     do { nowReading = try Self.linked(result, provider: provider) } catch {
-      await old?.resume()
+      await old?.resume(restartingCut: old === rt.lane)
       throw error
     }
     rt.linkedHere(provider)

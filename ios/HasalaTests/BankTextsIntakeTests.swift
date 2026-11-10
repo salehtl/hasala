@@ -571,6 +571,59 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  func scanningOutlook(_ rt: AccountRuntime) async throws {
+    let clock = rt.context.clock
+    let persistence = LedgerMailboxPersistence(
+      store: rt.context.store, authoring: MailboxAuthoring(observer: rt.observer), nowMs: { clock.nowMs() })
+    var state = MailboxState()
+    state.phase = .scanning
+    state.provider = .outlook
+    var commit = MailboxCommit()
+    commit.state = state
+    try await persistence.commit(commit)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func endingAHoldRestartsOnlyTheRunningLanesCutImport() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.outlook)
+    let gmail = try #require(rt.lanes[.gmail])
+    let outlook = try #require(rt.lanes[.outlook])
+    try await scanningOutlook(rt)
+    server.offline = true
+    _ = outlook.firstScan()
+    gmail.work.start { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) } }
+    #expect(outlook.work.running == 1 && gmail.work.running == 1)
+    await rt.holdWork()
+    #expect(outlook.work.running == 0 && gmail.work.running == 0)
+    await rt.resumeWork()
+    #expect(outlook.work.running == 1)
+    #expect(gmail.work.running == 0)
+    #expect(!gmail.work.takeCut())
+    #expect(await outlook.status().phase == .scanning)
+    await rt.close()
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aLaneASwitchReplacedKeepsNoCutImportToRestart() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.outlook)
+    let gmail = try #require(rt.lanes[.gmail])
+    try await scanningOutlook(rt)
+    server.offline = true
+    gmail.work.start { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) } }
+    await gmail.stop()
+    await gmail.endGrant()
+    rt.activate(.gmail)
+    await rt.holdWork()
+    await rt.resumeWork()
+    #expect(gmail.work.running == 0)
+    #expect(await gmail.status().phase == .scanning)
+    await rt.close()
+  }
+
   @Test func holdingTheLinkReplacesTheServersEarlierAnswer() async throws {
     let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
     defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
