@@ -266,19 +266,82 @@ import Testing
     #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
   }
 
-  @Test func onlyALaunchOrARetryAsksAboutATokenLeftOnAnUnlinkedIPhone() async throws {
+  @Test(arguments: [MailboxTrigger.foreground, .refresh, .silentPush, .appRefresh, .processing, .timer])
+  func theLanesFirstCycleOfAnyKindAsksAboutATokenLeftOnAnUnlinkedIPhone(_ trigger: MailboxTrigger) async throws {
     let rig = Rig()
     try await unlinkedIPhoneWithATokenLeft(rig, link: .holder(isThisDevice: false, watchExpiresAtMs: nil))
 
+    #expect(await rig.engine.runCycle(trigger: trigger).phase == .unlinked)
+
+    #expect(await rig.server.linkStatusReads == 1)
+    #expect(try rig.keychain.read() == nil)
+    #expect(revokes(rig) == 0)
+  }
+
+  func askedOnceAboutATokenLeftOnAnUnlinkedIPhone(_ rig: Rig) async throws {
+    try await unlinkedIPhoneWithATokenLeft(rig, link: .noLink)
+    _ = await rig.engine.runCycle(trigger: .foreground)
+    #expect(await rig.server.linkStatusReads == 1)
+    #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+  }
+
+  @Test func aTokenLeftOnAnUnlinkedIPhoneIsAskedAboutAgainOnlyAfterTheHolderInterval() async throws {
+    let rig = Rig()
+    try await askedOnceAboutATokenLeftOnAnUnlinkedIPhone(rig)
+    let interval = await rig.engine.config.holderCheckIntervalMs
+
+    rig.clock.advance(interval - 60_000)
     for trigger in [MailboxTrigger.foreground, .refresh, .silentPush, .appRefresh, .processing, .timer] {
       _ = await rig.engine.runCycle(trigger: trigger)
     }
-
-    #expect(await rig.server.linkStatusReads == 0)
+    #expect(await rig.server.linkStatusReads == 1)
     #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+
+    rig.clock.advance(60_000)
+    _ = await rig.engine.runCycle(trigger: .foreground)
+    #expect(await rig.server.linkStatusReads == 2)
+    #expect(try rig.keychain.read() == nil)
+    #expect(revokes(rig) == 0)
   }
 
   @Test(arguments: [MailboxTrigger.launch, .retry])
+  func aLaunchOrARetryAsksAgainWithinTheInterval(_ trigger: MailboxTrigger) async throws {
+    let rig = Rig()
+    try await askedOnceAboutATokenLeftOnAnUnlinkedIPhone(rig)
+
+    _ = await rig.engine.runCycle(trigger: trigger)
+
+    #expect(await rig.server.linkStatusReads == 2)
+    #expect(try rig.keychain.read() == nil)
+    #expect(revokes(rig) == 0)
+  }
+
+  @Test func aClockThatWentBackDoesNotPostponeTheQuestion() async throws {
+    let rig = Rig()
+    try await askedOnceAboutATokenLeftOnAnUnlinkedIPhone(rig)
+    rig.clock.set(Rig.t0 - 3_600_000)
+
+    _ = await rig.engine.runCycle(trigger: .foreground)
+
+    #expect(try rig.keychain.read() == nil)
+  }
+
+  @Test func aQuestionTheServerCouldNotAnswerIsAskedAtTheNextCycle() async throws {
+    let rig = Rig()
+    try await unlinkedIPhoneWithATokenLeft(rig, link: .holder(isThisDevice: false, watchExpiresAtMs: nil))
+    await rig.server.setOffline(true)
+    _ = await rig.engine.runCycle(trigger: .foreground)
+    #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+    await rig.server.setOffline(false)
+
+    _ = await rig.engine.runCycle(trigger: .foreground)
+
+    #expect(try rig.keychain.read() == nil)
+    #expect(revokes(rig) == 0)
+  }
+
+  @Test(arguments: [MailboxTrigger.launch, .retry, .foreground])
   func anUnlinkedIPhoneWithNoTokenDoesNotAskTheServer(_ trigger: MailboxTrigger) async throws {
     let rig = Rig()
     await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))

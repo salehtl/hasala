@@ -309,6 +309,7 @@ public actor MailboxEngine {
   private var retiresRunning: Set<String> = []
   private var retiresNotRecorded: Set<String> = []
   private var lastStatus: MailboxStatus?
+  private var strayTokenAskedAtMs: Int64?
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
   public init(
@@ -803,11 +804,15 @@ public actor MailboxEngine {
   }
 
   private func forgetTokenOfAStoppedTakeover(_ trigger: MailboxTrigger) async {
-    guard trigger == .launch || trigger == .retry, await tokens.hasRefreshToken() == true else { return }
+    let now = clock.nowMs()
+    let due = strayTokenAskedAtMs.map { now < $0 || now - $0 >= config.holderCheckIntervalMs } ?? true
+    guard trigger == .launch || trigger == .retry || due, await tokens.hasRefreshToken() == true else { return }
     do throws(MailboxServerError) {
-      if case .holder(isThisDevice: false, _) = try await server.linkStatus(provider: provider.id) {
-        await tokens.forget()
-      }
+      let link = try await server.linkStatus(provider: provider.id)
+      strayTokenAskedAtMs = now
+      if case .holder(isThisDevice: false, _) = link { await tokens.forget() }
+    } catch .otherProvider {
+      strayTokenAskedAtMs = now
     } catch {}
   }
 
