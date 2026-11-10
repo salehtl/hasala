@@ -68,6 +68,8 @@ struct BankTextsAlertsPage: View {
 
   static let skippedTitle = "Skipped texts"
 
+  static func heldRemoval(_ mailbox: (any MailboxConnecting)?) -> MailHeldRemoval? { mailbox?.heldRemoval }
+
   static let readsRows: [(icon: HIcon, text: String)] = [
     (.chat, "The automation hands Hasala each text with a full stop, on this iPhone."),
     (.bank, BankTexts.anyBankLine),
@@ -83,6 +85,12 @@ struct BankTextsAlertsPage: View {
         }
         automation
         if !BankTexts.setAsideRows(lane.setAside).isEmpty { setAsideSection }
+        if let mailbox = app.mailbox, let held = Self.heldRemoval(mailbox) {
+          VStack(alignment: .leading, spacing: 12) {
+            HSectionHeader("Needs a look")
+            HListCard { HeldRemovalRow(app: app, lane: mailbox, held: held) }
+          }
+        }
         howItReads
         switchSection
       }

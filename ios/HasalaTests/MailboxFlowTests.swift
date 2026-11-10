@@ -140,7 +140,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(await answering(f, .remove) { await f.connect(.outlook) } != nil)
     #expect(f.outcome == .connected(mailboxID: "outlook-1"))
     #expect(f.signedInAgainLine
-      == "Now reading maya.other@example.com. The transactions from maya.k@example.com couldn't be removed. They stay.")
+      == "Now reading maya.other@example.com. The transactions from maya.k@example.com couldn't be removed. They stay for now.")
     #expect(failing.removed.isEmpty && failing.mailboxes.first?.state == .connected)
     #expect(failing.heldRemoval == MailHeldRemoval(address: "maya.k@example.com", transactions: 1))
   }
@@ -152,6 +152,8 @@ struct MailboxFlowTests: AccountSuite {
     #expect(await answering(f, .remove) { await f.connect(.outlook) } != nil)
     let held = MailHeldRemoval(address: "maya.k@example.com", transactions: 42)
     #expect(failing.heldRemoval == held)
+    #expect(BankTextsAlertsPage.heldRemoval(failing) == held)
+    #expect(BankTextsAlertsPage.heldRemoval(nil) == nil)
     #expect(MailCopy.heldRemovalTitle(held) == "42 transactions weren't removed")
     #expect(MailCopy.heldRemovalDetail(held) == "From maya.k@example.com, which you disconnected. They still count in your totals.")
     let one = MailHeldRemoval(address: "maya.k@example.com", transactions: 1)

@@ -32,7 +32,6 @@ struct BankAlertsPage: View {
   @State private var bankRequests: [RequestedBank] = []
   @State private var addingSender: UnlistedSender?
   @State private var guidingTexts = false
-  @State private var settlingHeld = false
   @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.hMotion) private var motion
 
@@ -574,8 +573,8 @@ struct BankAlertsPage: View {
       VStack(alignment: .leading, spacing: 12) {
         HSectionHeader("Needs a look")
         HListCard {
-          if let held {
-            heldRemovalRow(held)
+          if let held, let lane {
+            HeldRemovalRow(app: app, lane: lane, held: held)
             if count > 0 { HDivider(inset: .disc68) }
           }
           if count > 0 {
@@ -590,70 +589,6 @@ struct BankAlertsPage: View {
           }
         }
       }
-    }
-  }
-
-  private func heldRemovalRow(_ held: MailHeldRemoval) -> some View {
-    HStack(alignment: .top, spacing: HSpacing.listRowGap) {
-      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
-        .overlay { HIconView(.trash, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 7) {
-          Circle().fill(HColor.paceFillOverPace).frame(width: 8, height: 8).accessibilityHidden(true)
-          Text(MailCopy.heldRemovalTitle(held)).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        Text(MailCopy.heldRemovalDetail(held)).hType(.footnote).foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-        let actions = typeSize.isAccessibilitySize
-          ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0)) : AnyLayout(HStackLayout(spacing: 24))
-        actions {
-          Button("Remove them") { removeHeld(held) }
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-            .accessibilityIdentifier("bankAlerts.heldRemoval.remove")
-          Button("Keep them") { keepHeld() }
-            .foregroundStyle(HColor.textSecondary)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-            .accessibilityIdentifier("bankAlerts.heldRemoval.keep")
-        }
-        .hType(.subheadline.weight(.semibold))
-        .buttonStyle(.plain)
-        .disabled(settlingHeld)
-        .padding(.top, -4)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .padding(.horizontal, HSpacing.listRowInsetInline)
-    .padding(.top, 14)
-    .padding(.bottom, 2)
-    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("bankAlerts.heldRemoval")
-  }
-
-  private func removeHeld(_ held: MailHeldRemoval) {
-    guard let lane, !settlingHeld else { return }
-    settlingHeld = true
-    Task {
-      defer { settlingHeld = false }
-      switch await lane.removeHeld() {
-      case .removed(let n?): app.say(MailCopy.removed(n))
-      case .removed(nil): app.say("The old transactions were removed.")
-      case .failed: app.say(MailCopy.heldRemovalFailed(held), icon: .info)
-      }
-    }
-  }
-
-  private func keepHeld() {
-    guard let lane, !settlingHeld else { return }
-    settlingHeld = true
-    Task {
-      defer { settlingHeld = false }
-      await lane.keepHeld()
     }
   }
 

@@ -77,7 +77,7 @@ enum MailCopy {
     case nil: line
     case .removed(let n?)?: "\(line) \(removed(n))"
     case .removed(nil)?: "\(line) The old transactions were removed."
-    case .failed(let old)?: "\(line) The transactions from \(old) couldn't be removed. They stay."
+    case .failed(let old)?: "\(line) The transactions from \(old) couldn't be removed. They stay for now."
     }
   }
 
@@ -770,5 +770,77 @@ private struct MailSwitchQuestionAlert: ViewModifier {
 extension View {
   func mailSwitchQuestion(_ coordinator: MailConnectCoordinator?, asks: Bool = true) -> some View {
     modifier(MailSwitchQuestionAlert(coordinator: coordinator, asks: asks))
+  }
+}
+
+struct HeldRemovalRow: View {
+  let app: AppModel
+  let lane: any MailboxConnecting
+  let held: MailHeldRemoval
+  @State private var settling = false
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    HStack(alignment: .top, spacing: HSpacing.listRowGap) {
+      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
+        .overlay { HIconView(.trash, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 7) {
+          Circle().fill(HColor.paceFillOverPace).frame(width: 8, height: 8).accessibilityHidden(true)
+          Text(MailCopy.heldRemovalTitle(held)).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Text(MailCopy.heldRemovalDetail(held)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        let actions = typeSize.isAccessibilitySize
+          ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0)) : AnyLayout(HStackLayout(spacing: 24))
+        actions {
+          Button("Remove them") { remove() }
+            .foregroundStyle(HColor.textLink)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier("bankAlerts.heldRemoval.remove")
+          Button("Keep them") { keep() }
+            .foregroundStyle(HColor.textSecondary)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier("bankAlerts.heldRemoval.keep")
+        }
+        .hType(.subheadline.weight(.semibold))
+        .buttonStyle(.plain)
+        .disabled(settling)
+        .padding(.top, -4)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.top, 14)
+    .padding(.bottom, 2)
+    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("bankAlerts.heldRemoval")
+  }
+
+  private func remove() {
+    guard !settling else { return }
+    settling = true
+    Task {
+      defer { settling = false }
+      switch await lane.removeHeld() {
+      case .removed(let n?): app.say(MailCopy.removed(n))
+      case .removed(nil): app.say("The old transactions were removed.")
+      case .failed: app.say(MailCopy.heldRemovalFailed(held), icon: .info)
+      }
+    }
+  }
+
+  private func keep() {
+    guard !settling else { return }
+    settling = true
+    Task {
+      defer { settling = false }
+      await lane.keepHeld()
+    }
   }
 }

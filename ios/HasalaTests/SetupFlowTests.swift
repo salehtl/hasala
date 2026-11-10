@@ -252,7 +252,7 @@ struct SetupFlowTests: AccountSuite {
     #expect(await m.saveBanks())
     await m.connectMail(.outlook, replacing: true, removingOld: true)
     #expect(m.failure == .failed(
-      "Outlook connected. Checking for alerts. The transactions from maya@example.com couldn't be removed. They stay."))
+      "Outlook connected. Checking for alerts. The transactions from maya@example.com couldn't be removed. They stay for now."))
     #expect(!finished && m.mailConnected)
     #expect(m.coordinator(.outlook).takeRemovalFailure() == nil)
     await m.continueWithBanks()
