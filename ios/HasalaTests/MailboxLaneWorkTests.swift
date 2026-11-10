@@ -39,6 +39,21 @@ struct MailboxLaneWorkTests {
     #expect(!work.takeCut())
   }
 
+  @Test func workRunningWhenTheLaneStopsIsReportedCutAfterItEndsByItself() async {
+    let work = LaneWork()
+    let gate = ModelSuggestionStageTests.Door()
+    work.start { await gate.pass() }
+    work.markCut()
+    gate.open()
+    for _ in 0..<100 where work.running > 0 { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(work.running == 0)
+    await work.cancelAll()
+    #expect(work.takeCut())
+    #expect(!work.takeCut())
+    work.markCut()
+    #expect(!work.takeCut())
+  }
+
   @Test func aFinishedTaskLeavesTheSet() async {
     let work = LaneWork()
     work.start {}

@@ -370,6 +370,63 @@ struct LiveAccountServiceTests {
     #expect(lane.work.running == 0)
   }
 
+  @Test(.timeLimit(.minutes(1))) func anImportAHoldCutMidCycleStartsAgainWhenTheHoldEnds() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let limited = RateLimitedSync(inner: server)
+    let env = AccountEnvironment(
+      client: AuthClient(transport: limited), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
+      approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+      apiBase: "https://api.hasala.app", accountsDirectory: nil)
+    let (a, _) = try await Self.signUp(server, env)
+    limited.limiting = true
+    let enrolled = try #require(a.enrolled)
+    let binding = try #require(try env.secrets.binding())
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: enrolled.userID, provider: .gmail)
+      .write("synthetic-refresh")
+    let suite = "held-import-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    LocalAccountData.setMailboxProvider(.gmail, defaults)
+    let http = HeldMailToken()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: enrolled, build: try BankTextsIntakeTests.bothProviders(),
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      mailHTTP: http, providerDefaults: defaults)
+    let lane = try #require(rt.lane)
+    #expect(lane.provider == .gmail)
+    server.mailboxLink = (thisDevice: true, provider: "gmail")
+    try await rt.mailboxLedger.authorSenderTrust(domain: "dib.ae", trusted: true)
+    #expect(await rt.mailboxLedger.senderTrust()["dib.ae"] == true)
+    let clock = rt.context.clock
+    let persistence = LedgerMailboxPersistence(
+      store: rt.context.store, authoring: MailboxAuthoring(observer: rt.observer), nowMs: { clock.nowMs() })
+    var state = MailboxState()
+    state.phase = .scanning
+    state.provider = .gmail
+    state.profileHistoryID = "1"
+    var commit = MailboxCommit()
+    commit.state = state
+    try await persistence.commit(commit)
+
+    _ = lane.firstScan()
+    try await ModelSuggestionStageTests.until { http.waiting == 1 }
+    #expect(http.waiting == 1)
+    let hold = Task { await rt.holdWork() }
+    try await ModelSuggestionStageTests.until { await lane.isStopped }
+    #expect(await lane.isStopped)
+    http.release()
+    await hold.value
+    #expect(lane.work.running == 0)
+    #expect(http.listings == 0)
+    #expect(await lane.status().phase == .scanning)
+
+    await rt.resumeWork()
+    try await ModelSuggestionStageTests.until { await lane.status().phase != .scanning }
+    #expect(http.listings > 0)
+    #expect(await lane.status().phase == .authoringBackfill)
+    await rt.close()
+  }
+
   @Test(.timeLimit(.minutes(1))) func closingEndsTheSyncInFlightAtOnce() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let slow = HeldPulls(inner: server)
@@ -842,6 +899,57 @@ nonisolated final class FaultySecrets: SecretStore {
   func delete(_ item: SecretItem) throws(SecretStoreError) { try inner.delete(item) }
 
   func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
+}
+
+nonisolated final class RateLimitedSync: Transport {
+  let inner: any Transport
+  private let state = Mutex(false)
+
+  init(inner: any Transport) { self.inner = inner }
+
+  var limiting: Bool {
+    get { state.withLock { $0 } }
+    set { state.withLock { $0 = newValue } }
+  }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    if limiting, request.path.hasPrefix("/api/v1/sync") {
+      return APIResponse(status: 429, body: Data(#"{"error":"rate_limited","detail":""}"#.utf8))
+    }
+    return try await inner.send(request)
+  }
+}
+
+nonisolated final class HeldMailToken: HTTPExchange {
+  private let state = Mutex<(holding: Bool, waiters: [CheckedContinuation<Void, Never>], listings: Int)>((true, [], 0))
+
+  var waiting: Int { state.withLock { $0.waiters.count } }
+
+  var listings: Int { state.withLock { $0.listings } }
+
+  func release() {
+    let held = state.withLock { s -> [CheckedContinuation<Void, Never>] in
+      s.holding = false
+      defer { s.waiters = [] }
+      return s.waiters
+    }
+    held.forEach { $0.resume() }
+  }
+
+  func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
+    if request.url.path().hasSuffix("/messages") { state.withLock { $0.listings += 1 } }
+    if request.url.path() == "/token" {
+      await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+        let go = state.withLock { s -> Bool in
+          guard s.holding else { return true }
+          s.waiters.append(k)
+          return false
+        }
+        if go { k.resume() }
+      }
+    }
+    return HTTPResponse(status: 200, body: Data(#"{"access_token":"synthetic-access","expires_in":3600}"#.utf8))
+  }
 }
 
 nonisolated final class HeldPulls: Transport {

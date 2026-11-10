@@ -174,6 +174,7 @@ nonisolated final class MailboxLane: Sendable {
   func importPastMail() async -> CycleReport { await engine.importPastMail() }
 
   func stop() async {
+    work.markCut()
     await engine.stop()
     await work.cancelAll()
   }
@@ -252,6 +253,10 @@ nonisolated final class LaneWork: @unchecked Sendable {
   var isClosed: Bool { lock.withLock { closed } }
 
   var running: Int { lock.withLock { tasks.count } }
+
+  func markCut() {
+    lock.withLock { if !tasks.isEmpty { cut = true } }
+  }
 
   func cancelAll() async {
     let all = lock.withLock { () -> [Task<Void, Never>] in
