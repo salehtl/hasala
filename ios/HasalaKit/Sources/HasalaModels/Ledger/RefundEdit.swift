@@ -11,6 +11,7 @@ public struct RefundFiling: Sendable, Hashable {
     t.ruleID = nil
     t.needsReview = needsReview
     t.refundOf = refundOf
+    t.refundLinkBroken = false
     t.isRefund = isRefund
     t.isTransfer = t.isMatchedTransfer
     t.priorFiling = nil
@@ -80,12 +81,8 @@ public enum RefundEdit {
   }
 
   public static func filedAsRefund(_ t: Txn, in s: LedgerState) -> Bool {
-    t.categoryID == Spending.refundsID || t.refundOf != nil
+    t.categoryID == Spending.refundsID || t.refundOf != nil || t.refundLinkBroken
       || (t.direction == .in && t.splits.isEmpty && Spending.counts(s.category(t.categoryID)))
-  }
-
-  public static func refundByBrokenLink(_ t: Txn, in s: LedgerState) -> Bool {
-    t.isRefund && !filedAsRefund(t, in: s)
   }
 
   public static func filedAsTransfer(_ t: Txn) -> Bool {

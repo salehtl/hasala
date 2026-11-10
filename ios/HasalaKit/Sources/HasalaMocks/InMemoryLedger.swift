@@ -648,6 +648,7 @@ public final class InMemoryLedger: LedgerStore {
     field(\.combinedCopy)
     field(\.mergedInto)
     field(\.refundOf)
+    field(\.refundLinkBroken)
     field(\.billID)
   }
 

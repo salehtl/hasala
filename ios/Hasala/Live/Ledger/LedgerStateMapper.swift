@@ -334,7 +334,8 @@ nonisolated enum LedgerStateMapper {
       senderUnverified: row.senderUnverified, merchantKey: row.merchantKey,
       merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
       ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil,
-      refundOf: row.refundState == "ok" ? row.refundTarget : nil, isReversal: isReversal(row))
+      refundOf: row.refundState == "ok" ? row.refundTarget : nil, refundLinkBroken: row.refundState == "broken",
+      isReversal: isReversal(row))
   }
 
   static let reversalTemplates = Set(MessageDisposer.refundTemplates.filter { $0.contains("reversal") })

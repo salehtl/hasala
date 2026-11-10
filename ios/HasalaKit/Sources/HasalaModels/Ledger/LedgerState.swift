@@ -320,6 +320,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var mergedInto: TxnID?
   public var mayRepeat: MayRepeat?
   public var refundOf: TxnID?
+  public var refundLinkBroken: Bool
   public var isReversal: Bool
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
@@ -352,6 +353,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     combinedCopy: TxnID? = nil,
     mayRepeat: MayRepeat? = nil,
     refundOf: TxnID? = nil,
+    refundLinkBroken: Bool = false,
     isReversal: Bool = false
   ) {
     self.id = id
@@ -397,6 +399,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.combinedCopy = combinedCopy
     self.mayRepeat = mayRepeat
     self.refundOf = refundOf
+    self.refundLinkBroken = refundLinkBroken
     self.isReversal = isReversal
   }
 

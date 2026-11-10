@@ -369,7 +369,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].categoryID = undo ? nil : "transfer"
       s.txns[i].categorySource = undo ? nil : .user
       s.txns[i].isTransfer = !undo
-      s.txns[i].isRefund = false
+      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
       s.txns[i].needsReview = undo
       s.txns[i].priorFiling = nil
       if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, undo ? nil : "transfer") }
