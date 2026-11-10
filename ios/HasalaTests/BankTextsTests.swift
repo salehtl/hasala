@@ -367,8 +367,10 @@ struct BankTextsTests {
       await SourceSwitch.toTexts(mailbox: mailbox, texts: lane)
         == .failed("Hasala disconnected your mailbox, but couldn't finish the switch to bank texts. Try again."))
     #expect(lane.source == nil && !lane.readsEmail)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane, mailboxOff: true) == .failed(SourceSwitch.switchUnfinished))
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .failed(LiveBankTexts.saveFailed))
     lane.finishFails = false
-    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .switched)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane, mailboxOff: true) == .switched)
     #expect(lane.source == .texts)
   }
 

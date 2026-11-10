@@ -301,6 +301,7 @@ struct UseBankTextsSection: View {
   @Binding var guiding: Bool
   @State private var asking = false
   @State private var switching = false
+  @State private var mailboxOff = false
   @State private var pasting = false
   @Environment(\.openURL) private var openURL
 
@@ -377,10 +378,11 @@ struct UseBankTextsSection: View {
     switching = true
     Task {
       defer { switching = false }
-      switch await SourceSwitch.toTexts(mailbox: app.mailbox, texts: lane) {
+      switch await SourceSwitch.toTexts(mailbox: app.mailbox, texts: lane, mailboxOff: mailboxOff) {
       case .switched:
         guiding = true
       case .failed(let line):
+        if line == SourceSwitch.switchUnfinished { mailboxOff = true }
         app.say(line, icon: .info)
       }
     }

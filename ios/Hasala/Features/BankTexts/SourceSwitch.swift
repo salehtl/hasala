@@ -36,7 +36,9 @@ enum SourceSwitch {
     return nil
   }
 
-  static func toTexts(mailbox: (any MailboxConnecting)?, texts: any BankTextsConnecting) async -> Outcome {
+  static func toTexts(
+    mailbox: (any MailboxConnecting)?, texts: any BankTextsConnecting, mailboxOff: Bool = false
+  ) async -> Outcome {
     if let blocker = textsBlocker(mailbox, texts: texts) { return .failed(blocker) }
     var off: [MailboxSnapshot] = []
     if let mailbox {
@@ -54,7 +56,7 @@ enum SourceSwitch {
     do {
       try await texts.finishSetUp()
     } catch {
-      return .failed(off.isEmpty ? error.message : switchUnfinished)
+      return .failed(off.isEmpty && !mailboxOff ? error.message : switchUnfinished)
     }
     return texts.usesTexts ? .switched : .failed(linkRemains)
   }
