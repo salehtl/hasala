@@ -29,16 +29,22 @@ public enum BacklogSort {
     public var asked: Set<String> = []
     public var answers: [String: Answer] = [:]
     public var tries: [String: Int] = [:]
+    public var unknown: [String: String] = [:]
 
     public init() {}
 
     public func keeping(_ allowed: [AllowedCategory]) -> Memo {
       let ids = Set(allowed.map(\.id))
+      let taxonomy = ModelTier.taxonomyHash(allowed)
       var m = self
       for (s, a) in answers where !ids.contains(a.category) {
         m.answers[s] = nil
         m.asked.remove(s)
         m.tries[s] = nil
+      }
+      for (s, t) in unknown where t != taxonomy {
+        m.unknown[s] = nil
+        m.asked.remove(s)
       }
       return m
     }
@@ -290,6 +296,7 @@ public enum BacklogSort {
         for s in r.suggestions {
           memo.answers[s.subject] = Answer(category: s.category, modelTag: s.modelTag, autoFile: s.autoFile)
         }
+        for u in r.unknown { memo.unknown[u.subject] = taxonomy }
         if let f = r.stoppedBy[tag] { stop = Self.stop(for: f) }
         do {
           try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())

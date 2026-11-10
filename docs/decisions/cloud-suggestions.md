@@ -353,7 +353,8 @@ install): the setup screen asked it already.
 run is running or paused, the app is in the foreground, and at least one waiting name may
 be asked (`ModelSuggestionStage.backlogWaiting`: Clef is available, and a name that rules
 and the dictionary don't place is not cached, not on a row that may not leave the phone and
-not settled earlier in this session). It is called:
+not settled earlier in this session; an unknown answer settles a name only under the list it
+was asked with). It is called:
 
 - when the account opens (`AccountRuntime.open`);
 - when the app comes back to the foreground (`BootController.foreground`);
@@ -396,9 +397,11 @@ The names a session has settled are kept in memory and forgotten at the next ope
 pass first drops an answer kept in memory whose category is no longer on the list Clef is
 offered (for example a category deleted or turned off since). The name is then planned
 again under the current list (the cache, else Clef), so a run never files a row into a
-category that is gone. The record still writes the fields the run card build needs to
-read a run (an empty id, zeros and an empty manifest), so after a downgrade that build
-keeps the day ledger and the rows filed here.
+category that is gone. A name Clef answered unknown is planned again the same way once the
+list changes, because its saved answer belongs to the list it was asked with. A name given
+up after its tries stays set aside until the next open. The record still writes the fields
+the run card build needs to read a run (an empty id, zeros and an empty manifest), so after
+a downgrade that build keeps the day ledger and the rows filed here.
 
 **What it asks.**
 
