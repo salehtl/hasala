@@ -363,11 +363,23 @@ struct BankTextsTests {
     mailbox.connectDelay = .zero
     let lane = MockBankTexts(mailbox: mailbox)
     lane.finishFails = true
-    guard case .failed = await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) else {
-      Issue.record("the switch went ahead")
-      return
-    }
+    #expect(
+      await SourceSwitch.toTexts(mailbox: mailbox, texts: lane)
+        == .failed("Hasala disconnected your mailbox, but couldn't finish the switch to bank texts. Try again."))
     #expect(lane.source == nil && !lane.readsEmail)
+    lane.finishFails = false
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .switched)
+    #expect(lane.source == .texts)
+  }
+
+  @Test func aSwitchWithNoMailboxToDisconnectThatCannotBeSavedSaysItCouldNotSave() async {
+    let mailbox = MockMailbox(mailboxes: [])
+    let lane = MockBankTexts(mailbox: mailbox)
+    lane.finishFails = true
+    #expect(
+      await SourceSwitch.toTexts(mailbox: mailbox, texts: lane)
+        == .failed("Hasala couldn't save this on your iPhone. Try again."))
+    #expect(lane.source == nil)
   }
 
   @Test func theTestTextIsWaitedFor() async throws {

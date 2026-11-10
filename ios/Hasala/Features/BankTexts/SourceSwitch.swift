@@ -20,6 +20,9 @@ enum SourceSwitch {
   static let linkRemains =
     "Hasala disconnected your mailbox, but this account still shows a mailbox link. Try again in a moment to finish the switch."
 
+  static let switchUnfinished =
+    "Hasala disconnected your mailbox, but couldn't finish the switch to bank texts. Try again."
+
   static func textsBlocker(_ mailbox: (any MailboxConnecting)?, texts: (any BankTextsConnecting)?) -> String? {
     if mailbox?.mailboxesKnown == false { return checking }
     let reading = reading(mailbox)
@@ -51,7 +54,7 @@ enum SourceSwitch {
     do {
       try await texts.finishSetUp()
     } catch {
-      return .failed(error.message)
+      return .failed(off.isEmpty ? error.message : switchUnfinished)
     }
     return texts.usesTexts ? .switched : .failed(linkRemains)
   }
