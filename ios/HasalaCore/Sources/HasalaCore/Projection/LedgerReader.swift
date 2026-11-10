@@ -50,6 +50,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var effectiveAccountID: String?
   public var projectID: String?
   public var refundState: String?
+  public var refundOf: String?
   public var refundTarget: String?
   public var transferState: String?
   public var isNewMerchant: Bool
@@ -111,6 +112,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     effectiveAccountID = r["effective_account_id"]
     projectID = r["project_id"]
     refundState = r["refund_state"]
+    refundOf = r["refund_of"]
     refundTarget = r["refund_target"]
     transferState = r["transfer_state"]
     isNewMerchant = r["is_new_merchant"]

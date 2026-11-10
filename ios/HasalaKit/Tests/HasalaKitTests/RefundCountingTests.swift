@@ -118,6 +118,25 @@ struct RefundEditTests {
     #expect(l.state.txn("c1")?.isTransfer == true && l.state.txn("c1")?.isRefund == false)
   }
 
+  @Test func aRefundMarkedATransferLosesItsLinkUntilTheUndo() throws {
+    let l = Self.ledger()
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    let token = try #require(try l.apply(.markTransfer("c1")))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isTransfer && !t.isRefund && t.refundOf == nil && !t.refundLinkBroken)
+    l.undo(token)
+    let back = try #require(l.state.txn("c1"))
+    #expect(back.refundOf == "p1" && back.isRefund && !back.isTransfer && back.categoryID == "shopping")
+
+    var broken = RefundCountingTests.row("c2", 500_00, .in, category: "dining")
+    broken.refundLinkBroken = true
+    broken.isRefund = true
+    let b = RefundEditTests.ledger(with: broken)
+    try b.apply(.markTransfer("c2"))
+    let marked = try #require(b.state.txn("c2"))
+    #expect(marked.isTransfer && !marked.isRefund && !marked.refundLinkBroken)
+  }
+
   @Test func aRefundMatchedToAPurchaseStaysARefundWhenFiledElsewhere() throws {
     let l = Self.ledger()
     try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))

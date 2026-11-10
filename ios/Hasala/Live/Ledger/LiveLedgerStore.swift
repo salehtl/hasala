@@ -369,14 +369,17 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].categoryID = undo ? nil : "transfer"
       s.txns[i].categorySource = undo ? nil : .user
       s.txns[i].isTransfer = !undo
+      if !undo {
+        s.txns[i].refundOf = nil
+        s.txns[i].refundLinkBroken = false
+      }
       s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
       s.txns[i].needsReview = undo
       s.txns[i].priorFiling = nil
       if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, undo ? nil : "transfer") }
-      return (
-        undo ? "No longer a transfer" : "Marked as a transfer",
-        [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
-      )
+      var inverses: [LedgerEditAuthor.Inverse] = [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
+      if !undo, old.refundOf != nil { inverses.append(.refundOf(txn: id, of: old.refundOf)) }
+      return (undo ? "No longer a transfer" : "Marked as a transfer", inverses)
     case .markRefund(let id):
       let i = try index(id)
       let old = s.txns[i]

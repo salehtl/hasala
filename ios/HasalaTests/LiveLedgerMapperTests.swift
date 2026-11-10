@@ -678,9 +678,10 @@ struct LiveLedgerMapperTests {
     var marked = MayaLedger.state
     marked.txns += [Self.credit("linked", category: category, linkBroken: true)]
     _ = try LiveLedgerStore.patch(.markTransfer("linked"), &marked, now: MayaLedger.now)
-    #expect(marked.txn("linked")?.isTransfer == true && marked.txn("linked")?.isRefund == true)
+    #expect(marked.txn("linked")?.isTransfer == true && marked.txn("linked")?.isRefund == false)
+    #expect(marked.txn("linked")?.refundLinkBroken == false)
     _ = try LiveLedgerStore.patch(.markTransfer("linked"), &marked, now: MayaLedger.now)
-    #expect(marked.txn("linked")?.isTransfer == false && marked.txn("linked")?.isRefund == true)
+    #expect(marked.txn("linked")?.isTransfer == false && marked.txn("linked")?.isRefund == false)
 
     var ruled = MayaLedger.state
     ruled.txns += [
@@ -724,13 +725,60 @@ struct LiveLedgerMapperTests {
     #expect(read.categoryID == "salary" && read.isRefund && read.refundLinkBroken)
     #expect(read.isRefund == patched.isRefund)
 
-    _ = try store.apply(.markTransfer(refund))
+    let token = try #require(try store.apply(.markTransfer(refund)))
     let marked = try #require(store.state.txn(refund))
-    #expect(marked.isTransfer && marked.isRefund)
+    #expect(marked.isTransfer && !marked.isRefund && !marked.refundLinkBroken)
     try await Self.eventually { try a.projection.reader.txn(refund)?.category == "transfer" }
+    #expect(try a.projection.reader.txn(refund)?.refundOf == nil)
     let transfer = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(refund))
     #expect(transfer.categoryID == "transfer" && transfer.isTransfer == marked.isTransfer)
-    #expect(transfer.isRefund == marked.isRefund)
+    #expect(transfer.isRefund == marked.isRefund && transfer.refundLinkBroken == marked.refundLinkBroken)
+
+    store.undo(token)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "salary" }
+    #expect(try a.projection.reader.txn(refund)?.refundState == "broken")
+  }
+
+  @Test func aMatchedRefundMarkedATransferLosesItsLinkAsTheLedgerReadsIt() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    let wall = Int64(1_791_633_600_000)
+    var purchase = ""
+    var refund = ""
+    let linked = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      purchase = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "debit", localWallMs: wall - 86_400_000, merchant: "Test Store",
+        category: "shopping")
+      refund = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Store", category: "shopping")
+      o.annotate(txnID: refund, set: [("refund_of", purchase)])
+    }
+    try await a.outbox.enqueue(try #require(linked).ops)
+    try await a.observer.reproject()
+    #expect(try a.projection.reader.txn(refund)?.refundState == "ok")
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "refundtransfer.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    #expect(store.state.txn(refund)?.refundOf == purchase)
+
+    let token = try #require(try store.apply(.markTransfer(refund)))
+    let marked = try #require(store.state.txn(refund))
+    #expect(marked.isTransfer && !marked.isRefund && marked.refundOf == nil && !marked.refundLinkBroken)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "transfer" }
+    #expect(try a.projection.reader.txn(refund)?.refundOf == nil)
+    let read = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(refund))
+    #expect(read.isTransfer == marked.isTransfer && read.isRefund == marked.isRefund)
+    #expect(read.refundOf == nil && !read.refundLinkBroken)
+
+    store.undo(token)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "shopping" }
+    let back = try #require(try a.projection.reader.txn(refund))
+    #expect(back.refundOf == purchase && back.refundState == "ok")
+    #expect(!failed)
   }
 
   @Test func theOptimisticSplitFollowsTheRefundRuleTheLedgerReads() throws {

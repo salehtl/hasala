@@ -143,9 +143,12 @@ nonisolated struct LedgerEditAuthor: Sendable {
       let row = try txn(id)
       if row.transferState != nil { throw Failure.refused("transfer") }
       let undo = row.category == "transfer"
+      let unlinks = !undo && row.refundOf != nil
       try await build { a throws(AuthorError) in
         a.categorize(txnID: id, parentVersion: row.version, category: undo ? nil : "transfer", needsReview: undo)
+        if unlinks { a.annotate(txnID: id, set: [("refund_of", nil)]) }
       }
+      if unlinks, row.refundState != "ok" { return [.refundOf(txn: id, of: row.refundOf)] }
     case .markRefund(let id):
       let row = try txn(id)
       guard let shown = before.txn(id) else { throw Failure.notFound }

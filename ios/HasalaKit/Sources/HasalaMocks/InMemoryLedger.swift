@@ -222,6 +222,10 @@ public final class InMemoryLedger: LedgerStore {
         t.ruleID = nil
         t.isTransfer = !undo
         t.isRefund = false
+        if !undo {
+          t.refundOf = nil
+          t.refundLinkBroken = false
+        }
         t.needsReview = undo
         t.categorizedAt = at
         t.priorFiling = nil
