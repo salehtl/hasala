@@ -49,6 +49,20 @@ struct ProjectsEngineTests {
     #expect(p.transactions.contains { $0.id == s.txns[review].id && $0.toReview })
   }
 
+  @Test func aRowWaitingInReviewIsPendingEvenWithItsFlagCleared() throws {
+    var s = state([Project(id: "move", name: "Moving", glyph: .flag, budget: nil, starts: nil, ends: nil)])
+    let carrefour = try #require(s.txns.firstIndex { $0.merchant.hasPrefix("Carrefour") && !$0.needsReview })
+    let category = try #require(s.txns[carrefour].categoryID)
+    s.txns[carrefour].projectID = "move"
+    s.txns[carrefour].categorySource = .model(tag: "apple-fm/1")
+    s.txns[carrefour].rejectedCategories = [category]
+    #expect(s.txns[carrefour].inReview && !s.txns[carrefour].needsReview)
+    let p = try #require(PlanEngine.project("move", s, now: now))
+    #expect(p.spent == .aed(0))
+    #expect(p.pending == s.txns[carrefour].amount)
+    #expect(p.categories.isEmpty)
+  }
+
   @Test func openEndedDatesReadOnTheirOwn() {
     let s = state([
       Project(id: "a", name: "A", glyph: .flag, budget: nil, starts: LocalDate(2026, 10, 1), ends: nil),

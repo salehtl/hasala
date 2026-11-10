@@ -406,8 +406,8 @@ public enum PlanEngine {
 
   static func projectModel(_ p: Project, _ s: LedgerState, today: LocalDate) -> PlanProjectModel {
     let txns = projectTxns(p, s)
-    let spent = Fils.sum(txns.filter { !$0.needsReview }, projectMinor)
-    let pending = Fils.sum(txns.filter(\.needsReview), projectMinor)
+    let spent = Fils.sum(txns.filter { !$0.inReview }, projectMinor)
+    let pending = Fils.sum(txns.filter(\.inReview), projectMinor)
     let range = projectRange(p)
     let when = projectWhen(p, today: today)
     return PlanProjectModel(
@@ -835,7 +835,7 @@ public extension PlanEngine {
     let txns = projectTxns(p, s).sorted { $0.postedAt < $1.postedAt }
     var order: [CategoryID] = []
     var byCategory: [CategoryID: [Txn]] = [:]
-    for t in txns where !t.needsReview {
+    for t in txns where !t.inReview {
       let key = t.categoryID ?? ""
       if byCategory[key] == nil { order.append(key) }
       byCategory[key, default: []].append(t)

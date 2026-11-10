@@ -332,8 +332,9 @@ extension Txn {
     if archived { return false }
     if isHeldCopy { return true }
     if samePurchase != nil { return true }
-    if isTransfer { return false }
+    if isMatchedTransfer { return false }
     if needsReview || modelGuessRejected { return true }
+    if isTransfer { return false }
     return categoryID == nil && splits.isEmpty
   }
 

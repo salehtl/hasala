@@ -109,9 +109,10 @@ struct ReviewScopeTests {
     let at = LocalDateTime(2026, 9, 12, 10, 0)
     var paired = unsorted("paired", at)
     paired.isTransfer = true
-    var flaggedTransfer = unsorted("flagged-transfer", at)
-    flaggedTransfer.isTransfer = true
-    flaggedTransfer.needsReview = true
+    var flaggedPair = unsorted("flagged-pair", at)
+    flaggedPair.isTransfer = true
+    flaggedPair.isMatchedTransfer = true
+    flaggedPair.needsReview = true
     var archived = unsorted("archived", at)
     archived.archived = true
     var split = unsorted("split", at)
@@ -122,8 +123,23 @@ struct ReviewScopeTests {
     var excluded = unsorted("cash", at)
     excluded.categoryID = "transfer"
     excluded.categorySource = .user
-    let s = ledger([paired, flaggedTransfer, archived, split, excluded])
+    let s = ledger([paired, flaggedPair, archived, split, excluded])
     #expect(ReviewEngine.queue(s, in: september).isEmpty)
+  }
+
+  @Test func aTransferThatDidNotFileItselfWaitsInReview() {
+    let at = LocalDateTime(2026, 9, 12, 10, 0)
+    var flagged = unsorted("flagged-transfer", at)
+    flagged.categoryID = "transfer"
+    flagged.categorySource = .model(tag: "cf-clef/1")
+    flagged.isTransfer = true
+    flagged.needsReview = true
+    var filed = flagged
+    filed.id = "filed-transfer"
+    filed.needsReview = false
+    let s = ledger([flagged, filed])
+    #expect(flagged.inReview && !filed.inReview)
+    #expect(ReviewEngine.queue(s, in: september).map(\.id) == ["flagged-transfer"])
   }
 
   @Test func aModelPickStandsUnlessItWasFlagged() {
