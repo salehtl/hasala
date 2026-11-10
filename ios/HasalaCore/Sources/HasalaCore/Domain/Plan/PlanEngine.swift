@@ -271,7 +271,7 @@ public struct PlanEngine: Sendable {
     let x = l.localDate
     let xm = x.yearMonth
     var best: (day: CivilDate, month: CivilMonth, dist: Int64)?
-    for s in plan.incomeSources.values where s.active && utf8Equal(s.categoryID, l.category ?? "") {
+    for s in plan.incomeSources.values where (s.active || l.postedMs <= s.write.atMs) && utf8Equal(s.categoryID, l.category ?? "") {
       for off in [-1, 0, 1] {
         guard let y = xm.adding(months: off) else { continue }
         let day = CivilDate(year: y.year, month: y.month, day: min(Int(s.payday), y.daysInMonth))!

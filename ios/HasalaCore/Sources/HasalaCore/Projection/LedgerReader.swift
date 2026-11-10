@@ -529,7 +529,7 @@ public struct LedgerReader: Sendable {
         let id: String = r["id"]
         p.incomeSources[id] = IncomeSource(
           id: id, name: r["name"], categoryID: r["category_id"], amountMinor: r["amount_minor"], payday: r["payday"], active: r["active"],
-          write: none)
+          write: PlanWrite(opID: "", writerID: "", atMs: r["written_ms"]))
       }
       for r in try Row.fetchAll(db, sql: "SELECT * FROM category_plan_role ORDER BY category_id") {
         p.roles[r["category_id"] as String] = PlanRoleRecord(role: r["role"], write: none)

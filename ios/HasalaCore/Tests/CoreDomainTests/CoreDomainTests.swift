@@ -134,6 +134,32 @@ struct CoreDomainTests {
     #expect(e2.income(CivilMonth(year: 2026, month: 9)!).total == 2_500_000)
   }
 
+  @Test("an inactive source keeps its payday for paychecks dated on or before the write that turned it off")
+  func inactivePayday() {
+    let off: Int64 = 1_793_433_600_000
+    var plan = PlanState()
+    plan.incomeSources["s"] = IncomeSource(
+      id: "s", name: "Salary", categoryID: "salary", amountMinor: 2_500_000, payday: 1, active: false,
+      write: PlanWrite(opID: "", writerID: "", atMs: off))
+    func line(_ id: String, _ day: Int, of month: Int, _ ms: Int64) -> MoneyLine {
+      MoneyLine(
+        txnID: id, category: "salary", direction: "credit", localDate: CivilDate(year: 2026, month: month, day: day)!,
+        signedHome: 2_500_000, flow: .income, confirmed: true, postedMs: ms)
+    }
+    let before = line("a", 30, of: 10, off - 86_400_000)
+    let at = line("b", 31, of: 10, off)
+    let after = line("c", 29, of: 11, off + 29 * 86_400_000)
+    let october = CivilMonth(year: 2026, month: 10)!
+    let november = CivilMonth(year: 2026, month: 11)!
+    let today = CivilDate(year: 2026, month: 11, day: 30)!
+    let e = PlanEngine(plan: plan, taxonomy: TaxonomyView(TaxonomyV1.builtins), lines: [before, at, after], today: today)
+    #expect(e.attributedMonth(before) == november && e.attributedMonth(at) == november && e.attributedMonth(after) == november)
+    #expect(e.received(october, "salary") == 0 && e.received(november, "salary") == 7_500_000)
+    plan.incomeSources["s"]!.active = true
+    let on = PlanEngine(plan: plan, taxonomy: TaxonomyView(TaxonomyV1.builtins), lines: [before, at, after], today: today)
+    #expect(on.attributedMonth(after) == CivilMonth(year: 2026, month: 12))
+  }
+
   @Test("a bill due is never cancelled: an ended bill gives no due at all")
   func noCancelledDue() {
     #expect(BillExpectation.Status(rawValue: "cancelled") == nil)
