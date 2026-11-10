@@ -63,6 +63,19 @@ struct PlanModelTests {
     model.keepExpiredMoves()
     #expect(model.snapshot.row("dining")?.budget.minor == before + 100_00)
     #expect(model.snapshot.row("travel")?.budget == travel)
+    #expect(model.snapshot.expiredMovesLine == nil)
+    model.keepExpiredMoves()
+    #expect(model.snapshot.row("dining")?.budget.minor == before + 100_00)
+  }
+
+  @Test func theLiveStoreStopsOfferingAMoveOnceThisMonthsBudgetIsSet() throws {
+    var s = MayaLedger.state
+    let month = MayaLedger.now.date.yearMonth
+    s.plan.expiredMoves = ["dining": .aed(100_00), "groceries": .aed(50_00)]
+    _ = try LiveLedgerStore.patch(.setBudget("groceries", month.next, .aed(10_00)), &s, now: MayaLedger.now)
+    #expect(s.plan.expiredMoves["groceries"] == .aed(50_00))
+    _ = try LiveLedgerStore.patch(.setBudget("dining", month, .aed(2_000_00)), &s, now: MayaLedger.now)
+    #expect(s.plan.expiredMoves == ["groceries": .aed(50_00)])
   }
 
   @Test func moveMoneyAsksBeforeDiscardingOnlyAfterAChange() {

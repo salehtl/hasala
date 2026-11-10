@@ -779,6 +779,11 @@ public struct PlanState: Sendable, Hashable, Codable {
     if amount.minor == 0 { zeroSet.insert(key) } else { zeroSet.remove(key) }
   }
 
+  public mutating func setBudget(_ category: CategoryID, _ month: YearMonth, to amount: Money, thisMonth: YearMonth) {
+    setBudget(category, month, to: amount)
+    if month == thisMonth { expiredMoves[category] = nil }
+  }
+
   public func budget(_ category: CategoryID, _ month: YearMonth) -> Money {
     budgets[Self.key(category, month)] ?? .aed(0)
   }

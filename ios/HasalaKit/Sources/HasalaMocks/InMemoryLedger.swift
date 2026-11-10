@@ -313,7 +313,7 @@ public final class InMemoryLedger: LedgerStore {
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
       touchedPlan = true
-      s.plan.setBudget(c, month, to: amount)
+      s.plan.setBudget(c, month, to: amount, thisMonth: now.date.yearMonth)
       title = "\(categoryName(c)) budget changed"
     case .moveMoney(let from, let to, let month, let amount):
       guard amount.minor > 0 else { throw .invalidAmount }
