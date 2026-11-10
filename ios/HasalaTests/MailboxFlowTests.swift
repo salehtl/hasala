@@ -670,11 +670,14 @@ struct MailboxFlowTests: AccountSuite {
   /// again aimed at the first mailbox that needs it, Needs you, Not connected.
   @Test func theHeroSaysItInAWord() {
     func hero(
-      _ m: [MailboxSnapshot], _ status: MailboxHealth.Status = .working, offer: MailOffer? = nil, read: MonthRead? = nil
+      _ m: [MailboxSnapshot], _ status: MailboxHealth.Status = .working, offer: MailOffer? = nil, read: MonthRead? = nil,
+      stoppedOn day: LocalDate? = nil
     ) -> BankAlertsPage.Hero {
       let health = MailboxHealth(status: status, lastEmail: "4 min ago", banks: "Emirates NBD and DIB")
+      let reading = ReadingState(
+        source: .mail(.outlook), kind: .stopped(.accountFull, since: day), today: LocalDate(2026, 10, 10))
       return BankAlertsPage.Hero(summary: MailboxesSummary(m, health: health, offer: offer), health: health,
-                                 mailboxes: m, offer: offer, read: read)
+                                 mailboxes: m, offer: offer, read: read, reading: day == nil ? nil : reading)
     }
     var syncing = MockMailbox.outlook
     syncing.state = .syncing
@@ -696,10 +699,14 @@ struct MailboxFlowTests: AccountSuite {
     var halted = MockMailbox.outlook
     halted.state = .readingStopped
     halted.lastChecked = "Wed 7 Oct, 09:14"
-    let stopped = hero([MockMailbox.gmail, halted], .reconnect)
+    let stopped = hero([MockMailbox.gmail, halted], .reconnect, stoppedOn: LocalDate(2026, 10, 7))
     #expect(stopped.kind == .stopped(mailboxID: "outlook-1") && stopped.hue == .sand)
     #expect(stopped.title == "Bank alerts stopped" && stopped.glyph?.map(\.d) == PaperGlyph.alert.map(\.d))
-    #expect(stopped.detail == "Hasala stopped reading maya.k@example.com on Wed\u{00A0}7\u{00A0}Oct. Your Gmail still works.")
+    #expect(stopped.detail == "Hasala stopped reading maya.k@example.com on Wed. Your Gmail still works.")
+    #expect(hero([halted], .reconnect, stoppedOn: LocalDate(2026, 9, 20)).detail
+      == "Hasala stopped reading maya.k@example.com on 20\u{00A0}Sep.")
+    #expect(hero([halted], .reconnect, stoppedOn: LocalDate(2026, 10, 10)).detail
+      == "Hasala stopped reading maya.k@example.com today.")
     #expect(
       stopped.totalsLine
         == "Payments since then aren't in your totals yet. A new sign-in won't fix this. If Try again doesn't help, email support@hasala.app.")

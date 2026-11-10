@@ -65,7 +65,7 @@ struct BankAlertsPage: View {
       mailboxes, health: health, offer: app.mailOffer, known: stateKnown, reading: app.store.state.reading)
     let hero = Hero(
       summary: summary, health: health, mailboxes: mailboxes, offer: app.mailOffer, read: reporting?.readThisMonth,
-      known: stateKnown)
+      known: stateKnown, reading: app.store.state.reading)
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         heroCard(hero)
@@ -127,7 +127,7 @@ struct BankAlertsPage: View {
 
     init(
       summary: MailboxesSummary, health: MailboxHealth, mailboxes: [MailboxSnapshot], offer: MailOffer?,
-      read: MonthRead? = nil, known: Bool = true
+      read: MonthRead? = nil, known: Bool = true, reading: ReadingState? = nil
     ) {
       let live = mailboxes.filter { $0.state != .disconnected }
       if !known {
@@ -157,7 +157,7 @@ struct BankAlertsPage: View {
       case .signInAgain(let id, _):
         detail = Self.signInDetail(live.first { $0.id == id }, live: live) ?? summary.detail
       case .stopped(let id):
-        detail = Self.stoppedDetail(live.first { $0.id == id }, live: live) ?? summary.detail
+        detail = Self.stoppedDetail(live.first { $0.id == id }, live: live, reading: reading) ?? summary.detail
       case .working where !health.lastEmail.isEmpty:
         // "Last email 4 min ago" over "214 read in October" (Paper 1NS8); the banks when
         // the month's count isn't known.
@@ -186,11 +186,12 @@ struct BankAlertsPage: View {
       return detail
     }
 
-    static func stoppedDetail(_ stopped: MailboxSnapshot?, live: [MailboxSnapshot]) -> String? {
+    static func stoppedDetail(_ stopped: MailboxSnapshot?, live: [MailboxSnapshot], reading: ReadingState?) -> String? {
       guard let stopped else { return nil }
       var detail = "Hasala stopped reading \(stopped.address)"
-      if let day = stopped.lastChecked?.split(separator: ",").first {
-        detail += " on " + day.replacingOccurrences(of: " ", with: "\u{00A0}")
+      if let reading, case .stopped(_, let since?) = reading.kind {
+        detail += since == reading.today
+          ? " today" : " on " + ReadingOnScreen.named(since, today: reading.today).replacingOccurrences(of: " ", with: "\u{00A0}")
       }
       detail += "."
       let working = live.first { $0.id != stopped.id && ($0.state == .connected || $0.state == .syncing) }

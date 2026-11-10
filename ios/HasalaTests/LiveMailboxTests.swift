@@ -437,7 +437,7 @@ struct LiveMailboxTests {
   /// A lane halted for a reason a new sign-in doesn't fix: its row reads "Reading stopped"
   /// and nothing is offered, and the Profile card and Bank alerts must not say it works.
   /// (`LedgerStateMapper.health` gives every halted phase `.reconnect`: the lane's hero is
-  /// "needs you".) Another iPhone reading the mailbox is still working.
+  /// "Bank alerts stopped".) Another iPhone reading the mailbox is still working.
   @Test func aHaltedLaneIsNotWorking() {
     let now: Int64 = 10_000_000_000
     func summary(
