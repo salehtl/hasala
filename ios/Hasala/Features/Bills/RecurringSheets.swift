@@ -455,11 +455,6 @@ final class AddRecurringModel {
     ticked = []
   }
 
-  func clearSeed() {
-    seed = nil
-    keys = []
-  }
-
   @discardableResult
   func save() -> Bool {
     guard !added, var d = draft else { return false }
