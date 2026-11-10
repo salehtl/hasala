@@ -187,6 +187,13 @@ enum BankTextsLinkCopy {
     _ = try? facts.update(nowMs: nowMs) { $0.link = BankTextsFactsData.LinkCopy(linked: linked, learnedAtMs: nowMs) }
   }
 
+  static func connected(facts: BankTextsFacts = .shared, nowMs: Int64) {
+    _ = try? facts.update(nowMs: nowMs) { data in
+      data.link = BankTextsFactsData.LinkCopy(linked: true, learnedAtMs: nowMs)
+      data.lastRunMs = nil
+    }
+  }
+
   static func disconnected(facts: BankTextsFacts = .shared, nowMs: Int64) {
     _ = try? facts.update(nowMs: nowMs) { data in
       data.link = BankTextsFactsData.LinkCopy(linked: false, learnedAtMs: nowMs)
@@ -247,7 +254,7 @@ struct BankTextsLinkKeeper {
   }
 
   func connected() {
-    BankTextsLinkCopy.note(linked: true, facts: facts, nowMs: nowMs())
+    BankTextsLinkCopy.connected(facts: facts, nowMs: nowMs())
   }
 
   func disconnected(_ outcome: MailboxDisconnectOutcome) {

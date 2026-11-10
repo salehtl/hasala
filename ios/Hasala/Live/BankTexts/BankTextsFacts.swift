@@ -112,7 +112,7 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
   }
 
   func sawAutomationRun(nowMs: Int64) -> Bool {
-    lastRunMs != nil || ignoredTotal(nowMs: nowMs) > 0
+    lastRunMs != nil
   }
 }
 

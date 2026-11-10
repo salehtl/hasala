@@ -725,21 +725,24 @@ struct BankTextsTests {
     #expect(BankTexts.ignoredLine(0) == nil)
     #expect(BankTexts.ignoredLine(1) == "1 text that looks like a payment was ignored in the last 30 days because this account reads bank email.")
     #expect(BankTexts.ignoredLine(3) == "3 texts that look like payments were ignored in the last 30 days because this account reads bank email.")
-    let linked = MockBankTexts(link: .linked, ignored: 3)
+    let linked = MockBankTexts(link: .linked, lastRan: now, ignored: 3)
     #expect(UseBankTextsSection.ignoredLine(linked) == BankTexts.ignoredLine(3))
     #expect(linked.sawAutomationRun && UseBankTextsSection.offersDeleteAutomation(linked))
+    #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(link: .linked, ignored: 3)))
     #expect(UseBankTextsSection.ignoredLine(MockBankTexts(link: .notLinked, ignored: 3)) == nil)
     #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(link: .linked)))
     #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(setUp: true, link: .notLinked)))
   }
 
-  @Test func theLastDisconnectSaysTheAutomationStaysWhenThisDeviceSawItRun() {
+  @Test func theLastDisconnectMentionsTheAutomationWhenThisDeviceSawItRunSinceTheConnect() {
     let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
     let ran = MockBankTexts(mailbox: mailbox, lastRan: now)
     #expect(ran.status == .notSetUp && ran.lastRanAt == now && ran.sawAutomationRun)
-    #expect(BankTexts.disconnectNote(ran, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == BankTexts.automationStillThere)
+    #expect(
+      BankTexts.disconnectNote(ran, mailbox: mailbox, disconnecting: MockMailbox.gmail.id)
+        == "If your Shortcuts automation is still there, Hasala will add bank texts from now on.")
     let ignored = MockBankTexts(mailbox: mailbox, ignored: 2)
-    #expect(BankTexts.disconnectNote(ignored, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) != nil)
+    #expect(BankTexts.disconnectNote(ignored, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     #expect(BankTexts.disconnectNote(MockBankTexts(mailbox: mailbox), mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     #expect(BankTexts.disconnectNote(nil, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     let two = MockMailbox(mailboxes: [MockMailbox.gmail, MockMailbox.outlook])

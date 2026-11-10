@@ -333,6 +333,32 @@ struct BankTextsIntakeTests {
     #expect(r.factsData.link?.linked == false)
   }
 
+  @Test func onlyARunSinceTheLastConnectCountsAtTheDisconnect() async throws {
+    let r = rig(answer: nil)
+    let clock = Clock(BankTextIntake.ms(Self.t0) - 120_000)
+    let k = keeper(r, clock)
+    try r.facts.update(nowMs: clock.ms) { d in
+      d.lastRunMs = clock.ms - 60_000
+      d.addIgnored(2, atMs: clock.ms - 60_000)
+    }
+    k.connected()
+    #expect(r.factsData.lastRunMs == nil && r.factsData.ignoredTotal(nowMs: clock.ms) == 2)
+    #expect(!r.factsData.sawAutomationRun(nowMs: clock.ms))
+    let l = lane(r)
+    #expect(!l.sawAutomationRun && l.ignoredLast30Days == 2)
+    clock.ms += 1
+    k.disconnected(.disconnected)
+    #expect(r.factsData.link?.linked == false && !r.factsData.chosen)
+    k.connected()
+    #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .ignored(counted: true))
+    #expect(r.factsData.sawAutomationRun(nowMs: clock.ms))
+    l.reload()
+    #expect(l.sawAutomationRun)
+    clock.ms += 1
+    k.disconnected(.disconnected)
+    #expect(r.factsData.chosen)
+  }
+
   @Test func theRuntimeWritesTheCopyOnEachServerAnswerConnectAndDisconnect() async throws {
     let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
     defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
@@ -1448,6 +1474,8 @@ struct BankTextsIntakeTests {
     let mock = MockBankTexts()
     #expect(!mock.sawAutomationRun)
     mock.ignoredLast30Days = 1
+    #expect(!mock.sawAutomationRun)
+    mock.lastRan = Self.t0
     #expect(mock.sawAutomationRun)
   }
 }

@@ -105,10 +105,10 @@ iPhone is the check for whether it runs with no confirmation. The set-up test ca
 it stays open for 10 minutes, and a tap on the prompt passes it. Thus the steps ask the person to
 check Run Immediately, and the passed test says what to do if Shortcuts asked first.
 
-The offer ends once this iPhone saw the automation run (`sawAutomationRun`), so that a person does
-not add a second one. Two automations would run for each text, and each repeat would wait in
-Review. The app cannot see a hand-made automation that never ran, thus the offer in Profile says
-to skip it if one is already made.
+The offer ends once this iPhone saw the automation run since its last mailbox connect
+(`sawAutomationRun`), so that a person does not add a second one. Two automations would run for
+each text, and each repeat would wait in Review. The app cannot see a hand-made automation that
+never ran, thus the offer in Profile says to skip it if one is already made.
 
 The steps for iOS 27 and the hand note for iOS 27 come from published reviews, not from an import
 on a device. Check them on a real iPhone. The link can change only with a new build. The hand steps
@@ -223,12 +223,15 @@ payment cannot arrive through two channels, and no merge is needed.
   device's next answer (each launch, each push). It is listed in
   [Open checks](#open-checks-for-the-beta).
 - A disconnect that leaves the account with no mailbox link (Profile › Bank alerts has this
-  today) puts the account on texts, as the source of truth says. When this device has a
-  last-run time or an ignored count from the last 30 days, and no other mailbox stays, the
-  disconnect alert says so: "Your Shortcuts automation is still there. Hasala will add bank
-  texts from now on." That disconnect also sets the texts-chosen flag on this iPhone, so
-  Bank alerts shows the texts page. A device that never saw the automation run and never
-  finished the texts path shows no source until the person picks one.
+  today) puts the account on texts, as the source of truth says. Only a run since this
+  device's last mailbox connect counts: the connect clears the last-run time, so a person
+  who deleted the automation as told is not told that it is still there. When this device
+  has a last-run time, and no other mailbox stays, the disconnect alert says: "If your
+  Shortcuts automation is still there, Hasala will add bank texts from now on." That
+  disconnect also sets the texts-chosen flag on this iPhone, so Bank alerts shows the texts
+  page. A device that saw no run since its last connect and never finished the texts path
+  shows no source until the person picks one, and offers the automation again; a person
+  who kept it proves it again with the next text.
 - **Every mailbox connect on an account that has text rows** runs the overlap check (D10),
   whatever led to it: the switch from texts to email, "Add a mailbox" after a disconnect,
   the setup's connect, or a takeover. The build applies it to every mail that the engine
@@ -560,7 +563,8 @@ On the device, outside the synced data, and never sent:
   `OnboardingStep.Facts.textsChosen`);
 - the time the automation last ran (one value, overwritten on each run, for every text
   handed to the action while the person is signed in and after the first unlock, because
-  the app cannot see the automation any other way);
+  the app cannot see the automation any other way, and cleared by this device's mailbox
+  connect);
 - the time of the last text that Hasala added as a row (one value for every sender, overwritten
   on each new row; a time kept for each bank by an older build is folded into it);
 - for each bank sender ID (the sender as iOS gave it, with its bank), a count for each day

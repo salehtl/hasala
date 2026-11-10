@@ -116,7 +116,7 @@ extension BankTextsConnecting {
   var usesTexts: Bool { source == .texts }
   var readsEmail: Bool { link == .linked }
   var offersPaste: Bool { link != .linked }
-  var sawAutomationRun: Bool { lastRanAt != nil || ignoredLast30Days > 0 }
+  var sawAutomationRun: Bool { lastRanAt != nil }
 }
 
 enum BankTexts {
@@ -202,7 +202,7 @@ enum BankTexts {
   }
 
   static let automationStillThere =
-    "Your Shortcuts automation is still there. Hasala will add bank texts from now on."
+    "If your Shortcuts automation is still there, Hasala will add bank texts from now on."
 
   static func disconnectNote(
     _ lane: (any BankTextsConnecting)?, mailbox: (any MailboxConnecting)?, disconnecting id: String
