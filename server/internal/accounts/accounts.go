@@ -1,6 +1,6 @@
 // Package accounts holds the operator's account switches (spec 02 §14.2,
-// §18.3): today the review flag, which marks an account whose data is the
-// sample a Beta App Review reviewer may load. It is one of the few packages
+// §18.3): suspension, and the review flag, which marks an account whose data
+// is the sample a Beta App Review reviewer may load. It is one of the few packages
 // spec 02's fence 6 lets read or write that flag (cmd/hasalad/fence_test.go);
 // the API reports it only through GET /api/v1/account.
 package accounts

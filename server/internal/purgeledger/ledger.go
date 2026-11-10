@@ -46,6 +46,8 @@ const (
 	KindInviteRevoked  Kind = "invite-revoked"
 	KindPurgeCancelled Kind = "purge-cancelled"
 	KindWrap           Kind = "wrap"
+	KindSuspend        Kind = "suspend"
+	KindUnsuspend      Kind = "unsuspend"
 )
 
 type Entry struct {
@@ -315,7 +317,7 @@ func check(e Entry) error {
 	}
 	switch e.Kind {
 	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindSuspend, KindUnsuspend:
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
 		}
@@ -353,7 +355,7 @@ func formatEntry(e Entry) string {
 	case KindPasskey, KindWrap:
 		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
 	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindSuspend, KindUnsuspend:
 		line += " " + string(e.Kind)
 	}
 	return line + "\n"
@@ -375,7 +377,7 @@ func parseHex(s string, n int) ([]byte, bool) {
 func unknownKind(k Kind) bool {
 	switch k {
 	case KindPurge, KindFreeze, KindDevice, KindPassword, KindUnfreeze, KindWaitlistLeave, KindPasskey, KindWaitlistUnsent,
-		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindWrap:
+		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindWrap, KindSuspend, KindUnsuspend:
 		return false
 	}
 	for _, r := range string(k) {
@@ -434,7 +436,7 @@ func parseLine(text string) (Entry, bool) {
 	e.Kind = Kind(f[2])
 	switch e.Kind {
 	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindSuspend, KindUnsuspend:
 		if len(f) != 3 {
 			return Entry{}, false
 		}
