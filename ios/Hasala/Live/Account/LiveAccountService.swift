@@ -533,6 +533,7 @@ final class LiveAccountService: AccountService {
       }
       throw Self.map(error)
     }
+    LocalAccountData.markSetupFinished(setupDefaults)
     recovery = nil
     signIn = nil
     let b = binding

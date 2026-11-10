@@ -253,21 +253,24 @@ struct LiveAccountFlowTests {
     #expect(await account.freezeInfo() == nil)
   }
 
-  private func recoveryReadyToFinish(_ server: MiniHasalad) async throws -> (Phone, SignInModel) {
+  private func recoveryReadyToFinish(_ server: MiniHasalad) async throws -> (Phone, SignInModel, UserDefaults) {
     let words = try await signUp(Phone(server), server)
     let b = Phone(server, passkeys: StubPasskeys())
-    let m = SignInModel(account: b.relaunched()) { _ in }
+    let defaults = try #require(UserDefaults(suiteName: "recover.\(UUID().uuidString)"))
+    let account = b.relaunched()
+    account.setupDefaults = defaults
+    let m = SignInModel(account: account) { _ in }
     m.phraseText = words.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
     m.recoverCode = try #require(server.lastCode)
     #expect(await m.submitRecoveryCode())
     #expect(m.verifiedRecoveryKind == .passkey)
-    return (b, m)
+    return (b, m, defaults)
   }
 
   @Test func aRecoveryTheServerTookFinishesOnTheSameScreen() async throws {
     let server = MiniHasalad(invite: Self.invite)
-    let (b, m) = try await recoveryReadyToFinish(server)
+    let (b, m, _) = try await recoveryReadyToFinish(server)
     server.accountUnavailable = true
     #expect(await m.finishRecovery(.passkey) == .failed)
     #expect(m.recovery != nil && m.verifiedRecoveryKind == .passkey)
@@ -284,12 +287,28 @@ struct LiveAccountFlowTests {
 
   @Test func aRecoveryTheServerRefusedGoesBackToTheWords() async throws {
     let server = MiniHasalad(invite: Self.invite)
-    let (_, m) = try await recoveryReadyToFinish(server)
+    let (_, m, defaults) = try await recoveryReadyToFinish(server)
     server.refusesRecoverFinish = true
     #expect(await m.finishRecovery(.passkey) == .startAgain)
     #expect(m.recovery == nil && m.verifiedRecoveryKind == nil)
     #expect(m.failure(on: .recoverWords) != nil)
     #expect(server.recoverFinishes == 0)
+    #expect(!LocalAccountData.setupFinished(defaults))
+  }
+
+  @Test func aKillOnBackInRelaunchesIntoTheApp() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (b, m, defaults) = try await recoveryReadyToFinish(server)
+    server.accountUnavailable = true
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(!LocalAccountData.setupFinished(defaults))
+
+    server.accountUnavailable = false
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(LocalAccountData.setupFinished(defaults))
+    let binding = try #require(b.binding)
+    let (phase, wall) = BootController.initialPhase(.opening(binding), finished: LocalAccountData.setupFinished(defaults))
+    #expect(phase == .ready && wall == nil)
   }
 
   @Test func aNewIPhoneSignedInToAFrozenAccountUnfreezesWithItsPasskey() async throws {
