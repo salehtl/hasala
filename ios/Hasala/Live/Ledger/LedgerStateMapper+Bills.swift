@@ -366,7 +366,7 @@ nonisolated extension LedgerStateMapper {
     let shownDue = next ?? fallback
     let terms = v.terms(at: shownDue)
     var amount = Money(minor: terms.amountMinor, currency: b.currency)
-    let history = payments.map(\.due)
+    let history = payments.map { p in p.txnID.flatMap { paidAmount[$0]?.postedAt.date } ?? p.due }.sorted(by: >)
     var priceChangeFrom: Money?
     if !terms.variable, let last = payments.first, let txn = last.txnID,
       let lastDue = CivilDate(year: last.due.year, month: last.due.month, day: last.due.day),

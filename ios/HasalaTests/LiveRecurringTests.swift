@@ -297,6 +297,23 @@ struct LiveRecurringTests {
     #expect(BillsEngine.snapshot(live, now: MayaLedger.now).next14 == .aed(719_15))
   }
 
+  @Test func theHistoryIsTheDayEachPaymentLeftOrTheDueWhenMarkedByHand() async throws {
+    var ids: [String] = []
+    let live = try await Mapper.foldedState { o throws(AuthorError) in
+      try o.setBill(id: "bm_gym", Self.gym())
+      ids.append(try o.manualEntry(amountMinor: 200_00, currency: "AED", direction: "debit", localWallMs: try! Self.wall(2026, 7, 16), merchant: "Gym Club", category: "subscriptions"))
+      ids.append(try o.manualEntry(amountMinor: 200_00, currency: "AED", direction: "debit", localWallMs: try! Self.wall(2026, 8, 24), merchant: "Gym Club", category: "subscriptions"))
+      o.setBillOccurrence(bill: "bm_gym", due: Self.day(2026, 8, 15), .paid(txn: ids[1]))
+      o.setBillOccurrence(bill: "bm_gym", due: Self.day(2026, 9, 15), .paid(txn: nil))
+    }
+    let gym = try #require(live.bills.first { $0.id == "bm_gym" })
+    #expect(gym.payments.map(\.due) == [LocalDate(2026, 9, 15), LocalDate(2026, 8, 15), LocalDate(2026, 7, 15)])
+    #expect(gym.payments.map(\.link) == [.marked, .linked, .matched])
+    #expect(gym.history == [LocalDate(2026, 9, 15), LocalDate(2026, 8, 24), LocalDate(2026, 7, 16)])
+    let detail = try #require(BillsEngine.detail(live, now: MayaLedger.now, bill: "bm_gym"))
+    #expect(detail.historyNote == "2 of 3 on time")
+  }
+
   static func gymRow(month: Int, verified: Bool = true, n: Int) -> JSONObject {
     LiveSortingTests.payload(.init(raw: "Gym Club", minor: 200_00, currency: "AED", month: month, day: 16, verified: verified), n: n)
   }
