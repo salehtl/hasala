@@ -11,7 +11,10 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-const ledgerRetryInterval = time.Minute
+const (
+	ledgerRetryInterval = time.Minute
+	ledgerWriteFailed   = "hasalad serve: the restore ledger write failed; a line still held is written by the next sweep of held lines"
+)
 
 type ledgerWriter struct {
 	write func(purgeledger.Entry) error
@@ -34,7 +37,7 @@ func (w *ledgerWriter) record(e purgeledger.Entry) {
 		return
 	}
 	if !errors.Is(err, purgeledger.ErrNotWritten) {
-		slog.Error("hasalad serve: the restore ledger write failed part way; it is not retried", "kind", string(e.Kind), "err", err)
+		slog.Error(ledgerWriteFailed, "kind", string(e.Kind), "err", err)
 		return
 	}
 	slog.Warn("hasalad serve: the restore ledger did not record a waitlist deletion; it will be retried", "kind", string(e.Kind), "err", err)
@@ -62,7 +65,7 @@ func (w *ledgerWriter) retry(context.Context) (int, error) {
 				first = err
 			}
 		default:
-			slog.Error("hasalad serve: the restore ledger write failed part way; it is not retried", "kind", string(e.Kind), "err", err)
+			slog.Error(ledgerWriteFailed, "kind", string(e.Kind), "err", err)
 		}
 	}
 	w.waiting = left

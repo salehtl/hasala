@@ -421,17 +421,6 @@ func CollectTokens(ctx context.Context, q Querier, userID uuid.UUID, exceptWrite
 	return collectTargets(rows)
 }
 
-// WriterTokens reads one writer's tokens, for a revoke: the revoked writer is
-// woken too (spec 02 §12.5, §9.5), and its token row goes with it.
-func WriterTokens(ctx context.Context, q Querier, userID uuid.UUID, writerID string) ([]Target, error) {
-	rows, err := q.Query(ctx,
-		`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, userID, writerID)
-	if err != nil {
-		return nil, err
-	}
-	return collectTargets(rows)
-}
-
 func collectTargets(rows pgx.Rows) ([]Target, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Target, error) {
 		var t Target

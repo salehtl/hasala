@@ -606,6 +606,16 @@ let
     text = healthText;
   };
 
+  postgresAlertText = ''
+    [ "''${SERVICE_RESULT:-}" != success ] || exit 0
+    systemctl start --no-block -- "$@"
+  '';
+  postgresAlert = pkgs.writeShellApplication {
+    name = "hasala-postgresql-alert";
+    runtimeInputs = [ config.systemd.package ];
+    text = postgresAlertText;
+  };
+
   emailTokenCheck = pkgs.writeShellApplication {
     name = "hasala-email-token-check";
     runtimeInputs = [
@@ -1007,6 +1017,7 @@ in
         admin = adminText;
         bumpGeneration = bumpGenerationText;
         health = healthText;
+        postgresAlert = postgresAlertText;
       };
       description = "The text of the operational scripts; the ops-scripts check runs it against stubs.";
     };
@@ -1514,33 +1525,38 @@ in
               --data-checksums
           fi
         '';
-        serviceConfig = hardening // {
-          Type = "notify";
-          User = "hasala-pg";
-          Group = "hasala-db";
-          ExecStart = "${pg}/bin/postgres -D ${dataDir} -c config_file=${pgConf}";
-          ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
-          KillMode = "mixed";
-          KillSignal = "SIGINT";
-          TimeoutSec = 120;
-          StateDirectory = [
-            "hasala-postgresql"
-            "hasala-postgresql/${pgMajor}"
-          ];
-          StateDirectoryMode = "0700";
-          RuntimeDirectory = "hasala-postgresql";
-          RuntimeDirectoryMode = "0750";
-          PrivateNetwork = true;
-          RestrictAddressFamilies = [ "AF_UNIX" ];
-          IPAddressDeny = "any";
-          MemoryHigh = cfg.limits.postgresMemoryHigh;
-          MemoryMax = cfg.limits.postgresMemoryMax;
-          CPUQuota = "200%";
-          TasksMax = 128;
-          LimitNOFILE = 4096;
-          Restart = "on-failure";
-          RestartSec = "5s";
-        };
+        serviceConfig =
+          hardening
+          // {
+            Type = "notify";
+            User = "hasala-pg";
+            Group = "hasala-db";
+            ExecStart = "${pg}/bin/postgres -D ${dataDir} -c config_file=${pgConf}";
+            ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
+            KillMode = "mixed";
+            KillSignal = "SIGINT";
+            TimeoutSec = 120;
+            StateDirectory = [
+              "hasala-postgresql"
+              "hasala-postgresql/${pgMajor}"
+            ];
+            StateDirectoryMode = "0700";
+            RuntimeDirectory = "hasala-postgresql";
+            RuntimeDirectoryMode = "0750";
+            PrivateNetwork = true;
+            RestrictAddressFamilies = [ "AF_UNIX" ];
+            IPAddressDeny = "any";
+            MemoryHigh = cfg.limits.postgresMemoryHigh;
+            MemoryMax = cfg.limits.postgresMemoryMax;
+            CPUQuota = "200%";
+            TasksMax = 128;
+            LimitNOFILE = 4096;
+            Restart = "on-failure";
+            RestartSec = "5s";
+          }
+          // optionalAttrs (cfg.monitoring.onFailure != [ ]) {
+            ExecStopPost = "+${lib.getExe postgresAlert} ${lib.escapeShellArgs cfg.monitoring.onFailure}";
+          };
         unitConfig = {
           StartLimitIntervalSec = 300;
           StartLimitBurst = 5;
