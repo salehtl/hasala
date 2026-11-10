@@ -733,6 +733,80 @@ struct LiveLedgerMapperTests {
     #expect(transfer.isRefund == marked.isRefund)
   }
 
+  @Test func theOptimisticSplitFollowsTheRefundRuleTheLedgerReads() throws {
+    let lines = [
+      SplitLine(id: 0, categoryID: "dining", amount: .aed(300_00)), SplitLine(id: 1, categoryID: "shopping", amount: .aed(200_00)),
+    ]
+    var s = MayaLedger.state
+    s.txns += [
+      Self.credit("counted", category: "dining", refund: true), Self.credit("refund", category: "refunds", refund: true),
+      Self.credit("linked", category: "dining", linkBroken: true), Self.credit("income", category: "salary"),
+    ]
+    for id in ["counted", "refund", "linked", "income"] {
+      _ = try LiveLedgerStore.patch(.split(id, lines), &s, now: MayaLedger.now)
+      #expect(s.txn(id)?.splits.count == 2 && s.txn(id)?.categoryID == "dining", "\(id)")
+    }
+    #expect(s.txn("counted")?.isRefund == false)
+    #expect(s.txn("refund")?.isRefund == true)
+    #expect(s.txn("linked")?.isRefund == true)
+    #expect(s.txn("income")?.isRefund == false)
+
+    var split = MayaLedger.state
+    var counted = Self.credit("counted", category: "dining")
+    counted.splits = counted.apportioned(lines)
+    var income = Self.credit("income", category: "salary")
+    income.splits = income.apportioned(lines)
+    split.txns += [counted, income]
+    _ = try LiveLedgerStore.patch(.split("counted", []), &split, now: MayaLedger.now)
+    _ = try LiveLedgerStore.patch(.split("income", []), &split, now: MayaLedger.now)
+    #expect(split.txn("counted")?.splits.isEmpty == true && split.txn("counted")?.isRefund == true)
+    #expect(split.txn("income")?.splits.isEmpty == true && split.txn("income")?.isRefund == false)
+  }
+
+  @Test func aSplitAndItsRemovalKeepTheRefundFlagAsTheLedgerReadsIt() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    let wall = Int64(1_791_633_600_000)
+    var counted = ""
+    var refund = ""
+    let made = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      counted = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Store", category: "dining")
+      refund = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Shop", category: "refunds")
+    }
+    try await a.outbox.enqueue(try #require(made).ops)
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "split.refund.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    #expect(store.state.txn(counted)?.isRefund == true && store.state.txn(refund)?.isRefund == true)
+    let lines = [
+      SplitLine(id: 0, categoryID: "dining", amount: .aed(70_00)), SplitLine(id: 1, categoryID: "shopping", amount: .aed(50_00)),
+    ]
+
+    for (id, splitRefund) in [(counted, false), (refund, true)] {
+      _ = try store.apply(.split(id, lines))
+      let patched = try #require(store.state.txn(id))
+      #expect(patched.isRefund == splitRefund, "\(id)")
+      try await Self.eventually { try a.projection.reader.txn(id)?.split == true }
+      let read = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(id))
+      #expect(!read.splits.isEmpty && read.isRefund == patched.isRefund, "\(id)")
+
+      await store.writesFinished()
+      await store.reload()
+      #expect(store.state.txn(id)?.isRefund == read.isRefund, "\(id)")
+      _ = try store.apply(.split(id, []))
+      let removed = try #require(store.state.txn(id))
+      #expect(removed.splits.isEmpty && removed.isRefund, "\(id)")
+      try await Self.eventually { try a.projection.reader.txn(id)?.split == false }
+      let back = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(id))
+      #expect(back.splits.isEmpty && back.isRefund == removed.isRefund, "\(id)")
+    }
+  }
+
   @Test func aWriteThatFailsIsReportedAndItsUndoDropped() async throws {
     let a = try Self.account()
     for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }

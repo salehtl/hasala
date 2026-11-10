@@ -413,6 +413,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       let t = s.txns[i]
       if !lines.isEmpty, !TransactionEngine.splitAddsUp(lines, total: t.amount) { throw .splitDoesNotAddUp }
       s.txns[i].splits = t.apportioned(lines)
+      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
       if let first = lines.first { s.txns[i].categoryID = first.categoryID }
       s.txns[i].needsReview = false
       if t.countsAsPick || s.txns[i].countsAsPick {
