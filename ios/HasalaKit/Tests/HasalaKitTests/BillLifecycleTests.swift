@@ -66,7 +66,7 @@ struct BillLifecycleTests {
     #expect(du.notices.isEmpty)
     #expect(du.priceChangeFrom == nil)
     #expect(du.amount == .aed(389_00))
-    #expect(!BillsEngine.snapshot(ledger.state, now: ledger.now).needsALook.contains { $0.id == "du" })
+    #expect(!BillsEngine.snapshot(ledger.state, now: ledger.now).needsALook.contains { $0.billID == "du" })
     #expect(throws: ActionError.notFound) { try ledger.apply(.acceptBillAmount("du")) }
   }
 
