@@ -787,7 +787,7 @@ public struct PlanState: Sendable, Hashable, Codable {
 /// Mailbox health for Profile and Bank alerts (spec 04 §7.10). Content-free.
 public struct MailboxHealth: Sendable, Hashable, Codable {
   public enum Status: String, Sendable, Hashable, Codable {
-    case working, quiet, notConnected, reconnect
+    case working, notConnected, reconnect
     /// The first import after connecting is still reading the backfill window.
     case importing
   }

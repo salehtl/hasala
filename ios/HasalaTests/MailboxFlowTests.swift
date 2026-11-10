@@ -649,8 +649,6 @@ struct MailboxFlowTests: AccountSuite {
     let gmail = hero([MockMailbox.needingSignIn(MockMailbox.gmail)],
                      offer: .signInAgain(mailboxID: "gmail-1", provider: .gmail))
     #expect(gmail.detail == "Google ended access to maya@example.com on Wed\u{00A0}7\u{00A0}Oct.")
-    #expect(hero([MockMailbox.gmail], .quiet).title == "Needs you")
-    #expect(hero([MockMailbox.gmail], .quiet).stoppedID == nil)
     #expect(working.stoppedID == nil && broken.stoppedID == nil)
     var halted = MockMailbox.outlook
     halted.note = "Reading your bank alerts stopped."

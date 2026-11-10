@@ -360,9 +360,8 @@ struct MailboxesSummary: Equatable {
     } else if live.allSatisfy({ $0.state == .syncing }) || health.status == .importing {
       self.init(title: "Importing your bank alerts", detail: Self.lines(health) ?? "Checking now", hue: .mint,
                 needsYou: false)
-    } else if health.status == .quiet || quietElsewhere != nil {
-      self.init(
-        title: "Bank alerts went quiet", detail: quietElsewhere ?? Self.lines(health) ?? "", hue: .sand, needsYou: true)
+    } else if let quietElsewhere {
+      self.init(title: "Bank alerts went quiet", detail: quietElsewhere, hue: .sand, needsYou: true)
     } else {
       self.init(title: "Bank alerts are working", detail: Self.lines(health) ?? live[0].meta, hue: .mint,
                 needsYou: false)
