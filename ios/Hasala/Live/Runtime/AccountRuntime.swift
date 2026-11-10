@@ -213,7 +213,7 @@ final class AccountRuntime {
     textsChosen: Bool, textsLastRunMs: Int64?, textsTestMissed: Bool, backgroundRefreshOff: Bool
   ) -> LiveReading.Inputs {
     let provider = lane?.provider ?? .gmail
-    let status = lane == nil ? nil : store.mailboxStatus
+    let status = lane == nil ? nil : store.mailboxStatus.flatMap { $0.stateUnread ? nil : $0 }
     if status != nil, let phase = store.mailboxPhase { seeMailboxPhase(phase) }
     let held = status.flatMap { s in
       lane.flatMap { LiveMailboxConnecting.heldElsewhere(phase: s.phase, link: serverLink, provider: $0.provider) }

@@ -413,6 +413,32 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  @Test func aLaneStateThatCouldNotBeReadIsUnknownOnHomeUntilItIsRead() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    #expect(rt.lane != nil)
+
+    rt.store.noteMailbox(MailboxEngine.stateUnread, nowMs: rt.context.clock.nowMs())
+    let unread = rt.readingInputs(textsChosen: true, textsLastRunMs: nil, textsTestMissed: false, backgroundRefreshOff: false)
+    #expect(!unread.known && unread.status == nil && unread.heldElsewhere == nil)
+    #expect(LiveReading.state(unread).kind == .checking)
+
+    await rt.refreshMailbox()
+    let read = rt.readingInputs(textsChosen: true, textsLastRunMs: nil, textsTestMissed: false, backgroundRefreshOff: false)
+    #expect(read.known && read.status?.phase == .unlinked)
+    #expect(LiveReading.state(read).kind == .waitingForFirstText)
+    await rt.close()
+  }
+
   static func bothProviders() throws -> BuildInfo {
     try BuildInfo(infoDictionary: [
       "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "1", "HasalaGitCommit": "unset",
