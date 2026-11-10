@@ -22,6 +22,39 @@ struct SyncNoticesTests {
     #expect(!notices.uploadsStuck)
   }
 
+  @Test func theSheetFollowsTheAlarmsAndOKAcknowledgesThemOnce() async {
+    let notices = SyncNotices()
+    var acknowledged = 0
+    notices.acknowledge = { acknowledged += 1 }
+    var status = CoreSync.SyncStatus()
+    notices.update(status)
+    #expect(notices.setAside == 0)
+    #expect(notices.acknowledgeSetAside() == nil)
+    status.integrityAlarms = 2
+    notices.update(status)
+    #expect(notices.setAside == 2)
+
+    let ack = notices.acknowledgeSetAside()
+    #expect(notices.setAside == 0)
+    notices.update(status)
+    #expect(notices.setAside == 0)
+    await ack?.value
+    #expect(acknowledged == 1)
+    #expect(notices.acknowledgeSetAside() == nil)
+    #expect(acknowledged == 1)
+
+    status.integrityAlarms = 1
+    notices.update(status)
+    #expect(notices.setAside == 1)
+  }
+
+  @Test func theSheetSaysWhatWasSetAsideWithNoContent() {
+    #expect(SetAsideSheet.title == "Hasala set a change aside")
+    #expect(SetAsideSheet.message == "A change from your account didn't open on this iPhone, so Hasala left it out. Everything else keeps syncing.")
+    #expect(SetAsideSheet.codeLead == "If it happens again, email support@hasala.app and mention this code")
+    #expect(SetAsideSheet.code == "integrityAlarm")
+  }
+
   @Test func theBannerSaysReadingStillWorksAndOffersSupportAndTheErase() {
     #expect(UploadsStuckBanner.message == "Changes on this iPhone aren't uploading. Reading your bank alerts still works.")
     #expect(UploadsStuckBanner.emailTitle == "Email support@hasala.app")

@@ -101,6 +101,9 @@ struct MainView: View {
     } message: { count in
       Text(BankTexts.lockedNoticeLine(count))
     }
+    .sheet(isPresented: setAsideShowing, onDismiss: { app.syncNotices.acknowledgeSetAside() }) {
+      SetAsideSheet()
+    }
     .sheet(item: Bindable(app.router).sheet, onDismiss: { app.router.sheetDismissed() }) { route in
       switch route {
       case .transaction(let id):
@@ -138,6 +141,12 @@ struct MainView: View {
       case .review: ReviewCover(app: app)
       }
     }
+  }
+
+  private var setAsideShowing: Binding<Bool> {
+    Binding(
+      get: { app.syncNotices.setAside > 0 && app.router.sheet == nil && app.router.cover == nil },
+      set: { if !$0 { app.syncNotices.acknowledgeSetAside() } })
   }
 
   private var lockedNoticeShowing: Binding<Bool> {

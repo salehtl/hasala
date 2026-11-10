@@ -287,6 +287,7 @@ final class BootController {
       if BuildSurface.showsCloudSuggestions { app.cloudSort = LiveCloudSortController(runtime: rt) }
       rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       app.syncNotices.eraseThisIPhone = { [weak self] in await self?.eraseThisIPhone() }
+      app.syncNotices.acknowledge = { [weak rt] in await rt?.engine.acknowledgeAlarms() }
       self.watchSync(rt.engine, notices: app.syncNotices)
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }

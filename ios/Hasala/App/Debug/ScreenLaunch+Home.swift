@@ -74,6 +74,11 @@
         graph.app.syncNotices.update(status)
         graph.app.syncNotices.eraseThisIPhone = {}
       }),
+      Screen("home.setAside", scenario: "maya", prepare: { graph in
+        var status = CoreSync.SyncStatus()
+        status.integrityAlarms = 1
+        graph.app.syncNotices.update(status)
+      }),
       Screen("home.noAlerts.sheet", scenario: "noAlerts") { graph in
         graph.onboarding.finishSetupModel().openNoAlerts()
       },
