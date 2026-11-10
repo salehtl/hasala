@@ -112,6 +112,7 @@ extension BillsEngine {
       guard keys.contains(key(t)), eligible(t), t.billID == nil, !taken.contains(t.id) else { continue }
       let due = BillDueDates.nearest(b, to: t.postedAt.date)
       guard !linkedDues.contains(due) else { continue }
+      if let end = b.endedOn, due > end { continue }
       let terms = amount(b, on: due)
       guard let minor = comparable(t, currency: terms.currency), within(minor, terms.minor, bp: bp) else { continue }
       out.append(PastPayment(id: t.id, merchant: t.merchant, date: t.postedAt.date, amount: t.amount, due: due,

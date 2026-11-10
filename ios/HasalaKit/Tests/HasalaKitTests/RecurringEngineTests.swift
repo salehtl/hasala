@@ -98,6 +98,20 @@ struct RecurringEngineTests {
     #expect(BillsEngine.pastPayments(state, for: bill).map(\.id) == ["gym-b", "gym-usd"])
   }
 
+  @Test func anEndedBillOffersOnlyPaymentsItCanStillLink() throws {
+    var state = MayaHistory.state
+    let i = try #require(state.bills.firstIndex { $0.id == "netflix" })
+    state.bills[i].keys = ["netflix"]
+    state.bills[i].state = .ended
+    state.bills[i].endedOn = LocalDate(2026, 8, 6)
+    let offered = BillsEngine.pastPayments(state, for: state.bills[i]).map(\.id)
+    #expect(offered.contains("h-netflix-8"))
+    #expect(!offered.contains("h-netflix-9"))
+    let ledger = InMemoryLedger(state: state)
+    try ledger.apply(.linkBillPayments("netflix", offered))
+    #expect(offered.allSatisfy { ledger.state.txn($0)?.billID == "netflix" })
+  }
+
   @Test func aPaymentPrefillsTheDraft() throws {
     let d = try #require(BillsEngine.draft(from: "apple", s, now: now))
     #expect(d.name == "Apple.com")
