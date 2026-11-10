@@ -28,13 +28,14 @@ public struct Violation: Sendable, Equatable {
 }
 
 public enum Invariants {
-  /// Every anomaly kind a v4 fold can raise (v3's 21, plus 03c §1.3 and 03a §3.0's).
+  /// Every anomaly kind a v4 fold can raise (v3's 21, plus 03c §1.3 and 03a §3.0's, and an edit of a row its mailbox's
+  /// removal retired).
   public static let anomalyKinds: [String] = [
     "duplicate_delivery", "invalid_op", "invalid_payload", "home_currency_reset", "rate_set_before_home_currency",
     "rate_set_for_home_currency", "rate_unset_for_home_currency", "entity_kind_mismatch", "invalid_parent", "duplicate_create",
     "nonexistent_parent", "unknown_entity", "future_parent", "duplicate_ingest", "supersede_without_origin", "split_sum",
     "edit_of_superseded", "duplicate_disposition_mismatch", "unsupported_edit_field", "possible_duplicate", "unhandled_op",
-    "money_overflow", "plan_undo_mismatch",
+    "money_overflow", "plan_undo_mismatch", "edit_of_retired",
   ]
 
   /// Findings per invariant are capped, with an explicit overflow line.

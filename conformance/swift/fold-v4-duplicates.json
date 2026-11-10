@@ -3425,7 +3425,7 @@
     {
       "name": "merge-retire-keep-both",
       "group": "fold_v4",
-      "note": "One device merges the held copy, then removes its mailbox, which retires it; another device, offline, chose Keep both on the same copy. The late keep_both is refused with duplicate_disposition_mismatch, and the retired row stays out of the live indexes.",
+      "note": "One device merges the held copy, then removes its mailbox, which retires it; another device, offline, chose Keep both on the same copy. The late keep_both edits a retired row, so an edit_of_retired notice says so, and it is refused with duplicate_disposition_mismatch; the retired row stays out of the live indexes.",
       "schema_version": 4,
       "log": [
         {
@@ -3581,6 +3581,11 @@
         "error": null,
         "state": {
           "anomalies": [
+            {
+              "at_seq": "5",
+              "detail": "",
+              "kind": "edit_of_retired"
+            },
             {
               "at_seq": "5",
               "detail": "",
@@ -3762,8 +3767,9 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "f8b480a30375ff9b698a3c31202c908e7248923389efade0b2fb4c66ed46ff77",
+        "state_sha256": "65bc7baeb0349d610858e4ef4639357a4da3170cfb6ed52fe697db81b81a2dee",
         "anomaly_kinds": [
+          "edit_of_retired",
           "duplicate_disposition_mismatch"
         ]
       }

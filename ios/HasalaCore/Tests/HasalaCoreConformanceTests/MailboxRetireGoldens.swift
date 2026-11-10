@@ -51,6 +51,18 @@ enum MailboxRetireGoldens {
         note: "Remove retires mailbox A's two rows, the edited and annotated ones too; mailbox B and the manual row stay live.",
         blobs: base + [(5, G.w1, [retire(a, legacy: false, id: "op-retire-a")])]),
       FoldGoldenCase(
+        name: "edit-after-remove",
+        note:
+          "Another iPhone sorts mailbox A's first row after the remove retired it: the edit applies and takes a version, the row stays retired and out of the indexes, and an edit_of_retired notice says so.",
+        blobs: base + [
+          (5, G.w1, [retire(a, legacy: false, id: "op-retire-a")]),
+          (6, G.w2, [
+            G.op(
+              "txn_categorized", #"{"category":"groceries","needs_review":false,"source":{"kind":"user"}}"#, id: "op-edit-1",
+              entity: ("txn", G.ulid(1)), parent: 1)
+          ]),
+        ]),
+      FoldGoldenCase(
         name: "keep", note: "Keep authors nothing: the same log with no retire, every row live and counted.",
         blobs: base + [(5, G.w1, [ingest(5, merchant: "SPINNEYS MARINA", amount: "21540", grant: a, minute: 30)])]),
       FoldGoldenCase(

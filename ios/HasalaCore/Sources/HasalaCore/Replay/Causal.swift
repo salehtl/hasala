@@ -418,6 +418,9 @@ extension State {
     if let by = t.supersededBy {
       anomaly(seq, "edit_of_superseded", "\(op.opID) edits \(id), superseded by \(by)")
     }
+    if let by = t.retiredBy {
+      anomaly(seq, "edit_of_retired", "\(op.opID) edits \(id), retired by \(by)")
+    }
     txns[id]!.version = version
 
     switch payload {

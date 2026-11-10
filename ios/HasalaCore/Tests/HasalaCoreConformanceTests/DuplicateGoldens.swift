@@ -141,7 +141,7 @@ enum DuplicateGoldens {
         ]),
       FoldGoldenCase(
         name: "merge-retire-keep-both",
-        note: "One device merges the held copy, then removes its mailbox, which retires it; another device, offline, chose Keep both on the same copy. The late keep_both is refused with duplicate_disposition_mismatch, and the retired row stays out of the live indexes.",
+        note: "One device merges the held copy, then removes its mailbox, which retires it; another device, offline, chose Keep both on the same copy. The late keep_both edits a retired row, so an edit_of_retired notice says so, and it is refused with duplicate_disposition_mismatch; the retired row stays out of the live indexes.",
         blobs: [
           (1, G.w1, [alert(1, grant: R.a)]),
           (2, G.w1, [alert(2, grant: R.b, at: "08:04:00")]),

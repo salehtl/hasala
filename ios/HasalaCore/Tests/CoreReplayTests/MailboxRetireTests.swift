@@ -89,6 +89,30 @@ struct MailboxRetireTests {
     #expect(s.mailboxRetirements.first?.txnIDs == [Ids.t1])
   }
 
+  @Test("an edit of a row its mailbox's removal retired still applies, with a notice")
+  func editAfterRetire() throws {
+    var log = Log()
+    try log.blob(ingest(1, id: Ids.t1, extra: Mbx.prov(Mbx.a, message: "m1")))
+    try log.blob(ingest(2, id: Ids.t2, merchant: "ENOC", extra: Mbx.prov(Mbx.b, message: "m2")))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    try log.blob(
+      op(
+        "txn_categorized", #"{"category":"transport","needs_review":false,"source":{"kind":"user"}}"#, id: 61,
+        entity: ("txn", Ids.t1), parent: 1),
+      op(
+        "txn_categorized", #"{"category":"transport","needs_review":false,"source":{"kind":"user"}}"#, id: 62,
+        entity: ("txn", Ids.t2), parent: 1),
+      as: Log.w2)
+    try log.blob(op("txn_edited", #"{"merchant_raw":"CARREFOUR"}"#, id: 63, entity: ("txn", Ids.t1), parent: 2))
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.category == "transport" && s.txns[Ids.t1]?.version == 3)
+    #expect(s.txns[Ids.t1]?.merchantRaw == "CARREFOUR" && s.txns[Ids.t1]?.retiredBy == "op-60")
+    #expect(s.txns[Ids.t2]?.category == "transport" && s.txns[Ids.t2]?.version == 2)
+    #expect(s.anomalies.map(\.kind) == ["edit_of_retired", "edit_of_retired"])
+    #expect(s.anomalies.map(\.atSeq) == [4, 5])
+    #expect(!s.byFingerprint.values.contains { $0.contains(Ids.t1) })
+  }
+
   @Test("legacy rows join only when the op says so, and only for the same provider")
   func legacy() throws {
     func fold(legacy: Bool) throws -> State {
