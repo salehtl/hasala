@@ -350,6 +350,8 @@ struct TransactionSheet: View {
     s.title != "Sorted by you" && s.title != "Added by you"
   }
 
+  static func offersSplit(_ d: TransactionDetail) -> Bool { !d.isTransfer }
+
   @ViewBuilder private func sortedRow(_ s: SortedBy, opensRules: Bool) -> some View {
     let row = HStack(spacing: 14) {
       HIconView(.rule, size: 22, color: HColor.iconPrimary)
@@ -421,9 +423,11 @@ struct TransactionSheet: View {
 
   private func actions(_ d: TransactionDetail) -> some View {
     VStack(spacing: 0) {
-      ActionRow(icon: .split, title: "Split across categories", pushes: true) { push(.split) }
-        .accessibilityIdentifier("txn.split")
-      HDivider(inset: .icon52)
+      if Self.offersSplit(d) {
+        ActionRow(icon: .split, title: "Split across categories", pushes: true) { push(.split) }
+          .accessibilityIdentifier("txn.split")
+        HDivider(inset: .icon52)
+      }
       ActionRow(icon: .pencil, title: "Rename merchant", pushes: true) { push(.rename) }
         .accessibilityIdentifier("txn.rename")
       HDivider(inset: .icon52)
