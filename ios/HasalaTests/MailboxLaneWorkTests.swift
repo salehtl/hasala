@@ -27,6 +27,18 @@ struct MailboxLaneWorkTests {
     #expect(!ran.withLock { $0 })
   }
 
+  @Test func cancellingRunningWorkIsReportedOnce() async {
+    let work = LaneWork()
+    await work.cancelAll()
+    #expect(!work.takeCut())
+    work.start {
+      while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+    await work.cancelAll()
+    #expect(work.takeCut())
+    #expect(!work.takeCut())
+  }
+
   @Test func aFinishedTaskLeavesTheSet() async {
     let work = LaneWork()
     work.start {}

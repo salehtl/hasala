@@ -178,7 +178,12 @@ nonisolated final class MailboxLane: Sendable {
     await work.cancelAll()
   }
 
-  func resume() async { await engine.resume() }
+  func resume() async {
+    await engine.resume()
+    guard work.takeCut() else { return }
+    let engine = self.engine
+    work.start { _ = await engine.runFirstScan(maxCycles: 50) }
+  }
 
   var isStopped: Bool { get async { await engine.stopped } }
 
@@ -220,6 +225,7 @@ nonisolated final class LaneWork: @unchecked Sendable {
   private let lock = NSLock()
   private var tasks: [UUID: Task<Void, Never>] = [:]
   private var closed = false
+  private var cut = false
 
   @discardableResult
   func start(_ body: @escaping @Sendable () async -> Void) -> Bool {
@@ -245,9 +251,19 @@ nonisolated final class LaneWork: @unchecked Sendable {
   var running: Int { lock.withLock { tasks.count } }
 
   func cancelAll() async {
-    let all = lock.withLock { Array(tasks.values) }
+    let all = lock.withLock { () -> [Task<Void, Never>] in
+      if !tasks.isEmpty { cut = true }
+      return Array(tasks.values)
+    }
     for t in all { t.cancel() }
     for t in all { await t.value }
+  }
+
+  func takeCut() -> Bool {
+    lock.withLock {
+      defer { cut = false }
+      return cut
+    }
   }
 }
 

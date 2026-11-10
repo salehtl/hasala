@@ -337,6 +337,39 @@ struct LiveAccountServiceTests {
     #expect(await Self.addText(rt) == nil)
   }
 
+  @Test(.timeLimit(.minutes(1))) func anImportTheHoldCutOffStartsAgainWhenTheHoldEnds() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    let lane = try #require(rt.lane)
+    await rt.holdWork()
+    await rt.resumeWork()
+    #expect(lane.work.running == 0)
+
+    let clock = rt.context.clock
+    let persistence = LedgerMailboxPersistence(
+      store: rt.context.store, authoring: MailboxAuthoring(observer: rt.observer), nowMs: { clock.nowMs() })
+    var state = MailboxState()
+    state.phase = .scanning
+    var commit = MailboxCommit()
+    commit.state = state
+    try await persistence.commit(commit)
+    server.offline = true
+    _ = lane.firstScan()
+    #expect(lane.work.running == 1)
+    await rt.holdWork()
+    #expect(lane.work.running == 0)
+    await rt.resumeWork()
+    #expect(lane.work.running == 1)
+    #expect(await lane.status().phase == .scanning)
+    await rt.close()
+    #expect(lane.work.running == 0)
+  }
+
   @Test(.timeLimit(.minutes(1))) func closingEndsTheSyncInFlightAtOnce() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let slow = HeldPulls(inner: server)
