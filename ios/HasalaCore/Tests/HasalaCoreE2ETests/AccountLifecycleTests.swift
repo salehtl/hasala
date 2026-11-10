@@ -434,14 +434,23 @@ struct AccountLifecycleTests {
     let w = World()
     let a = w.phone("a")
     let (account, words, _) = try await w.passwordAccount(a)
+    let enrolled = temporaryDirectory("gather-enrolled")
     let dir = temporaryDirectory("gather-read-only")
-    defer { try? FileManager.default.removeItem(at: dir) }
-    let env = onDisk(w, w.phone("b"), dir)
-    _ = try await enrol(env, account.userID, words)
-    var folder = try #require(env.storeDirectory(for: account.userID))
-    var cleared = URLResourceValues()
-    cleared.isExcludedFromBackup = false
-    try folder.setResourceValues(cleared)
+    defer {
+      try? FileManager.default.removeItem(at: enrolled)
+      try? FileManager.default.removeItem(at: dir)
+    }
+    let b = w.phone("b")
+    let enrolledEnv = onDisk(w, b, enrolled)
+    _ = try await enrol(enrolledEnv, account.userID, words)
+    let env = onDisk(w, b, dir)
+    let source = try #require(enrolledEnv.storeDirectory(for: account.userID))
+    let folder = try #require(env.storeDirectory(for: account.userID))
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    for name in try FileManager.default.contentsOfDirectory(atPath: source.path) {
+      try FileManager.default.copyItem(at: source.appendingPathComponent(name), to: folder.appendingPathComponent(name))
+    }
+    try #require(!FileHygiene.isExcluded(URL(fileURLWithPath: folder.path)))
 
     let facts = Boot.gather(env)
 

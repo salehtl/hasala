@@ -312,18 +312,16 @@ struct StoreOwnerTests {
   func leavesTheStoreAlone() throws {
     let dir = directory()
     defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     do {
-      let s = try LedgerStore.open(directory: dir)
+      let s = try LedgerStore(db: DatabasePool(path: file(dir).path, configuration: LedgerStore.configuration()))
       try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
       try s.db.write { db in
         try db.execute(sql: "DROP TABLE acknowledged_ops")
         try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'acknowledged_ops'")
       }
     }
-    var cleared = URLResourceValues()
-    cleared.isExcludedFromBackup = false
-    var folder = dir
-    try folder.setResourceValues(cleared)
+    try #require(!FileHygiene.isExcluded(URL(fileURLWithPath: dir.path)))
 
     #expect(LedgerStore.owner(directory: dir) == user)
 
