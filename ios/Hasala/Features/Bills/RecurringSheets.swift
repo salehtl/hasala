@@ -950,6 +950,7 @@ struct LinkPaymentsSheet: View {
   var body: some View {
     let b = app.store.state.bill(bill)
     let payments = b.map { BillsEngine.pastPayments(app.store.state, for: $0) } ?? []
+    let linkable = payments.map(\.id).filter(ticked.contains)
     RecurringForm(title: "Link past payments", closeID: "bills.link.close", isDirty: !ticked.isEmpty) {
       if payments.isEmpty {
         EmptyNote(systemImage: "link", message: "No other payments look like \(b?.name ?? "this one").")
@@ -962,13 +963,12 @@ struct LinkPaymentsSheet: View {
         PastPaymentsList(payments: payments, ticked: $ticked, hidden: app.amountsHidden)
       }
     } dock: {
-      Button(ticked.isEmpty ? "Link payments" : "Link \(RecurringCopy.link(ticked.count))") {
-        let ids = payments.map(\.id).filter(ticked.contains)
-        if app.perform(.linkBillPayments(bill, ids)) { dismiss() }
+      Button(linkable.isEmpty ? "Link payments" : "Link \(RecurringCopy.link(linkable.count))") {
+        if app.perform(.linkBillPayments(bill, linkable)) { dismiss() }
       }
       .buttonStyle(.pill(.primary, fill: true))
       .pillHeight()
-      .disabled(ticked.isEmpty)
+      .disabled(linkable.isEmpty)
       .accessibilityIdentifier("bills.link.save")
     }
   }
