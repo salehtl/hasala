@@ -68,6 +68,30 @@ struct LiveUndoTests {
     #expect(store.undos.count == LiveLedgerStore.undoKept)
   }
 
+  @Test func undoingATransferOnARowWithNoCategoryLeavesItToRulesAndSuggestions() async throws {
+    let a = try Mapper.account()
+    var id = ""
+    let extra = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+        id = try o.manualEntry(
+          amountMinor: 45_00, currency: "AED", direction: "debit", localWallMs: 1_791_633_600_000, merchant: "Test Kiosk",
+          category: nil)
+      })
+    let store = try await Self.store(a, suite: "undo.transfer.none.tests", extra: [extra])
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    let before = try #require(try a.projection.reader.txn(id))
+    #expect(before.category == nil && before.categorySource == "none")
+    let token = try #require(try store.apply(.markTransfer(id)))
+    try await Mapper.eventually { try a.projection.reader.txn(id)?.category == "transfer" }
+    #expect(try a.projection.reader.txn(id)?.categorySource == "user")
+    store.undo(token)
+    try await Mapper.eventually { try a.projection.reader.txn(id)?.category == nil }
+    let after = try #require(try a.projection.reader.txn(id))
+    #expect(after.category == nil && after.categorySource == "none" && after.needsReview == before.needsReview)
+    #expect(!failed)
+  }
+
   @Test func undoingAMoveTakesTheMoneyBack() async throws {
     let a = try Mapper.account()
     let store = try await Self.store(a, suite: "undo.move.tests")

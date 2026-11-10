@@ -501,7 +501,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
           continue
         case .category(let t, let c, let review):
           guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }
-          a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review)
+          a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review, source: c == nil ? .none : .user)
         case .note(let t, let n):
           if let row = rows[t], (row.note ?? "") == n { continue }
           a.annotate(txnID: t, set: [("note", n.isEmpty ? nil : n)])
