@@ -132,7 +132,7 @@ final class SecurityModel {
   /// sensitive action).
   func request(_ action: SecurityAction, host: Host = .page) async {
     guard let state else { return }
-    if isFrozen, action != .unfreeze, action != .deleteAccount {
+    if isFrozen, action != .unfreeze {
       failure = .frozen
       return
     }

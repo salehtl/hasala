@@ -316,7 +316,7 @@
 
     func perform(_ action: SecurityAction, password given: String?) async throws(AuthFailure) {
       await pause()
-      if security.frozen != nil, action != .unfreeze, action != .deleteAccount { throw .frozen }
+      if security.frozen != nil, action != .unfreeze { throw .frozen }
       // As the live service: an operator freeze is refused before any step-up.
       if action == .unfreeze, security.frozen?.by == .operator { throw .frozenByOperator }
       try stepUp(password: given)

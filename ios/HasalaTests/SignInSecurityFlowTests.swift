@@ -607,6 +607,16 @@ struct SignInSecurityFlowTests: AccountSuite {
     await m.request(.addPasskey)
     #expect(m.failure == .frozen)
     #expect(m.confirming == nil)
+    m.failure = nil
+    await m.request(.deleteAccount)
+    #expect(m.failure == .frozen)
+    #expect(m.confirming == nil)
+    await #expect(throws: AuthFailure.frozen) { try await account.perform(.deleteAccount, password: nil) }
+    #expect(session.phase == .ready && account.frozenInfo != nil)
+    m.failure = nil
+    await m.request(.unfreeze)
+    await m.confirm()
+    #expect(account.frozenInfo == nil && !m.isFrozen)
     await m.request(.deleteAccount)
     await m.confirm()
     #expect(session.phase == .signedOut)
