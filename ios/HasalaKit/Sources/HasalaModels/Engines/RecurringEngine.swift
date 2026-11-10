@@ -107,7 +107,8 @@ extension BillsEngine {
     let taken = Set(b.payments.compactMap(\.txnID))
     let linkedDues = Set(b.payments.filter { $0.link == .linked }.map(\.due))
     let bp = b.approximate ? variableToleranceBP : fixedToleranceBP
-    var out: [PastPayment] = []
+    var found: [PastPayment] = []
+    var nearest: [LocalDate: PastPayment] = [:]
     for t in s.txns.sorted(by: { $0.postedAt > $1.postedAt }) {
       guard keys.contains(key(t)), eligible(t), t.billID == nil, !taken.contains(t.id) else { continue }
       let due = BillDueDates.nearest(b, to: t.postedAt.date)
@@ -115,11 +116,18 @@ extension BillsEngine {
       if let end = b.endedOn, due > end { continue }
       let terms = amount(b, on: due)
       guard let minor = comparable(t, currency: terms.currency), within(minor, terms.minor, bp: bp) else { continue }
-      out.append(PastPayment(id: t.id, merchant: t.merchant, date: t.postedAt.date, amount: t.amount, due: due,
-                             account: s.account(t.accountID)?.shortName))
-      if out.count == limit { break }
+      let p = PastPayment(id: t.id, merchant: t.merchant, date: t.postedAt.date, amount: t.amount, due: due,
+                          account: s.account(t.accountID)?.shortName)
+      found.append(p)
+      if let held = nearest[due], rank(held) <= rank(p) { continue }
+      nearest[due] = p
     }
-    return out
+    let kept = Set(nearest.values.map(\.id))
+    return Array(found.filter { kept.contains($0.id) }.prefix(limit))
+  }
+
+  static func rank(_ p: PastPayment) -> (Int, LocalDate, TxnID) {
+    (abs(p.date.days(until: p.due)), p.date, p.id)
   }
 
   public static func pastPayments(_ s: LedgerState, for d: BillDraft, limit: Int = pastPaymentLimit) -> [PastPayment] {
