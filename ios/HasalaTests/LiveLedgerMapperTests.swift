@@ -664,6 +664,22 @@ struct LiveLedgerMapperTests {
     #expect(refunds.txn("refund")?.categoryID == "salary" && refunds.txn("refund")?.isRefund == false)
   }
 
+  @Test func theOptimisticPatchKeepsARefundFlagThatRestsOnABrokenRefundLink() throws {
+    var s = MayaLedger.state
+    s.txns += [Self.credit("linked", category: nil, refund: true)]
+    _ = try LiveLedgerStore.patch(.categorize("linked", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("linked")?.categoryID == "salary" && s.txn("linked")?.isRefund == true)
+
+    var ruled = MayaLedger.state
+    ruled.txns += [
+      Self.credit("filed", category: nil, ruled: true), Self.credit("linked", category: nil, refund: true, ruled: true),
+    ]
+    _ = try LiveLedgerStore.patch(.categorize("filed", "salary", learnRule: true, project: nil), &ruled, now: MayaLedger.now)
+    #expect(ruled.txn("linked")?.categoryID == "salary" && ruled.txn("linked")?.isRefund == true)
+    _ = try LiveLedgerStore.patch(.returnToReview(["linked"]), &ruled, now: MayaLedger.now)
+    #expect(ruled.txn("linked")?.categoryID == nil && ruled.txn("linked")?.isRefund == true)
+  }
+
   @Test func aWriteThatFailsIsReportedAndItsUndoDropped() async throws {
     let a = try Self.account()
     for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }

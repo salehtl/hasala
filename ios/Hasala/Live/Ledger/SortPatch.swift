@@ -2,13 +2,14 @@ import HasalaModels
 
 nonisolated enum SortPatch {
   static func file(_ s: inout LedgerState, _ i: Int, _ c: CategoryID, at: LocalDateTime) {
+    let linked = RefundEdit.refundByBrokenLink(s.txns[i], in: s)
     s.txns[i].categoryID = c
     s.txns[i].categorySource = .user
     s.txns[i].ruleID = nil
     s.txns[i].needsReview = false
     s.txns[i].isTransfer = RefundEdit.filedAsTransfer(s.txns[i])
     s.txns[i].splits = []
-    s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
+    s.txns[i].isRefund = linked || RefundEdit.filedAsRefund(s.txns[i], in: s)
     s.txns[i].categorizedAt = at
     s.txns[i].reachable = false
     s.txns[i].ruled = false
@@ -45,6 +46,7 @@ nonisolated enum SortPatch {
     guard !others.isEmpty else { return nil }
     let named = [old] + others.map { s.txns[$0] }
     for i in others {
+      let linked = RefundEdit.refundByBrokenLink(s.txns[i], in: s)
       s.txns[i].priorFiling = s.txns[i].filing
       s.txns[i].categoryID = c
       s.txns[i].categorySource = .rule(pattern: s.txns[i].spelling.lowercased())
@@ -52,7 +54,7 @@ nonisolated enum SortPatch {
       s.txns[i].needsReview = false
       s.txns[i].isTransfer = RefundEdit.filedAsTransfer(s.txns[i])
       s.txns[i].splits = []
-      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
+      s.txns[i].isRefund = linked || RefundEdit.filedAsRefund(s.txns[i], in: s)
       s.txns[i].categorizedAt = at
       s.txns[i].reachable = false
     }
@@ -69,6 +71,7 @@ nonisolated enum SortPatch {
     for id in ids where seen.insert(id).inserted {
       guard let i = s.txns.firstIndex(where: { $0.id == id }), s.txns[i].sortedForYou else { continue }
       let byRule = s.txns[i].filedByRule
+      let linked = RefundEdit.refundByBrokenLink(s.txns[i], in: s)
       returned += 1
       refs.append(s.txns[i].groupRef)
       if byRule, let prior = s.txns[i].priorFiling {
@@ -85,7 +88,7 @@ nonisolated enum SortPatch {
       }
       if byRule {
         s.txns[i].isTransfer = RefundEdit.filedAsTransfer(s.txns[i])
-        s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
+        s.txns[i].isRefund = linked || RefundEdit.filedAsRefund(s.txns[i], in: s)
       }
       s.txns[i].reachable = s.txns[i].waits
     }
