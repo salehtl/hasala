@@ -173,6 +173,7 @@ actor WorkCoordinator {
   private let stages: Stages
   private var inFlight: Task<Outcome, Never>?
   private var current: Trigger?
+  private var currentSynced = false
   private var rerun: Trigger?
   private var rerunLimit = RerunLimit.unasked
   private var held: Trigger?
@@ -245,7 +246,8 @@ actor WorkCoordinator {
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {
-      if !Self.joins(trigger, running: current, queued: rerun, retestingLatch: retestingLatch) {
+      let running = retestingLatch && currentSynced ? nil : current
+      if !Self.joins(trigger, running: running, queued: rerun, retestingLatch: retestingLatch) {
         if retestingLatch || Self.queues(trigger, over: rerun) { rerun = trigger }
         rerunLimit = rerunLimit.widened(by: deadline)
       }
@@ -308,6 +310,7 @@ actor WorkCoordinator {
   private func once(_ trigger: Trigger, deadline: ContinuousClock.Instant?) async -> Outcome {
     runs += 1
     current = trigger
+    currentSynced = false
     let stamp: ContinuousClock.Instant? = trigger == .foreground ? .now : nil
     if let stamp { lastForeground = stamp }
     var out = Outcome(ran: true)
@@ -319,6 +322,7 @@ actor WorkCoordinator {
     let synced = await Self.wait(
       for: syncTask, until: nil, timedOut: (newData: false, stop: SyncStop?.some(.cancelled)),
       cancelled: (newData: false, stop: SyncStop?.some(.cancelled)))
+    currentSynced = true
     out.newData = synced.newData
     out.stop = synced.stop
     if Task.isCancelled {

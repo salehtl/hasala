@@ -467,6 +467,54 @@ struct WorkCoordinatorTests {
     #expect(retry.stop == nil)
   }
 
+  @Test(.timeLimit(.minutes(1))) func aWallRetryAfterTheRunsSyncEndedRunsItsOwnSync() async throws {
+    let log = Log()
+    let door = ModelSuggestionStageTests.Door()
+    let halt = SyncStop.halted(.serverRestored)
+    let sync: WorkCoordinator.SyncStage = { trigger, _ in
+      log.add("sync.\(trigger.rawValue)")
+      return (newData: false, stop: trigger == .launch ? halt : nil)
+    }
+    let committed: WorkCoordinator.CommittedStage = {
+      log.add("committed")
+      await door.pass()
+    }
+    let c = WorkCoordinator(
+      stages: .init(sync: sync, mailbox: nil, committed: committed, stopped: { log.add("stopped.\($0)") }))
+    defer { door.open() }
+    let first = Task { await c.run(.launch) }
+    try await ModelSuggestionStageTests.until { door.waiting }
+    let retry = Task { await c.run(.refresh, retestingLatch: true) }
+    try await ModelSuggestionStageTests.until { await c.queued == .refresh }
+    door.open()
+    let out = await retry.value
+    _ = await first.value
+    #expect(log.all == ["sync.launch", "stopped.\(halt)", "committed", "sync.refresh", "committed"])
+    #expect(out.stop == nil)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aWallRetryJoinsARunStillInItsSync() async throws {
+    let log = Log()
+    let door = ModelSuggestionStageTests.Door()
+    let sync: WorkCoordinator.SyncStage = { trigger, _ in
+      log.add("sync.\(trigger.rawValue)")
+      await door.pass()
+      return (newData: true, stop: nil)
+    }
+    let c = WorkCoordinator(
+      stages: .init(sync: sync, mailbox: nil, committed: { log.add("committed") }, stopped: { _ in }))
+    defer { door.open() }
+    let first = Task { await c.run(.launch) }
+    try await ModelSuggestionStageTests.until { door.waiting }
+    let retry = Task { await c.run(.refresh, retestingLatch: true) }
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(await c.queued == nil)
+    door.open()
+    _ = await (first.value, retry.value)
+    #expect(log.all == ["sync.launch", "committed"])
+    #expect(await c.runs == 1)
+  }
+
   @Test func aWallRetryRunsThePullsStages() async {
     let log = Log()
     let c = Self.coordinator(log, delay: .zero)
