@@ -1,4 +1,6 @@
 #if HASALA_MOCKS
+  import CoreStore
+  import CoreSync
   import Foundation
   import SwiftUI
 
@@ -8,7 +10,7 @@
   /// drives its real model with it.
   enum SignInLaunchStep: Equatable {
     case unlockEntry, unlockUnlocking, unlockWelcomeBack, unlockHonestEnd
-    case alertRemovePasskey, alertRemoveDevice, alertSignOut, alertSignOutAll
+    case alertRemovePasskey, alertRemoveDevice, alertRemoveThisIPhone, alertSignOut, alertSignOutAll
     case viewWords, lockdown, changeEmail, changeEmailCodes
     case confirmFaceID, confirmPassword, confirmNoKey
     case unfreeze
@@ -76,6 +78,12 @@
       Screen("security.removePasskey", scenario: "passkeyUser",
              prepare: step(.alertRemovePasskey, profile([.security]))),
       Screen("security.removeDevice", scenario: "passkeyUser", prepare: step(.alertRemoveDevice, profile([.security]))),
+      Screen("security.removeThisIPhone", scenario: "passkeyUser", prepare: step(.alertRemoveThisIPhone) { graph in
+        var status = CoreSync.SyncStatus()
+        status.latch = .sealerFault
+        graph.app.syncNotices.update(status)
+        profile([.security])(graph)
+      }),
       Screen("security.signOut", scenario: "passkeyUser", prepare: step(.alertSignOut, profile([.security]))),
       Screen("security.signOutAll", scenario: "passkeyUser", prepare: step(.alertSignOutAll, profile([.security]))),
       Screen("security.viewWords", scenario: "passkeyUser", prepare: step(.viewWords, profile([.security]))),
@@ -184,6 +192,8 @@
         if let p = state.passkeys.first(where: { !$0.isThisCredential }) { alert.wrappedValue = .removePasskey(p) }
       case .alertRemoveDevice:
         if let d = state.devices.first(where: { !$0.isThisDevice }) { alert.wrappedValue = .removeDevice(d) }
+      case .alertRemoveThisIPhone:
+        alert.wrappedValue = .removeThisIPhone
       case .alertSignOut:
         alert.wrappedValue = .signOut
       case .alertSignOutAll:

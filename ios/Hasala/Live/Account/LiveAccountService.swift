@@ -641,7 +641,7 @@ final class LiveAccountService: AccountService {
         PushRegistrar.shared.forget()
         leftThisIPhone()
         await left()
-      case .removeDevice(let id) where id == b.writer_id:
+      case .removeDevice(id: b.writer_id), .removeThisIPhoneLosingUnsent:
         // "Remove this iPhone" (§4.7 row 2): the server stops waking it (#33), then the
         // writer is revoked at its verified head (#25) and the local data is wiped. A
         // cancelled or failed step-up registers for wakes again.
@@ -651,7 +651,8 @@ final class LiveAccountService: AccountService {
         await PushRegistrar.shared.unregister()
         do {
           try await AccountManagement.removeThisIPhone(
-            env, engine: engine, factor: factor, binding: b, beforeWipe: grantEnding(grant, stopWatch: false))
+            env, engine: engine, factor: factor, binding: b, losingUnsent: action == .removeThisIPhoneLosingUnsent,
+            beforeWipe: grantEnding(grant, stopWatch: false))
         } catch {
           PushRegistrar.shared.register(env: env, userID: b.user_id)
           await hooks.resume()

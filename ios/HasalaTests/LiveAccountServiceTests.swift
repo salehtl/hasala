@@ -152,6 +152,9 @@ struct LiveAccountServiceTests {
     await #expect(throws: AuthFailure.refused) {
       try await b.perform(.removeDevice(id: bindingB.writer_id), password: Self.password)
     }
+    await #expect(throws: AuthFailure.refused) {
+      try await b.perform(.removeThisIPhoneLosingUnsent, password: Self.password)
+    }
     #expect(try envB.secrets.binding() != nil)
 
     // Delete on A: step-up account.delete (password + approval key), #41, then a wipe,

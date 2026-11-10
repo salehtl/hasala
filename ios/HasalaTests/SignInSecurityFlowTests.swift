@@ -571,6 +571,17 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(unknown.1 == ["This passkey can't sign in any more", "We email you about it"])
   }
 
+  @Test func removingThisIPhoneWithChangesThatCantUploadSaysWhatIsLost() {
+    #expect(SecurityView.removeThisIPhoneTitle == "Remove this iPhone?")
+    #expect(SecurityView.removeThisIPhoneMessage
+      == "Some changes on this iPhone can't upload. Removing it loses them for good. Everything you uploaded stays in your account.")
+    let words = SecurityModel.words(for: .perform(.removeThisIPhoneLosingUnsent), email: "maya@example.com", state: nil)
+    #expect(words.0 == "Remove this iPhone")
+    #expect(words.1 == ["Changes that can't upload are lost for good", "Everything you uploaded stays in your account"])
+    #expect(SecurityAction.removeThisIPhoneLosingUnsent.explainer == "Confirm it's you to remove this device")
+    #expect(!AccountCapabilities.beta.contains(.removeThisIPhone))
+  }
+
   @Test func theLastWayInCannotBeRemoved() async {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero

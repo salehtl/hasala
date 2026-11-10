@@ -29,6 +29,7 @@ struct SecurityView: View {
   enum PendingAlert: Identifiable {
     case removePasskey(PasskeyRow)
     case removeDevice(DeviceRow)
+    case removeThisIPhone
     case removePassword
     case signOut
     case signOutEverywhere
@@ -38,6 +39,7 @@ struct SecurityView: View {
       switch self {
       case .removePasskey(let p): "pk.\(p.id)"
       case .removeDevice(let d): "dev.\(d.id)"
+      case .removeThisIPhone: "thisIPhone"
       case .removePassword: "pw"
       case .signOut: "out"
       case .signOutEverywhere: "outAll"
@@ -365,10 +367,16 @@ struct SecurityView: View {
 
   // MARK: Alerts
 
+  static let removeThisIPhoneTitle = "Remove this iPhone?"
+
+  static let removeThisIPhoneMessage =
+    "Some changes on this iPhone can't upload. Removing it loses them for good. Everything you uploaded stays in your account."
+
   private var alertTitle: String {
     switch alert {
     case .removePasskey(let p): "Remove the \(p.provider) passkey?"
     case .removeDevice(let d): "Remove \(d.title)?"
+    case .removeThisIPhone: Self.removeThisIPhoneTitle
     case .removePassword: "Remove your password?"
     case .signOut: "Sign out of this iPhone?"
     case .signOutEverywhere: "Sign out everywhere?"
@@ -384,6 +392,8 @@ struct SecurityView: View {
       return "It won't be able to sign in to Hasala. You'll confirm with \(confirmWith) next."
     case .removeDevice:
       return "It's signed out now. The next time it opens Hasala, its copy of your data is erased."
+    case .removeThisIPhone:
+      return Self.removeThisIPhoneMessage
     case .removePassword:
       return "You'll sign in with your passkey only. You'll confirm with \(biometry.noun) next."
     case .signOut:
@@ -404,6 +414,9 @@ struct SecurityView: View {
       Button("Remove", role: .destructive) { Task { await model.request(.removePasskey(id: p.id)) } }
     case .removeDevice(let d):
       Button("Remove", role: .destructive) { Task { await model.request(.removeDevice(id: d.id)) } }
+    case .removeThisIPhone:
+      Button("Remove", role: .destructive) { Task { await model.request(.removeThisIPhoneLosingUnsent) } }
+        .accessibilityIdentifier("security.removeThisIPhone.confirm")
     case .removePassword:
       Button("Remove", role: .destructive) { Task { await model.request(.removePassword) } }
     case .signOut:

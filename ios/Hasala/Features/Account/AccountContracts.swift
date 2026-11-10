@@ -178,6 +178,7 @@ enum SecurityAction: Equatable, Sendable {
   case changePassword(new: String)
   case removePassword
   case removeDevice(id: String)
+  case removeThisIPhoneLosingUnsent
   case signOutEverywhere
   case freeze
   case unfreeze
@@ -191,7 +192,7 @@ enum SecurityAction: Equatable, Sendable {
     case .setPassword: "Confirm it's you to set a password"
     case .changePassword: "Confirm it's you to change your password"
     case .removePassword: "Confirm it's you to remove your password"
-    case .removeDevice: "Confirm it's you to remove this device"
+    case .removeDevice, .removeThisIPhoneLosingUnsent: "Confirm it's you to remove this device"
     case .signOutEverywhere: "Confirm it's you to sign out everywhere"
     case .freeze: "Confirm it's you to freeze your account"
     case .unfreeze: "Confirm it's you to unfreeze your account"

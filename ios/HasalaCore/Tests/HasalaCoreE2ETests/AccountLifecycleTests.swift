@@ -175,6 +175,52 @@ struct AccountLifecycleTests {
     }
   }
 
+  @Test("removal behind a hard_stop or a sealer_fault goes ahead once the person accepts losing the unsent changes")
+  func removalLosingUnsentBehindAStuckLatch() async throws {
+    for latch in [OutboxLatch.hardStop, .sealerFault] {
+      let w = World()
+      let a = w.phone("a")
+      let (_, _, ctx) = try await w.passwordAccount(a)
+      try enqueue(ctx, [op(1)])
+      try ctx.store.setLatch(latch)
+      try await AccountManagement.removeThisIPhone(
+        a.env, engine: SyncEngine(context: ctx), factor: .device(password: password), binding: try #require(a.binding),
+        losingUnsent: true)
+      #expect(a.keychain.count == 0, "\(latch)")
+      #expect(w.server.storedRowCount(user: ctx.userID) == 0)
+      let b = w.phone("b")
+      _ = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+      let token = try #require(try b.env.secrets.session()).token
+      let writers = try await b.env.client.writers(bearer: token).writers
+      #expect(writers.first { $0.writer_id == ctx.writerID.string }?.revoked_at != nil, "\(latch)")
+    }
+  }
+
+  @Test("accepting the loss does not remove an iPhone whose changes can still upload later")
+  func removalLosingUnsentRefusedWhileTheChangesCanStillUpload() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    try enqueue(ctx, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    let held = a.keychain.count
+    let binding = try #require(a.binding)
+    do throws(CeremonyError) {
+      try await AccountManagement.removeThisIPhone(
+        a.env, engine: SyncEngine(context: ctx), factor: .device(password: password), binding: binding,
+        losingUnsent: true)
+      Issue.record("removed with an op that can still upload")
+    } catch {
+      guard case .badResponse = error else {
+        Issue.record("\(error)")
+        return
+      }
+    }
+    #expect(try ctx.store.syncState().latch == .accountFull)
+    #expect(try ctx.store.pendingCount() == 1)
+    #expect(a.keychain.count == held)
+  }
+
   @Test("removal stops when the store cannot say where this writer's chain ends: the writer and every key stay")
   func removalStopsOnAnUnreadableHead() async throws {
     let w = World()

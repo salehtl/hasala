@@ -284,6 +284,9 @@ final class SecurityModel {
       // (`02` §9.3: every session, the caller's included). Its keys stay here.
       session.signedOut()
       return
+    case .removeThisIPhoneLosingUnsent:
+      session.signedOut()
+      return
     case .unfreeze:
       session.unfroze()
     case .setPassword, .changePassword:
@@ -338,6 +341,8 @@ final class SecurityModel {
       case .removeDevice(let id):
         let name = state?.devices.first { $0.id == id }?.title ?? "this device"
         return ("Remove \(name)", ["It's signed out now", "Its copy of your data is erased the next time it opens Hasala"])
+      case .removeThisIPhoneLosingUnsent:
+        return ("Remove this iPhone", ["Changes that can't upload are lost for good", "Everything you uploaded stays in your account"])
       case .signOutEverywhere:
         return ("Sign out everywhere", ["Every device signs out, this one too", "Your sealed backup stays"])
       case .freeze:

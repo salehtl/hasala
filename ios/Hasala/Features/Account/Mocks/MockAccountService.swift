@@ -343,6 +343,8 @@
         security.passwordChanged = nil
       case .removeDevice(let id):
         security.devices.removeAll { $0.id == id && !$0.isThisDevice }
+      case .removeThisIPhoneLosingUnsent:
+        break
       case .signOutEverywhere:
         // Every session ends, this iPhone's too (`02` §9.3); devices keep their keys.
         profile = nil
