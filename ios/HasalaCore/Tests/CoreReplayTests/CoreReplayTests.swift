@@ -269,7 +269,7 @@ struct CoreReplayV4Tests {
     #expect(log.kinds == ["plan_undo_mismatch", "invalid_payload", "invalid_payload"])
   }
 
-  @Test("plan: an undo after a newer set of a category keeps that set as typed and still counts in every month's moves")
+  @Test("plan: an undo after a newer set of a category keeps that set as typed and still counts in the category's moves for that month")
   func undoAfterNewerSet() throws {
     func set(_ c: String, _ amount: String, id: Int) -> String {
       op("budget_set", #"{"category_id":"\#(c)","month":"2026-10","amount_minor":"\#(amount)","scope":"only"}"#, id: id)

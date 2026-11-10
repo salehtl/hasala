@@ -1302,7 +1302,7 @@
     {
       "name": "move-undo-after-a-newer-set",
       "group": "fold_v4",
-      "note": "Dining has 500.00 and moves 200.00 to groceries. Another iPhone then sets dining to 300.00, and the Undo of the move lands after it: dining reads 300.00 as typed (the newer set already absorbed the move), its moves over all months net to zero, groceries gives the 200.00 back, and the move is undone with no notice.",
+      "note": "Dining has 500.00 and moves 200.00 to groceries. Another iPhone then sets dining to 300.00, and the Undo of the move lands after it: dining reads 300.00 as typed (the newer set already absorbed the move), dining's moves for October, which count whether or not a set came after them, net to zero, groceries gives the 200.00 back, and the move is undone with no notice.",
       "schema_version": 4,
       "log": [
         {

@@ -146,7 +146,7 @@ enum EdgeGoldens {
         ]),
       FoldGoldenCase(
         name: "move-undo-after-a-newer-set",
-        note: "Dining has 500.00 and moves 200.00 to groceries. Another iPhone then sets dining to 300.00, and the Undo of the move lands after it: dining reads 300.00 as typed (the newer set already absorbed the move), its moves over all months net to zero, groceries gives the 200.00 back, and the move is undone with no notice.",
+        note: "Dining has 500.00 and moves 200.00 to groceries. Another iPhone then sets dining to 300.00, and the Undo of the move lands after it: dining reads 300.00 as typed (the newer set already absorbed the move), dining's moves for October, which count whether or not a set came after them, net to zero, groceries gives the 200.00 back, and the move is undone with no notice.",
         blobs: [
           (1, G.w1, [budget("dining", "2026-10", "50000", "only", id: "op-set-dining"), budget("groceries", "2026-10", "90000", "only", id: "op-set-groceries")]),
           (2, G.w1, [move("dining", "groceries", "20000", id: "op-move-1")]),
