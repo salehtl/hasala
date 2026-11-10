@@ -247,6 +247,31 @@ import Testing
     #expect(asks.questions.count == 1)
   }
 
+  @Test func anotherAddressWithNoTokenLeftAndAKeychainThatCannotBeWrittenChangesNothing() async throws {
+    let keychain = MemoryGmailRefreshTokenStore()
+    let refusing = WriteRefusingTokenStore(keychain)
+    let rig = Rig(keychain: keychain, tokenStore: refusing)
+    await linkedThenSignedOut(rig)
+    #expect(try keychain.read() == nil)
+    let before = await rig.state()
+    let puts = await rig.server.puts.count
+    rig.gmail.email = other
+    refusing.refuseWrites(true)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
+        == .failed(.keychain))
+    refusing.refuseWrites(false)
+    #expect(await rig.state() == before)
+    #expect(await rig.server.puts.count == puts)
+    #expect(try keychain.read() == nil)
+    #expect(await rig.accounted("d1") == .op)
+    let asks = SwitchAsks(.keep)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: asks.confirm)
+        == .connected(address: other, anotherAddress: true))
+    #expect(asks.questions.count == 1)
+  }
+
   @Test func anotherAddressThatCannotBeKeptLeavesNothingToResume() async throws {
     let rig = Rig()
     await linkedThenSignedOut(rig)

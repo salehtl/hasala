@@ -132,6 +132,31 @@ import Testing
     await #expect(throws: GmailAuthError.offline) { try await p.accessToken(forceRefresh: false) }
     #expect(try store.read() == "fake-refresh-token")
   }
+
+  @Test func theWriteCheckWritesAndLeavesTheItemAsItWas() async throws {
+    let grant = MailTokenGrant(accessToken: "fake-access-new", expiresIn: 3600, refreshToken: "fake-refresh-new", idToken: nil, scope: nil)
+    let held = MemoryGmailRefreshTokenStore(token: "fake-refresh-token")
+    let refusingHeld = WriteRefusingTokenStore(held)
+    let empty = MemoryGmailRefreshTokenStore()
+    let refusingEmpty = WriteRefusingTokenStore(empty)
+    func provider(_ store: any MailRefreshTokenStore) -> RefreshingGmailTokenProvider {
+      RefreshingGmailTokenProvider(
+        oauth: GoogleOAuthClient(config: GmailOAuthConfig(clientID: "c", redirectScheme: "s"), http: FakeGmail()), store: store,
+        clock: ManualClock(0))
+    }
+
+    try await provider(refusingHeld).checkWritable(for: grant)
+    #expect(try held.read() == "fake-refresh-token")
+    try await provider(refusingEmpty).checkWritable(for: grant)
+    #expect(try empty.read() == nil)
+
+    refusingHeld.refuseWrites(true)
+    refusingEmpty.refuseWrites(true)
+    await #expect(throws: MailAuthError.notNow) { try await provider(refusingHeld).checkWritable(for: grant) }
+    await #expect(throws: MailAuthError.notNow) { try await provider(refusingEmpty).checkWritable(for: grant) }
+    #expect(try held.read() == "fake-refresh-token")
+    #expect(try empty.read() == nil)
+  }
 }
 
 @Suite struct BankDomainTests {

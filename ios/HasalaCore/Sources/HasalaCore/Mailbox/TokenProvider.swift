@@ -140,10 +140,14 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   }
 
   public func checkWritable(for grant: MailTokenGrant) throws(MailAuthError) {
-    guard grant.refreshToken != nil else { throw .reconnectRequired }
+    guard let next = grant.refreshToken else { throw .reconnectRequired }
+    let prior: String?
+    do { prior = try store.read() } catch { throw .notNow }
     do {
-      if let prior = try store.read() { try store.write(prior) } else { try store.delete() }
+      try store.write(prior ?? next)
+      if prior == nil { try store.delete() }
     } catch {
+      if prior == nil { try? store.delete() }
       throw .notNow
     }
   }

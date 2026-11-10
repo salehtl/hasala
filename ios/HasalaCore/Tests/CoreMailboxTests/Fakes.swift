@@ -222,6 +222,23 @@ final class AuthoredDrafts: @unchecked Sendable {
   var batches: [Int] { lock.withLock { sizes } }
 }
 
+final class WriteRefusingTokenStore: MailRefreshTokenStore, @unchecked Sendable {
+  let inner: MemoryMailRefreshTokenStore
+  private let lock = NSLock()
+  private var refusing = false
+
+  init(_ inner: MemoryMailRefreshTokenStore) { self.inner = inner }
+
+  func refuseWrites(_ v: Bool) { lock.withLock { refusing = v } }
+
+  func read() throws(SecretUnavailable) -> String? { try inner.read() }
+  func write(_ token: String) throws(SecretUnavailable) {
+    if lock.withLock({ refusing }) { throw SecretUnavailable() }
+    try inner.write(token)
+  }
+  func delete() throws(SecretUnavailable) { try inner.delete() }
+}
+
 enum Backend { case sqlite, memory }
 
 /// A whole engine over fakes. The persistence is the production one (ledger.sqlite tables in an
@@ -237,7 +254,7 @@ struct Rig {
   let ledger = FakeLedger()
   let server = FakeServer()
   let clock = ManualClock(Rig.t0)
-  let keychain = MemoryGmailRefreshTokenStore()
+  let keychain: MemoryGmailRefreshTokenStore
   let readerKeys = MemoryMailReaderKeyStore()
   let stepUps = StepUpLog()
   let engine: MailboxEngine
@@ -247,9 +264,11 @@ struct Rig {
     backend: Backend = .sqlite, categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false,
     gmail: FakeGmail = FakeGmail(), config: ((inout MailboxEngineConfig) -> Void)? = nil,
     wrapStore: ((any MailboxPersistence) -> any MailboxPersistence)? = nil,
-    templates: [CompiledTemplate] = BundledTemplates.load(channel: .mail).templates
+    templates: [CompiledTemplate] = BundledTemplates.load(channel: .mail).templates,
+    keychain: MemoryGmailRefreshTokenStore = MemoryGmailRefreshTokenStore(), tokenStore: (any MailRefreshTokenStore)? = nil
   ) {
     self.gmail = gmail
+    self.keychain = keychain
     self.backend = backend
     let authored = self.authored
     let clockForStore = clock
@@ -270,7 +289,7 @@ struct Rig {
     let oauth = GoogleOAuthClient(
       config: GmailOAuthConfig(clientID: "synthetic-client.apps.googleusercontent.com", redirectScheme: "com.googleusercontent.apps.synthetic-client"),
       http: gmail)
-    tokens = RefreshingGmailTokenProvider(oauth: oauth, store: keychain, clock: clock)
+    tokens = RefreshingGmailTokenProvider(oauth: oauth, store: tokenStore ?? keychain, clock: clock)
     var c = MailboxEngineConfig(grantID: "00000000-0000-4000-8000-000000000001", buildTopic: nil)
     config?(&c)
     let clock = self.clock
