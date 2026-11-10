@@ -55,6 +55,7 @@ public actor SyncEngine {
   private var accountFullAtMs: Int64?
   private var latchThisRun: OutboxLatch?
   private var uploadRefusedThisRun = false
+  private var stopped = false
   public static let accountFullPauseMs: Int64 = 15 * 60_000
 
   public init(context: SyncContext, observer: (any PageObserver)? = nil) {
@@ -83,6 +84,12 @@ public actor SyncEngine {
     publish()
   }
 
+  public func stop() {
+    stopped = true
+    rerun = nil
+    inFlight?.cancel()
+  }
+
   /// The app acknowledged the integrity-alarm sheet (§5.7).
   public func acknowledgeAlarms() {
     status.integrityAlarms = 0
@@ -93,6 +100,7 @@ public actor SyncEngine {
   /// flight asks for one trailing rerun and returns the merged outcome.
   @discardableResult
   public func run(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant? = nil) async -> RunOutcome {
+    if stopped { return RunOutcome(stop: .cancelled) }
     if let t = inFlight {
       // The rerun keeps the strongest trigger asked for: one that re-verifies
       // the roster wins over `authored`.

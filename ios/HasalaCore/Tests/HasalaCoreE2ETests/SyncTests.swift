@@ -549,6 +549,31 @@ struct SyncTests {
     #expect(observer.seen.contains { $0.contains(op(2).opID) })
   }
 
+  @Test("a stopped engine ends the pull in flight at once and starts no other run", .timeLimit(.minutes(1)))
+  func stopEndsThePullInFlight() async throws {
+    let (w, a, b) = try await twoPhones()
+    try enqueue(a, [op(1)])
+    #expect(await SyncEngine(context: a).run(.authored).stop == nil)
+    let slow = SlowPulls(inner: w.server)
+    let ctx = SyncContext(
+      userID: b.userID, writerID: b.writerID, store: b.store, secrets: b.secrets, client: AuthClient(transport: slow),
+      clock: b.clock, random: b.random)
+    let engine = SyncEngine(context: ctx)
+    let started = ContinuousClock.now
+    let run = Task { await engine.run(.authored) }
+    while slow.waiting == 0 { await Task.yield() }
+    let joined = Task { await engine.run(.launch) }
+    await engine.stop()
+    #expect(await run.value.stop == .cancelled)
+    #expect(await joined.value.stop == .cancelled)
+    #expect(ContinuousClock.now - started < .seconds(5))
+    #expect(try ctx.store.wireRowCount() == 0)
+
+    #expect(await engine.run(.launch).stop == .cancelled)
+    #expect(slow.sent == 1)
+    #expect(await engine.status.phase == .idle)
+  }
+
   @Test("triggers coalesce: concurrent runs make one upload")
   func coalescing() async throws {
     let (w, a, _) = try await twoPhones()
@@ -863,5 +888,29 @@ final class AuthoringObserver: PageObserver, @unchecked Sendable {
     }
     if n == 2 { try? enqueue(context, [op(2)]) }
     await inner.willPush()
+  }
+}
+
+final class SlowPulls: Transport, @unchecked Sendable {
+  let inner: any Transport
+  private let lock = NSLock()
+  private var held = 0
+  private var count = 0
+
+  init(inner: any Transport) { self.inner = inner }
+
+  var waiting: Int { lock.withLock { held } }
+  var sent: Int { lock.withLock { count } }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    if request.method == .get, request.path.hasPrefix("/api/v1/sync") {
+      lock.withLock {
+        held += 1
+        count += 1
+      }
+      defer { lock.withLock { held -= 1 } }
+      do { try await Task.sleep(for: .seconds(10)) } catch { throw .cancelled }
+    }
+    return try await inner.send(request)
   }
 }

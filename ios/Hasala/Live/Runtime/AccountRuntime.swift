@@ -527,6 +527,7 @@ final class AccountRuntime {
     switchOn = nil
     await backlog.suspend()
     await coordinator.close()
+    await engine.stop()
     for lane in lanes.values { await lane.close() }
     await mailboxLedger.textWrites.hold()
     await backlog.settled()

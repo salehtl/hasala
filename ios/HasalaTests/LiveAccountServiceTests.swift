@@ -337,6 +337,31 @@ struct LiveAccountServiceTests {
     #expect(await Self.addText(rt) == nil)
   }
 
+  @Test(.timeLimit(.minutes(1))) func closingEndsTheSyncInFlightAtOnce() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let slow = HeldPulls(inner: server)
+    let env = AccountEnvironment(
+      client: AuthClient(transport: slow), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
+      approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+      apiBase: "https://api.hasala.app", accountsDirectory: nil)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    slow.holding = true
+    let run = Task { await rt.coordinator.run(.authored) }
+    for _ in 0..<500 where slow.waiting == 0 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(slow.waiting == 1)
+
+    let started = ContinuousClock.now
+    await rt.close()
+    #expect(ContinuousClock.now - started < .seconds(5))
+    #expect(slow.waiting == 0)
+    #expect(await rt.engine.run(.launch).stop == .cancelled)
+    _ = await run.value
+  }
+
   static func addText(_ rt: AccountRuntime) async -> BankTextAuthored? {
     try? await rt.bankTexts.author(
       BankTextsCoreWiringTests.purchase, sender: nil, reading: KeptBankText(fields: BankTextFields(), mayBeBanks: true),
@@ -784,4 +809,31 @@ nonisolated final class FaultySecrets: SecretStore {
   func delete(_ item: SecretItem) throws(SecretStoreError) { try inner.delete(item) }
 
   func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
+}
+
+nonisolated final class HeldPulls: Transport {
+  let inner: any Transport
+  private let state = Mutex((holding: false, waiting: 0))
+
+  init(inner: any Transport) { self.inner = inner }
+
+  var holding: Bool {
+    get { state.withLock { $0.holding } }
+    set { state.withLock { $0.holding = newValue } }
+  }
+
+  var waiting: Int { state.withLock { $0.waiting } }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    let hold = state.withLock { s -> Bool in
+      guard s.holding, request.method == .get, request.path.hasPrefix("/api/v1/sync") else { return false }
+      s.waiting += 1
+      return true
+    }
+    if hold {
+      defer { state.withLock { $0.waiting -= 1 } }
+      do { try await Task.sleep(for: .seconds(20)) } catch { throw .cancelled }
+    }
+    return try await inner.send(request)
+  }
 }
