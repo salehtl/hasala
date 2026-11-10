@@ -80,7 +80,9 @@ payment). The matcher never writes it.
 2. **Adding an item by hand** sets `start` to the first due the person picks (default: the
    next due). The sheet then offers recent payments that look like it (same merchant key,
    within tolerance of the terms, near a due, not linked to another bill), newest first,
-   none ticked. Each ticked payment becomes `paid{txn}` on its due; if it falls before
+   none ticked. It offers at most one payment for each due: the one nearest the due, the
+   earlier one on a tie, as in rule 21. Thus every set of ticked payments links together.
+   Each ticked payment becomes `paid{txn}` on its due; if it falls before
    `start`, `start` moves back to that due in the same blob. Nothing is linked without a
    tap.
 3. **Dues before tracking began are never late.** "Late" and "to come" consider only dues
