@@ -124,7 +124,9 @@ extension LedgerEditAuthor {
       }
       for row in rows {
         if a.count >= Sweep.maxOpsPerBlob { try flush() }
-        a.categorize(txnID: row.id, parentVersion: row.version, category: moveTo, needsReview: row.needsReview)
+        a.categorize(
+          txnID: row.id, parentVersion: row.version, category: moveTo, needsReview: row.needsReview,
+          source: row.categorySource == "user" ? .user : CoreReplay.CategorySource(kind: .held))
       }
       if a.count + 3 > Sweep.maxOpsPerBlob { try flush() }
       if assigned > 0 { a.moveMoney(month: m, from: id, to: budgetTo, amountMinor: assigned) }

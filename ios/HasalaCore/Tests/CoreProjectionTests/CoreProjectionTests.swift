@@ -163,6 +163,7 @@ struct MayaScenarioTests {
       let members = try reader.categoryMembers(category)
       #expect(members.map(\.id) == expected.map(\.id), "\(category)")
       #expect(members.map(\.version) == expected.map(\.version) && members.map(\.needsReview) == expected.map(\.needsReview))
+      #expect(members.map(\.categorySource) == expected.map(\.categorySource), "\(category)")
     }
     #expect(try reader.categoryMembers("no_such_category").isEmpty)
   }

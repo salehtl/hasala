@@ -2,6 +2,7 @@ import CoreCategorize
 import CoreDomain
 import CoreOutbox
 import CoreProjection
+import CoreReplay
 import CoreTime
 import Foundation
 import HasalaMocks
@@ -87,6 +88,49 @@ struct LiveCategoryTests {
     try store.apply(.restoreCategory("travel"))
     try await Mapper.eventually { try a.projection.reader.taxonomy().info("travel")?.active == true }
     #expect(try a.projection.reader.taxonomy().info("travel")?.name == "Travel")
+  }
+
+  @Test func movingThePaymentsOfAHiddenCategoryKeepsOnlyThePersonsOwnSortsAsTheirs() async throws {
+    let a = try Mapper.account()
+    let wall = Int64(1_791_633_600_000)
+    var mine = ""
+    var filed = ""
+    var suggested = ""
+    let trips = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+        mine = try o.manualEntry(
+          amountMinor: 10_00, currency: "AED", direction: "debit", localWallMs: wall, merchant: "Trip Mine", category: "travel")
+        filed = try o.manualEntry(
+          amountMinor: 20_00, currency: "AED", direction: "debit", localWallMs: wall - 60_000, merchant: "Trip Filed", category: nil)
+        suggested = try o.manualEntry(
+          amountMinor: 30_00, currency: "AED", direction: "debit", localWallMs: wall - 120_000, merchant: "Trip Suggested", category: nil)
+      })
+    let model = CoreReplay.CategorySource(kind: .model, model: "cf-clef/1")
+    let sorted = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+        o.categorize(txnID: filed, parentVersion: 1, category: "travel", needsReview: false, source: model)
+        o.categorize(txnID: suggested, parentVersion: 1, category: "travel", needsReview: true, source: model)
+      })
+    let store = try await LiveUndoTests.store(a, suite: "categories.archive.sources.tests", extra: [trips, sorted])
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    let members = try a.projection.reader.categoryMembers("travel")
+    #expect(members.first { $0.id == filed }?.categorySource == "model")
+
+    try store.apply(.archiveCategory("travel", moveTo: "groceries"))
+    try await Mapper.eventually { try a.projection.reader.taxonomy().info("travel")?.active == false }
+    let r = a.projection.reader
+    for m in members {
+      let row = try #require(try r.txn(m.id))
+      #expect(row.category == "groceries" && row.needsReview == m.needsReview, "\(m.id)")
+      #expect(row.categorySource == (m.categorySource == "user" ? "user" : "held") && row.categorySourceRef == nil, "\(m.id)")
+    }
+    #expect(try r.txn(mine)?.categorySource == "user")
+    #expect(try r.txn(filed)?.categorySource == "held" && r.txn(suggested)?.categorySource == "held")
+    #expect(try r.txn(suggested)?.needsReview == true && r.txn(filed)?.needsReview == false)
+    #expect(store.state.txn(filed)?.categorySource == HasalaModels.CategorySource.user)
+    #expect(store.state.txn(mine)?.categorySource == HasalaModels.CategorySource.user)
+    #expect(!failed)
   }
 
   nonisolated final class CountingClock: CoreTime.Clock, Sendable {

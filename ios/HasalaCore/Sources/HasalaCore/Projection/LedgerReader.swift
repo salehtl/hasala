@@ -411,6 +411,7 @@ public struct LedgerReader: Sendable {
     public let id: String
     public let version: Int64
     public let needsReview: Bool
+    public let categorySource: String
   }
 
   public func categoryMembers(_ category: String) throws -> [CategoryMemberRow] {
@@ -418,9 +419,11 @@ public struct LedgerReader: Sendable {
       try Row.fetchAll(
         db,
         sql:
-          "SELECT id, version, needs_review FROM txn WHERE superseded_by IS NULL AND unparsed = 0 AND split = 0 AND category = ? ORDER BY posted_ms DESC, id DESC",
+          "SELECT id, version, needs_review, category_source FROM txn WHERE superseded_by IS NULL AND unparsed = 0 AND split = 0 AND category = ? ORDER BY posted_ms DESC, id DESC",
         arguments: [category]
-      ).map { CategoryMemberRow(id: $0["id"], version: $0["version"], needsReview: $0["needs_review"]) }
+      ).map {
+        CategoryMemberRow(id: $0["id"], version: $0["version"], needsReview: $0["needs_review"], categorySource: $0["category_source"])
+      }
     }
   }
 
