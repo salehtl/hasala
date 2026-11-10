@@ -187,6 +187,12 @@ public enum AccountSignIn {
     return true
   }
 
+  public static func forgetEndedSession(_ env: AccountEnvironment) {
+    guard let s = try? env.secrets.activeSession() else { return }
+    removeUnboundStore(env, of: s)
+    try? env.secrets.deleteSession()
+  }
+
   private static func removeUnboundStore(_ env: AccountEnvironment, of session: SessionRecord) {
     guard let user = UserID(session.user_id), let dir = env.storeDirectory(for: user) else { return }
     do {

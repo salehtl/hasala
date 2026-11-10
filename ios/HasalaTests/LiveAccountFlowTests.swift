@@ -36,11 +36,14 @@ struct LiveAccountFlowTests {
     let env: AccountEnvironment
     var binding: AccountBinding? { try? env.secrets.binding() }
 
-    init(_ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore(), passkeys: (any PasskeyProvider)? = nil) {
+    init(
+      _ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore(), passkeys: (any PasskeyProvider)? = nil,
+      accountsDirectory: URL? = nil
+    ) {
       env = AccountEnvironment(
         client: AuthClient(transport: server), secrets: Secrets(store: store, apiHost: "api.hasala.app"),
         approvalKeys: SoftDAK(), passkeys: passkeys, clock: InOctober2026(), random: SystemRandom(),
-        apiBase: "https://api.hasala.app", accountsDirectory: nil)
+        apiBase: "https://api.hasala.app", accountsDirectory: accountsDirectory)
     }
 
     /// The same Keychain after the app was killed and launched again.
@@ -310,6 +313,53 @@ struct LiveAccountFlowTests {
     #expect(server.unfreezeCalls == 1)
     #expect(server.lastStepUpAction == "account.unfreeze")
     #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+  }
+
+  @Test func aSessionEndedAtTheUnfreezeTakesAStoppedEnrolmentsStoreWithIt() async throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    server.freezeAll(byOperator: false)
+    let b = Phone(server, passkeys: AssertingPasskeys(), accountsDirectory: dir)
+    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true)
+    #expect(await signIn(b) == .frozen(info))
+    #expect(b.binding == nil)
+    let signedIn = try #require(try b.env.secrets.session())
+    let user = try #require(UserID(signedIn.user_id))
+    let store = try #require(b.env.storeDirectory(for: user))
+    try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+    try Data().write(to: store.appendingPathComponent("ledger.sqlite"))
+    #expect(Boot.decide(Boot.gather(b.env)) == .onboardingKeys)
+    server.operatorFreezesBeforeUnfreeze = true
+
+    let session = AccountSession(services: services(b.relaunched()), phase: .frozen(info))
+    await #expect(throws: AuthFailure.sessionEnded) { try await session.unfreeze(password: nil) }
+
+    #expect(session.phase == .signedOut)
+    #expect(try b.env.secrets.session() == nil)
+    #expect(!FileManager.default.fileExists(atPath: store.path))
+    #expect(Boot.decide(Boot.gather(b.env)) == .signedOut)
+  }
+
+  @Test func aSessionEndedAtTheUnfreezeLeavesABoundIPhonesStore() async throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, accountsDirectory: dir)
+    _ = try await signUp(a, server)
+    let user = try #require(a.binding?.userID)
+    let store = try #require(a.env.storeDirectory(for: user))
+    #expect(FileManager.default.fileExists(atPath: store.path))
+    server.freezeAll(byOperator: false)
+    server.operatorFreezesBeforeUnfreeze = true
+
+    let session = AccountSession(services: services(a.relaunched()), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    await #expect(throws: AuthFailure.sessionEnded) { try await session.unfreeze(password: Self.password) }
+
+    #expect(session.phase == .signedOut)
+    #expect(a.binding != nil)
+    #expect(FileManager.default.fileExists(atPath: store.path))
   }
 
   @Test func signingOutOnTheFrozenWallEndsTheSession() async throws {

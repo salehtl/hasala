@@ -334,6 +334,52 @@ struct AccountLifecycleTests {
     #expect(try env.secrets.binding() != nil)
   }
 
+  @Test("a session the server ended takes a stopped enrolment's store with it")
+  func aStoppedEnrolmentLeavesNothingWhenTheServerEndsTheSession() async throws {
+    let w = World()
+    let dir = temporaryDirectory("stopped-enrolment-ended")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("a"), dir)
+    let user = try await stoppedSignup(w, env)
+
+    AccountSignIn.forgetEndedSession(env)
+
+    #expect(try env.secrets.session() == nil)
+    #expect(try !hasLedger(env, user))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+  }
+
+  @Test("a session the server ended on a bound iPhone keeps its store")
+  func aBoundIPhoneKeepsItsStoreWhenTheServerEndsTheSession() async throws {
+    let w = World()
+    let (account, words, _) = try await w.passwordAccount(w.phone("a"))
+    let dir = temporaryDirectory("bound-session-ended")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("b"), dir)
+    _ = try await enrol(env, account.userID, words)
+
+    AccountSignIn.forgetEndedSession(env)
+
+    #expect(try env.secrets.session() == nil)
+    #expect(try hasLedger(env, account.userID))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+  }
+
+  @Test("a session waiting for its sign-out is left to that sign-out")
+  func aPendingSignOutIsNotForgottenAsAnEndedSession() async throws {
+    let w = World()
+    let dir = temporaryDirectory("pending-sign-out-ended")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("a"), dir)
+    _ = try await stoppedSignup(w, env)
+    w.server.refuseNext("POST /api/v1/auth/logout", status: 503, code: "unavailable")
+    #expect(await AccountSignIn.signOut(env) == false)
+
+    AccountSignIn.forgetEndedSession(env)
+
+    #expect(try env.secrets.session()?.pending_logout == true)
+  }
+
   @Test("a sign-out on a bound iPhone keeps its store")
   func aBoundIPhoneKeepsItsStoreAtSignOut() async throws {
     let w = World()

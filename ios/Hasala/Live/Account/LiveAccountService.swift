@@ -702,7 +702,7 @@ final class LiveAccountService: AccountService {
 
   private func refusal(_ e: CeremonyError) async -> AuthFailure {
     guard e.failure?.status == 401 else { return Self.map(e) }
-    if (try? env.secrets.activeSession()) != nil { try? env.secrets.deleteSession() }
+    AccountSignIn.forgetEndedSession(env)
     sessionEnded()
     await left()
     return .sessionEnded
