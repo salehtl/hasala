@@ -392,7 +392,7 @@ final class BootController {
   static func clearsSyncHalt(_ stop: SyncStop?, latch: OutboxLatch? = nil) -> Bool {
     guard latch != .chainBreak else { return false }
     switch stop {
-    case nil, .rateLimited?, .latched?: return true
+    case nil, .latched?: return true
     default: return false
     }
   }

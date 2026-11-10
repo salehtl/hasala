@@ -23,7 +23,7 @@ struct SyncHaltTests {
   @Test func onlyARunThatGetsThroughTakesTheWallAway() {
     #expect(BootController.clearsSyncHalt(nil))
     #expect(BootController.clearsSyncHalt(.latched(.accountFull)))
-    #expect(BootController.clearsSyncHalt(.rateLimited(retryAfter: 30)))
+    #expect(!BootController.clearsSyncHalt(.rateLimited(retryAfter: 30)))
     #expect(!BootController.clearsSyncHalt(.halted(.tampered(.chainBreak))))
     #expect(!BootController.clearsSyncHalt(.halted(.serverRestored)))
     #expect(!BootController.clearsSyncHalt(.offline))
