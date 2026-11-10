@@ -154,12 +154,14 @@ nonisolated struct LedgerEditAuthor: Sendable {
       guard let shown = before.txn(id) else { throw Failure.notFound }
       let filing: RefundFiling
       do { filing = try RefundEdit.mark(shown, in: before) } catch { throw Failure.refused(RefundEdit.refusedOut) }
+      let unlinks = row.refundOf != nil && filing.refundOf == nil
       try await build { a throws(AuthorError) in
         if row.category != filing.categoryID || row.needsReview != filing.needsReview {
           a.categorize(txnID: id, parentVersion: row.version, category: filing.categoryID, needsReview: filing.needsReview)
         }
-        if row.refundTarget != nil, filing.refundOf == nil { a.annotate(txnID: id, set: [("refund_of", nil)]) }
+        if unlinks { a.annotate(txnID: id, set: [("refund_of", nil)]) }
       }
+      if unlinks, row.refundState != "ok" { return [.refundOf(txn: id, of: row.refundOf)] }
     case .fileRefund(let id, let c, let target):
       let row = try txn(id)
       guard let shown = before.txn(id) else { throw Failure.notFound }
