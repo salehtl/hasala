@@ -210,15 +210,22 @@ extension State {
     txns[winner]!.aliases.append(contentsOf: l.aliases)
     txns[loser]!.aliases = []
     for a in l.aliases { txns[a.txnID]?.mergedInto = winner }
-    if let dup = txns[winner]!.possibleDuplicateOf, utf8Equal(dup, loser) {
-      txns[winner]!.possibleDuplicateOf = nil
-      txns[winner]!.duplicateDisposition = nil
-    }
+    clearDuplicateNotices(naming: [loser])
     if let c = txns[winner]!.copyOf, utf8Equal(c, loser) {
       txns[winner]!.copyOf = nil
       txns[winner]!.copyDecision = nil
     }
     for h in liveCopies(of: loser) { txns[h]!.copyOf = winner }
+  }
+
+  mutating func clearDuplicateNotices(naming ids: [String]) {
+    guard !ids.isEmpty else { return }
+    let gone = OrderedSet(ids.map { ExactKey($0) })
+    for (id, t) in txns {
+      guard let dup = t.possibleDuplicateOf, gone.contains(ExactKey(dup)) else { continue }
+      txns[id]!.possibleDuplicateOf = nil
+      txns[id]!.duplicateDisposition = nil
+    }
   }
 
   func liveCopies(of id: String) -> [String] {

@@ -63,6 +63,19 @@ enum MailboxRetireGoldens {
           ]),
         ]),
       FoldGoldenCase(
+        name: "notice-clears-after-remove",
+        note:
+          "A cash row added by hand matches mailbox A's first row, so it names that row as a possible duplicate, and an older build answered same. The remove retires the row it names: the cash row's notice and its answer clear, and it stays live.",
+        blobs: base + [
+          (5, G.w2, [
+            ingest(5, merchant: "CARREFOUR MOE", grant: nil),
+            G.op(
+              "txn_duplicate_disposition", #"{"other_txn_id":"\#(G.ulid(1))","disposition":"same"}"#, id: "op-same-5",
+              entity: ("txn", G.ulid(5)), parent: 1),
+          ]),
+          (6, G.w1, [retire(a, legacy: false, id: "op-retire-a")]),
+        ]),
+      FoldGoldenCase(
         name: "keep", note: "Keep authors nothing: the same log with no retire, every row live and counted.",
         blobs: base + [(5, G.w1, [ingest(5, merchant: "SPINNEYS MARINA", amount: "21540", grant: a, minute: 30)])]),
       FoldGoldenCase(

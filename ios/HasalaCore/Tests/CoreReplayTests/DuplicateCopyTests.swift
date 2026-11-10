@@ -99,6 +99,35 @@ struct DuplicateCopyTests {
     #expect(log.kinds == ["duplicate_disposition_mismatch"])
   }
 
+  @Test("a possible-duplicate notice that names a row merged away clears, with its answer, at a certain or a person's merge")
+  func noticeOnMergedRowClears() throws {
+    var certain = Log()
+    try certain.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid, gates: Copy.fail))
+    try certain.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try certain.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t1)","disposition":"same"}"#, id: 40, entity: ("txn", Ids.t3),
+        parent: 1))
+    #expect(certain.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && certain.state.txns[Ids.t3]?.duplicateDisposition == "same")
+    try certain.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-04T08:00:00.000Z", mid: Copy.mid, gates: Copy.pass))
+    #expect(certain.state.txns[Ids.t1]?.mergedInto == Ids.t2)
+    #expect(certain.state.txns[Ids.t3]?.possibleDuplicateOf == nil && certain.state.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(certain.state.txns[Ids.t2]?.possibleDuplicateOf == nil)
+    #expect(certain.kinds == ["possible_duplicate"])
+
+    var person = Log()
+    try person.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, at: "2026-10-03T23:58:00.000Z"))
+    try person.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-04T00:03:00.000Z"))
+    try person.blob(Copy.alert(3, id: Ids.t3, grant: Mbx.a, at: "2026-10-04T08:00:00.000Z"))
+    #expect(person.state.txns[Ids.t2]?.copyOf == Ids.t1 && person.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    try person.blob(Copy.resolve(Ids.t2, other: Ids.t1, "merge", parent: 1, op: 50))
+    #expect(person.state.txns[Ids.t2]?.mergedInto == Ids.t1)
+    #expect(person.state.txns[Ids.t3]?.possibleDuplicateOf == nil && person.state.txns[Ids.t3]?.isLive == true)
+    try person.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 2, op: 51))
+    #expect(person.state.txns[Ids.t2]?.isLive == true && person.state.txns[Ids.t3]?.possibleDuplicateOf == nil)
+    #expect(person.kinds == ["possible_duplicate"])
+  }
+
   @Test("removing the canonical's mailbox brings its copy back as the row")
   func retirePromotes() throws {
     var log = Log()

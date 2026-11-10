@@ -568,6 +568,395 @@
       }
     },
     {
+      "name": "notice-clears-when-its-row-merges",
+      "group": "fold_v4",
+      "note": "A cash row added by hand matches the earlier alert, so it names that alert as a possible duplicate, and an older build answered same. The verified copy of the alert then arrives and the earlier alert merges into it: the cash row's notice and its answer clear, and the copy that stays names the cash row as a possible duplicate instead.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_duplicate_disposition",
+              "op_id": "op-same-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "disposition": "same"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:30.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "2",
+              "detail": "",
+              "kind": "possible_duplicate"
+            },
+            {
+              "at_seq": "3",
+              "detail": "",
+              "kind": "possible_duplicate"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byDedupeKey": [
+            [
+              "mid:5d41402abc4b2a76b9719d911017c592",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "byFingerprint": [
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000003",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-same-3",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "merge_kind": "certain",
+                "merge_op": "op-ingest-2",
+                "merged_into": "01JC0000000000000000000002",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                    "kind": "certain",
+                    "mailbox_message_id": "msg-1",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000001"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": "01JC0000000000000000000003",
+                "posted_at": "2026-10-03T08:00:30.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "3511ddc8a632cb00474a9afdefe8756d863f99d9246793848c024d62118ae934",
+        "anomaly_kinds": [
+          "possible_duplicate",
+          "possible_duplicate"
+        ]
+      }
+    },
+    {
       "name": "reconnect-rescan-no-readd",
       "group": "fold_v4",
       "note": "After a reconnect the same message is read again under the same ingest id: it is refused as duplicate_ingest, and the alias list does not grow.",

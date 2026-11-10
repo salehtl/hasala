@@ -113,6 +113,32 @@ struct MailboxRetireTests {
     #expect(!s.byFingerprint.values.contains { $0.contains(Ids.t1) })
   }
 
+  @Test("a possible-duplicate notice that names a row the remove retired clears, with its answer")
+  func noticeOnRetiredRowClears() throws {
+    var log = Log()
+    try log.blob(ingest(1, id: Ids.t1, extra: Mbx.prov(Mbx.a, message: "m1")))
+    try log.blob(ingest(2, id: Ids.t2, extra: #","entry_method":"manual""#))
+    try log.blob(ingest(3, id: Ids.t3, extra: Mbx.prov(Mbx.b, message: "m3")))
+    try log.blob(ingest(4, id: Ids.ulid(9), merchant: "ENOC", extra: Mbx.prov(Mbx.a, message: "m4")))
+    try log.blob(ingest(5, id: Ids.ulid(10), merchant: "ENOC", extra: #","entry_method":"manual""#))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t1)","disposition":"same"}"#, id: 50, entity: ("txn", Ids.t2),
+        parent: 1))
+    #expect(log.state.txns[Ids.t2]?.possibleDuplicateOf == Ids.t1 && log.state.txns[Ids.t2]?.duplicateDisposition == "same")
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    #expect(log.state.txns[Ids.ulid(10)]?.possibleDuplicateOf == Ids.ulid(9))
+    try log.blob(Mbx.retire(Mbx.b, id: 59))
+    #expect(log.state.txns[Ids.t2]?.possibleDuplicateOf == Ids.t1 && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.possibleDuplicateOf == nil && s.txns[Ids.t2]?.duplicateDisposition == nil)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == nil && s.txns[Ids.t3]?.retiredBy == "op-59")
+    #expect(s.txns[Ids.ulid(10)]?.possibleDuplicateOf == nil)
+    #expect(s.txns[Ids.t2]?.version == 2 && s.txns[Ids.t2]?.isLive == true)
+    #expect(log.kinds == ["possible_duplicate", "possible_duplicate", "possible_duplicate"])
+  }
+
   @Test("legacy rows join only when the op says so, and only for the same provider")
   func legacy() throws {
     func fold(legacy: Bool) throws -> State {

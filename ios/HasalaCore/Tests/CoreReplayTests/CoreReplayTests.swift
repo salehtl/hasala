@@ -376,7 +376,7 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 61)
+    #expect(s.cursors.hot == 65)
     let text = s.txns["01JC0000000000000000000016"]
     #expect(text?.channel == "sms" && text?.receivedAt == "2026-06-05T08:00:00.000Z" && text?.isText == true)
     #expect(text?.needsReview == false && text?.verifiedSender == false && text?.copyOf == nil)
@@ -392,7 +392,9 @@ struct SnapshotTests {
     #expect(s.txns["01JC0000000000000000000012"]?.copyOf == nil)
     #expect(s.txns["01JC0000000000000000000015"]?.copyOf == nil && s.txns["01JC0000000000000000000014"]?.copyOf == nil)
     #expect(s.mailboxRetirements.first?.txnIDs == ["01JC0000000000000000000003", "01JC0000000000000000000008"])
-    #expect(s.anomalies.map(\.kind) == ["duplicate_ingest", "invalid_payload", "edit_of_retired"])
+    #expect(s.anomalies.map(\.kind) == ["duplicate_ingest", "invalid_payload", "edit_of_retired", "possible_duplicate", "possible_duplicate"])
+    #expect(s.txns["01JC0000000000000000000091"]?.retiredBy == "canary-v4-63" && s.txns["01JC0000000000000000000093"]?.mergedInto == "01JC0000000000000000000095")
+    #expect(s.txns["01JC0000000000000000000092"]?.possibleDuplicateOf == nil && s.txns["01JC0000000000000000000094"]?.possibleDuplicateOf == nil)
     #expect(s.txns["01JC0000000000000000000008"]?.category == "dining" && s.txns["01JC0000000000000000000008"]?.version == 2)
     #expect(s.unreadable.isEmpty)
     #expect(s.merchantNames["carrefour moe"]?.value == "Carrefour MoE")

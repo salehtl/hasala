@@ -58,6 +58,7 @@ extension State {
       clearPending(t)
     }
     releaseAfterRetire(retiredLive, seq: e.seq)
+    clearDuplicateNotices(naming: retired)
     mailboxRetirements.append(
       MailboxRetirement(
         opID: e.op.opID, grantID: grant, provider: provider, legacy: legacy, atSeq: e.seq, txnIDs: retired))

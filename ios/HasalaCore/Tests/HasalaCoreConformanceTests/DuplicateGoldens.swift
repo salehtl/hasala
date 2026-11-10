@@ -70,6 +70,19 @@ enum DuplicateGoldens {
           (2, G.w1, [alert(2, grant: R.b, mid: mid, verified: true)]),
         ]),
       FoldGoldenCase(
+        name: "notice-clears-when-its-row-merges",
+        note: "A cash row added by hand matches the earlier alert, so it names that alert as a possible duplicate, and an older build answered same. The verified copy of the alert then arrives and the earlier alert merges into it: the cash row's notice and its answer clear, and the copy that stays names the cash row as a possible duplicate instead.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a, mid: mid, verified: false)]),
+          (2, G.w2, [
+            R.ingest(3, merchant: "STARBUCKS DIFC", amount: "2700", grant: nil),
+            G.op(
+              "txn_duplicate_disposition", #"{"other_txn_id":"\#(G.ulid(1))","disposition":"same"}"#, id: "op-same-3",
+              entity: ("txn", G.ulid(3)), parent: 1),
+          ]),
+          (3, G.w1, [alert(2, grant: R.b, at: "08:00:30", mid: mid, verified: true)]),
+        ]),
+      FoldGoldenCase(
         name: "reconnect-rescan-no-readd",
         note: "After a reconnect the same message is read again under the same ingest id: it is refused as duplicate_ingest, and the alias list does not grow.",
         blobs: [
