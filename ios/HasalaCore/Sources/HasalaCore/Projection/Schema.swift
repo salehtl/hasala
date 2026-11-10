@@ -7,8 +7,7 @@
 // `txn.review_lane` (03c §3.7, computed once here so every reader agrees), the
 // beta's 03b tables (`account`, `card`, `bill`, `bill_resolution`, `checkin`;
 // version 2 added `checkin`), and the fold's notices (`fork_notice`, `anomaly`,
-// `plan_overwrite`). `income_source.written_ms` is derived too; payday
-// attribution reads it.
+// `plan_overwrite`).
 import GRDB
 
 public enum ProjectionSchema {
