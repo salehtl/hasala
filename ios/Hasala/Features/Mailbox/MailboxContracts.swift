@@ -168,6 +168,9 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// Stops reading the mailbox and forgets its sign-in.
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure)
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact?
+  var heldRemoval: MailHeldRemoval? { get }
+  func removeHeld() async -> MailHeldRemovalOutcome
+  func keepHeld() async
   /// The first scan's progress: it reads the window and files what it finds, then ends
   /// with `.finished`, `.background` (it goes on later) or `.failed`, with the summary.
   func firstScan() -> AsyncStream<ScanProgress>
@@ -176,6 +179,16 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of mail.
   var offersSampleData: Bool { get }
   func loadSampleData() async throws(SetupFailure)
+}
+
+struct MailHeldRemoval: Equatable, Sendable {
+  var address: String
+  var transactions: Int?
+}
+
+enum MailHeldRemovalOutcome: Equatable, Sendable {
+  case removed(Int?)
+  case failed
 }
 
 struct MailboxDisconnectImpact: Equatable, Sendable {
@@ -268,6 +281,12 @@ extension MailboxConnecting {
   var importing: MailImport? { nil }
 
   var firstScanFinished: Bool { false }
+
+  var heldRemoval: MailHeldRemoval? { nil }
+
+  func removeHeld() async -> MailHeldRemovalOutcome { .failed }
+
+  func keepHeld() async {}
 
   func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
     try await disconnect(mailboxID, removeTransactions: false)

@@ -255,6 +255,7 @@ public struct MailboxStatus: Sendable, Equatable {
   public var backfillDays: Int?
   public var connectedAtMs: Int64? = nil
   public var stateUnread = false
+  public var heldRetires: [MailboxRetirePlan] = []
 }
 
 struct ProviderPause: Sendable {
@@ -500,7 +501,8 @@ public actor MailboxEngine {
     let otherMailbox = stored.map { Self.isAnotherMailbox(linked: $0.address, signedIn: claims.email) } ?? false
     let fresh = replacing || otherMailbox
     if otherMailbox, let old = stored {
-      let plan = await ledger.retirePlan(grantID: self.grant(old), provider: provider.id.rawValue)
+      var plan = await ledger.retirePlan(grantID: self.grant(old), provider: provider.id.rawValue)
+      plan.address = old.address
       let noMailbox = old.phase == .halted && old.haltedOn == .noMailbox
       let imported = plan.countKnown ? plan.total : nil
       if !noMailbox || imported != 0 {
@@ -644,7 +646,9 @@ public actor MailboxEngine {
   /// the retry can still end the grant, and nothing says it ended when it didn't.
   public func retirePlan() async -> MailboxRetirePlan? {
     guard let state = try? await store.loadState(), state.phase != .unlinked, state.phase != .otherDevice else { return nil }
-    return await ledger.retirePlan(grantID: grant(state), provider: provider.id.rawValue)
+    var plan = await ledger.retirePlan(grantID: grant(state), provider: provider.id.rawValue)
+    plan.address = state.address
+    return plan
   }
 
   public func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
@@ -658,9 +662,9 @@ public actor MailboxEngine {
     let removed = MailboxRetireOutcome.removed(plan.countKnown ? plan.total : nil)
     switch await runRetire(plan) {
     case .notHeld:
-      return removed
+      return (try? await store.heldRetires())?.contains(plan) == true ? .failed : removed
     case .failed:
-      await endRetire(plan)
+      await holdRetire(plan)
       return .failed
     case .authored:
       _ = await ledger.flush()
@@ -697,6 +701,39 @@ public actor MailboxEngine {
     var c = MailboxCommit()
     c.endRetire = plan
     try? await store.commit(c)
+  }
+
+  private func holdRetire(_ plan: MailboxRetirePlan) async {
+    retiresNotRecorded.remove(plan.grantID)
+    var c = MailboxCommit()
+    c.holdRetire = plan
+    try? await store.commit(c)
+  }
+
+  public func heldRetires() async -> [MailboxRetirePlan] {
+    (try? await store.heldRetires()) ?? []
+  }
+
+  public func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome {
+    let removed = MailboxRetireOutcome.removed(plan.countKnown ? plan.total : nil)
+    let authored: Bool? = await exclusive {
+      guard let held = try? await store.heldRetires() else { return nil }
+      guard held.contains(plan) else { return false }
+      do throws(MailboxLedgerError) { try await ledger.authorRetire(plan) } catch { return nil }
+      await endRetire(plan)
+      return true
+    }
+    switch authored {
+    case nil: return .failed
+    case false?: return removed
+    case true?:
+      _ = await ledger.flush()
+      return removed
+    }
+  }
+
+  public func dropHeld(_ plan: MailboxRetirePlan) async {
+    await exclusive { await endRetire(plan) }
   }
 
   private func finishRetires() async {
@@ -744,20 +781,17 @@ public actor MailboxEngine {
       if let plan { await beginRetire(plan) }
       await tokens.forget()
       provider.forgetLink()
+      var removeFailed = false
       if let plan {
-        do throws(MailboxLedgerError) { try await ledger.authorRetire(plan) } catch {
-          await endRetire(plan)
-          _ = await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, CycleReport(), clearReader: true)
-          return .disconnectedRemoveFailed
-        }
+        do throws(MailboxLedgerError) { try await ledger.authorRetire(plan) } catch { removeFailed = true }
         retiresNotRecorded.remove(plan.grantID)
       }
       var c = MailboxCommit()
       c.clearAll = true
       c.state = MailboxState()
-      c.endRetire = plan
+      if removeFailed { c.holdRetire = plan } else { c.endRetire = plan }
       do { try await commitForgetting(c) } catch { return .failed }
-      return .disconnected
+      return removeFailed ? .disconnectedRemoveFailed : .disconnected
     }
   }
 
@@ -1618,7 +1652,7 @@ public actor MailboxEngine {
       watchActive: state.watchExpiresAtMs.map { $0 > clock.nowMs() } ?? false,
       unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:],
       readFromMs: state.readFromMs, backfillDays: state.backfillDays,
-      connectedAtMs: state.scanStartedMs ?? state.readFromMs)
+      connectedAtMs: state.scanStartedMs ?? state.readFromMs, heldRetires: (try? await store.heldRetires()) ?? [])
     lastStatus = status
     return status
   }

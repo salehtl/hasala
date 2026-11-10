@@ -263,7 +263,9 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
     ])
     #expect(await rig.state().address == old)
     #expect(await connect(rig, SwitchAsks(.remove)) == .connected(address: other, anotherAddress: true, retired: .removed(nil)))
-    #expect(await rig.ledger.retired == [unknown])
+    var named = unknown
+    named.address = old
+    #expect(await rig.ledger.retired == [named])
   }
 
   @Test func aDeclinedSwitchFreesTheLaneForTheNextCycle() async throws {

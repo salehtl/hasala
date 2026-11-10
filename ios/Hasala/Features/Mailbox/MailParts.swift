@@ -85,6 +85,23 @@ enum MailCopy {
     n == 1 ? "1 transaction removed." : "\(MoneyFormat.count(n)) transactions removed."
   }
 
+  static func heldRemovalTitle(_ held: MailHeldRemoval) -> String {
+    switch held.transactions {
+    case 1?: "1 transaction wasn't removed"
+    case let n?: "\(MoneyFormat.count(n)) transactions weren't removed"
+    case nil: "Transactions weren't removed"
+    }
+  }
+
+  static func heldRemovalDetail(_ held: MailHeldRemoval) -> String {
+    let still = held.transactions == 1 ? "It still counts" : "They still count"
+    return "From \(held.address), which you disconnected. \(still) in your totals."
+  }
+
+  static func heldRemovalFailed(_ held: MailHeldRemoval) -> String {
+    "The transactions from \(held.address) couldn't be removed. Try again."
+  }
+
   static func impactLines(_ impact: MailboxDisconnectImpact, from source: String = "It") -> [String] {
     let one = impact.transactions == 1
     let count = one ? "1 transaction" : "\(MoneyFormat.count(impact.transactions)) transactions"

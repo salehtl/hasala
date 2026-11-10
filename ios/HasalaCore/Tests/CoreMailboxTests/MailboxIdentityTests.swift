@@ -100,7 +100,10 @@ import Testing
     let grant = MailboxEngineConfig(grantID: account).grantID(provider: .gmail, address: "synthetic.user@example.com")
     await rig.ledger.setPlan(MailboxRetirePlan(grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2))
     let plan = try #require(await rig.engine.retirePlan())
-    #expect(plan == MailboxRetirePlan(grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2))
+    #expect(
+      plan
+        == MailboxRetirePlan(
+          grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2, address: "synthetic.user@example.com"))
     let flushes = await rig.ledger.flushes
     #expect(await rig.engine.disconnect(removing: plan) == .removed(7))
     #expect(await rig.ledger.retired == [plan])

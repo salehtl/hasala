@@ -1,3 +1,4 @@
+import CoreMailbox
 import Foundation
 import HasalaDesign
 import HasalaModels
@@ -141,6 +142,46 @@ struct MailboxFlowTests: AccountSuite {
     #expect(f.signedInAgainLine
       == "Now reading maya.other@example.com. The transactions from maya.k@example.com couldn't be removed. They stay.")
     #expect(failing.removed.isEmpty && failing.mailboxes.first?.state == .connected)
+    #expect(failing.heldRemoval == MailHeldRemoval(address: "maya.k@example.com", transactions: 1))
+  }
+
+  @Test func aRemovalThatDidNotFinishIsOfferedUntilItIsDoneOrKept() async {
+    let failing = otherAddress(imported: 42)
+    failing.switchRemoveFails = true
+    let f = MailConnectCoordinator(mailbox: failing, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(await answering(f, .remove) { await f.connect(.outlook) } != nil)
+    let held = MailHeldRemoval(address: "maya.k@example.com", transactions: 42)
+    #expect(failing.heldRemoval == held)
+    #expect(MailCopy.heldRemovalTitle(held) == "42 transactions weren't removed")
+    #expect(MailCopy.heldRemovalDetail(held) == "From maya.k@example.com, which you disconnected. They still count in your totals.")
+    let one = MailHeldRemoval(address: "maya.k@example.com", transactions: 1)
+    #expect(MailCopy.heldRemovalTitle(one) == "1 transaction wasn't removed")
+    #expect(MailCopy.heldRemovalDetail(one) == "From maya.k@example.com, which you disconnected. It still counts in your totals.")
+    #expect(MailCopy.heldRemovalTitle(MailHeldRemoval(address: "maya.k@example.com", transactions: nil))
+      == "Transactions weren't removed")
+
+    failing.heldRemoveFails = true
+    #expect(await failing.removeHeld() == .failed)
+    #expect(failing.heldRemoval == held)
+    failing.heldRemoveFails = false
+    #expect(await failing.removeHeld() == .removed(42))
+    #expect(failing.heldRemoval == nil && failing.removed == ["outlook-1"])
+
+    let kept = otherAddress(imported: 3)
+    kept.switchRemoveFails = true
+    let k = MailConnectCoordinator(mailbox: kept, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(await answering(k, .remove) { await k.connect(.outlook) } != nil)
+    #expect(kept.heldRemoval != nil)
+    await kept.keepHeld()
+    #expect(kept.heldRemoval == nil && kept.removed.isEmpty)
+  }
+
+  @Test func theLiveRowNamesTheMailboxAndCountOfTheKeptRemoval() {
+    let plan = MailboxRetirePlan(
+      grantID: "g/mbx-1", provider: "outlook", legacy: false, total: 42, edited: 0, address: "maya@example.net")
+    #expect(LiveMailboxConnecting.heldRemoval(plan) == MailHeldRemoval(address: "maya@example.net", transactions: 42))
+    let unknown = MailboxRetirePlan(grantID: "g/mbx-1", provider: "gmail", legacy: true, total: 0, edited: 0, countKnown: false)
+    #expect(LiveMailboxConnecting.heldRemoval(unknown) == MailHeldRemoval(address: "Gmail", transactions: nil))
   }
 
   @Test func tryAgainChangesNothingAndSaysNothing() async {

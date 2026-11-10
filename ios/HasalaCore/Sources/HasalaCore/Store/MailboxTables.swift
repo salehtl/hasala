@@ -108,13 +108,20 @@ public struct MailboxRetirePlanRow: Sendable, Equatable {
   public var total: Int
   public var edited: Int
   public var countKnown: Bool
-  public init(grantID: String, provider: String, legacy: Bool, total: Int, edited: Int, countKnown: Bool) {
+  public var held = false
+  public var address: String?
+  public init(
+    grantID: String, provider: String, legacy: Bool, total: Int, edited: Int, countKnown: Bool, held: Bool = false,
+    address: String? = nil
+  ) {
     self.grantID = grantID
     self.provider = provider
     self.legacy = legacy
     self.total = total
     self.edited = edited
     self.countKnown = countKnown
+    self.held = held
+    self.address = address
   }
 }
 
@@ -160,6 +167,7 @@ public struct MailboxWrite: Sendable {
   public var unparsedSenders: [MailboxUnparsedSenderRow] = []
   public var strikes: [(messageID: String, count: Int, at: Int64)] = []
   public var beginRetire: MailboxRetirePlanRow?
+  public var holdRetire: MailboxRetirePlanRow?
   public var endRetire: (grantID: String, provider: String)?
   public var reader: Data?
   public var state: MailboxStateRow?
@@ -191,7 +199,7 @@ public final class MailboxTableStore: Sendable {
     } + LedgerSchema.mailboxSenderAddress + LedgerSchema.mailboxParsing + LedgerSchema.mailboxPendingImport
     + LedgerSchema.mailboxUnparsedSender + LedgerSchema.mailboxReader + LedgerSchema.mailboxReadFrom
     + LedgerSchema.mailboxMessageStrike + LedgerSchema.mailboxRetirePlan
-    + LedgerSchema.mailboxProvider
+    + LedgerSchema.mailboxProvider + LedgerSchema.mailboxRetireHeld
 
   public func loadReader() throws -> Data? {
     try db.read { db in try Data.fetchOne(db, sql: "SELECT json FROM mailbox_reader WHERE id = 1") }
@@ -244,7 +252,7 @@ public final class MailboxTableStore: Sendable {
       try Row.fetchAll(db, sql: "SELECT * FROM mailbox_retire_plan ORDER BY grant_id, provider").map {
         MailboxRetirePlanRow(
           grantID: $0["grant_id"], provider: $0["provider"], legacy: $0["legacy"], total: $0["total"], edited: $0["edited"],
-          countKnown: $0["count_known"])
+          countKnown: $0["count_known"], held: $0["held"], address: $0["address"])
       }
     }
   }
@@ -378,12 +386,13 @@ public final class MailboxTableStore: Sendable {
       if let e = w.endRetire {
         try db.execute(sql: "DELETE FROM mailbox_retire_plan WHERE grant_id = ? AND provider = ?", arguments: [e.grantID, e.provider])
       }
-      if let b = w.beginRetire {
+      for (b, held) in [(w.beginRetire, false), (w.holdRetire, true)] {
+        guard let b else { continue }
         try db.execute(
           sql: """
-            INSERT OR REPLACE INTO mailbox_retire_plan (grant_id, provider, legacy, total, edited, count_known)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, arguments: [b.grantID, b.provider, b.legacy, b.total, b.edited, b.countKnown])
+            INSERT OR REPLACE INTO mailbox_retire_plan (grant_id, provider, legacy, total, edited, count_known, held, address)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, arguments: [b.grantID, b.provider, b.legacy, b.total, b.edited, b.countKnown, held, b.address])
       }
       for p in w.pending {
         try db.execute(

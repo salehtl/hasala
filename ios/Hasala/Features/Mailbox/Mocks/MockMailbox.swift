@@ -46,6 +46,8 @@
     var gmailPermissionMissing = false
     var signInAgainReads: String? = MockAccountService.identity.signInAgainReads
     var switchRemoveFails = false
+    var heldRemoval: MailHeldRemoval?
+    var heldRemoveFails = false
     var disconnectFails = false
     var disconnectFailsFor: Set<String> = []
     private(set) var questions: [MailSwitchQuestion] = []
@@ -234,7 +236,11 @@
 
     private func remove(_ id: String, old: String) -> MailSwitchRemoval? {
       guard let impact = imported[id], impact.transactions > 0 else { return nil }
-      if switchRemoveFails { return .failed(from: old) }
+      if switchRemoveFails {
+        heldRemoval = MailHeldRemoval(address: old, transactions: impact.transactions)
+        heldRemovalID = id
+        return .failed(from: old)
+      }
       removed.append(id)
       imported[id] = nil
       return .removed(impact.transactions)
@@ -302,6 +308,21 @@
 
     var imported: [String: MailboxDisconnectImpact] = MockAccountService.identity.impacts
     private(set) var removed: [String] = []
+
+    @ObservationIgnored private var heldRemovalID: String?
+
+    func removeHeld() async -> MailHeldRemovalOutcome {
+      guard let held = heldRemoval, !heldRemoveFails else { return .failed }
+      if let id = heldRemovalID { removed.append(id) }
+      heldRemoval = nil
+      heldRemovalID = nil
+      return .removed(held.transactions)
+    }
+
+    func keepHeld() async {
+      heldRemoval = nil
+      heldRemovalID = nil
+    }
 
     func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {
       guard let impact = imported[mailboxID], impact.transactions > 0 else { return nil }

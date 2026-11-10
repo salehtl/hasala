@@ -544,6 +544,35 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     try Self.disconnected(outcome, provider: lane.provider)
   }
 
+  var heldRemoval: MailHeldRemoval? {
+    guard let plan = runtime()?.store.readMailboxStatus?.heldRetires.first else { return nil }
+    return Self.heldRemoval(plan)
+  }
+
+  static func heldRemoval(_ plan: MailboxRetirePlan) -> MailHeldRemoval {
+    MailHeldRemoval(
+      address: plan.address ?? MailProviderKind(rawValue: plan.provider)?.appName ?? plan.provider,
+      transactions: plan.countKnown ? plan.total : nil)
+  }
+
+  func removeHeld() async -> MailHeldRemovalOutcome {
+    guard let rt = runtime(), let lane = rt.lane, let plan = rt.store.readMailboxStatus?.heldRetires.first else {
+      return .failed
+    }
+    let outcome = await lane.retryHeld(plan)
+    await rt.refreshMailbox()
+    switch outcome {
+    case .removed(let n): return .removed(n)
+    case .failed: return .failed
+    }
+  }
+
+  func keepHeld() async {
+    guard let rt = runtime(), let lane = rt.lane, let plan = rt.store.readMailboxStatus?.heldRetires.first else { return }
+    await lane.dropHeld(plan)
+    await rt.refreshMailbox()
+  }
+
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {
     guard let lane = try? lane(), let plan = await lane.retirePlan(), plan.total > 0 else { return nil }
     return MailboxDisconnectImpact(transactions: plan.total, edited: plan.edited)

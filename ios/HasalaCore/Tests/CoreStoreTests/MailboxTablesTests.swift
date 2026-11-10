@@ -1,5 +1,6 @@
 // The Gmail lane's ledger.sqlite tables (spec 04 §4.2) through MailboxTableStore.
 import Foundation
+import GRDB
 import Testing
 
 @testable import CoreStore
@@ -74,6 +75,46 @@ import Testing
     other.endRetire = ("g/mbx-1", "outlook")
     try t.commit(other)
     #expect(try t.pendingRetires() == [plan])
+
+    var end = MailboxWrite()
+    end.endRetire = ("g/mbx-1", "gmail")
+    try t.commit(end)
+    #expect(try t.pendingRetires().isEmpty)
+  }
+
+  @Test func aRetirePlanBegunBeforeTheUpdateIsStillPendingAfterIt() throws {
+    let q = try DatabaseQueue()
+    try LedgerSchema.migrator.migrate(q, upTo: "outbox_latch_build")
+    try q.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO mailbox_retire_plan (grant_id, provider, legacy, total, edited, count_known)
+          VALUES ('g/mbx-1', 'gmail', 1, 7, 2, 1)
+          """)
+    }
+    try LedgerSchema.migrator.migrate(q)
+    let t = MailboxTableStore(writer: q)
+    #expect(
+      try t.pendingRetires()
+        == [MailboxRetirePlanRow(grantID: "g/mbx-1", provider: "gmail", legacy: true, total: 7, edited: 2, countKnown: true)])
+  }
+
+  @Test func aRetirePlanThatFailedIsKeptAsHeldWithItsAddressUntilItIsEnded() throws {
+    let t = try MailboxTableStore.inMemory()
+    var plan = MailboxRetirePlanRow(grantID: "g/mbx-1", provider: "gmail", legacy: true, total: 7, edited: 2, countKnown: true)
+    plan.address = "synthetic.user@example.com"
+    var begin = MailboxWrite()
+    begin.beginRetire = plan
+    try t.commit(begin)
+    #expect(try t.pendingRetires() == [plan])
+
+    var hold = MailboxWrite()
+    hold.holdRetire = plan
+    hold.clearAll = true
+    try t.commit(hold)
+    var held = plan
+    held.held = true
+    #expect(try t.pendingRetires() == [held])
 
     var end = MailboxWrite()
     end.endRetire = ("g/mbx-1", "gmail")

@@ -108,14 +108,33 @@ import Testing
   @Test func aRemoveThePersonWasToldFailedIsNotDoneLater() async throws {
     let rig = Rig()
     await helper.signedOutWithImports(rig)
+    let plan = try #require(await rig.engine.retirePlan())
     await rig.ledger.setRetireFails(true)
     #expect(
       await helper.connect(rig, SwitchAsks(.remove))
         == .connected(address: helper.other, anotherAddress: true, retired: .failed))
     #expect(try await rig.store.pendingRetires().isEmpty)
+    #expect(await rig.engine.heldRetires() == [plan] && plan.address == helper.old)
     await rig.ledger.setRetireFails(false)
     _ = await rig.restarted().runCycle(trigger: .launch)
     #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.restarted().retryHeld(plan) == .removed(3))
+    #expect(await rig.ledger.retired == [plan])
+  }
+
+  @Test func aProviderSwitchWhoseRemoveFailedKeepsItForTheNewLane() async throws {
+    let rig = Rig()
+    await connectedReplacing(rig)
+    await rig.ledger.setRetireFails(true)
+    #expect(await rig.engine.retire(otherLane) == .failed)
+    #expect(await rig.engine.retire(otherLane) == .failed)
+    #expect(try await rig.store.pendingRetires().isEmpty)
+    #expect(await rig.engine.heldRetires() == [otherLane])
+    await rig.ledger.setRetireFails(false)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.engine.retryHeld(otherLane) == .removed(3))
+    #expect(await rig.ledger.retired == [otherLane])
   }
 
   @Test func aSwitchTheServerRefusedRecordsNoRemove() async throws {
@@ -165,6 +184,7 @@ import Testing
     await rig.ledger.setRetireFails(true)
     #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
     #expect(try await rig.store.pendingRetires().isEmpty)
+    #expect(await rig.engine.heldRetires() == [plan])
   }
 
   @Test func aFinishedDisconnectLeavesNoRemoveBehind() async throws {

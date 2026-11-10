@@ -236,6 +236,11 @@ enum LedgerSchema {
 
   static let mailboxProvider = ["ALTER TABLE mailbox_state ADD COLUMN provider TEXT"]
 
+  static let mailboxRetireHeld = [
+    "ALTER TABLE mailbox_retire_plan ADD COLUMN held INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE mailbox_retire_plan ADD COLUMN address TEXT",
+  ]
+
   static let outboxLatchBuild = ["ALTER TABLE sync_state ADD COLUMN latch_build TEXT"]
 
   static var migrator: DatabaseMigrator {
@@ -293,6 +298,9 @@ enum LedgerSchema {
     }
     m.registerMigration("outbox_latch_build") { db in
       for sql in outboxLatchBuild { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_retire_held") { db in
+      for sql in mailboxRetireHeld { try db.execute(sql: sql) }
     }
     return m
   }

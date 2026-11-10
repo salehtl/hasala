@@ -107,36 +107,77 @@ import Testing
     return try #require(await rig.engine.retirePlan())
   }
 
-  @Test func aRemovalThatFailsLeavesTheRowSoTheRemovalCanBeAskedForAgain() async throws {
+  @Test func aRemovalThatFailsIsKeptOnThePhoneUntilItIsTriedAgain() async throws {
     let rig = Rig()
     let plan = try await withPlan(rig)
+    #expect(plan.address == SyntheticMail.defaultTo)
     await rig.ledger.setRetireFails(true)
     #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
     #expect(await rig.server.deletes == 1)
     #expect(try rig.keychain.read() == nil)
-    let s = await rig.state()
-    #expect(s.phase == .reconnectRequired && s.haltedOn == .reconnectRequired && s.address == SyntheticMail.defaultTo)
-    #expect(await rig.engine.retirePlan() == plan)
-
-    await rig.server.setDeleteRefusal(.noLink)
-    await rig.ledger.setRetireFails(false)
-    #expect(await rig.engine.disconnect(removing: plan) == .removed(7))
-    #expect(await rig.ledger.retired == [plan])
     #expect(await rig.state().phase == .unlinked)
     #expect(await rig.engine.retirePlan() == nil)
+    #expect(await rig.engine.heldRetires() == [plan])
+    #expect(await rig.engine.status().heldRetires == [plan])
+    #expect(try await rig.store.pendingRetires().isEmpty)
+
+    #expect(await rig.engine.retryHeld(plan) == .failed)
+    #expect(await rig.engine.heldRetires() == [plan])
+
+    await rig.ledger.setRetireFails(false)
+    let flushes = await rig.ledger.flushes
+    #expect(await rig.engine.retryHeld(plan) == .removed(7))
+    #expect(await rig.ledger.retired == [plan])
+    #expect(await rig.ledger.flushes == flushes + 1)
+    #expect(await rig.engine.heldRetires().isEmpty)
+    #expect(await rig.engine.retryHeld(plan) == .removed(7))
+    #expect(await rig.ledger.retired == [plan])
   }
 
-  @Test func aRemovalThatFailsStaysRetryableAfterTheNextCycle() async throws {
+  @Test func aKeptRemovalOutlivesARestartAndNoCycleTriesIt() async throws {
     let rig = Rig()
     let plan = try await withPlan(rig)
     await rig.ledger.setRetireFails(true)
     #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
-    let cycle = await rig.engine.runCycle(trigger: .launch)
-    #expect(cycle.phase == .reconnectRequired && cycle.ops == 0)
-    #expect(await rig.engine.retirePlan() == plan)
-    await rig.server.setDeleteRefusal(.noLink)
     await rig.ledger.setRetireFails(false)
-    #expect(await rig.engine.disconnect(removing: plan) == .removed(7))
+    let restarted = rig.restarted()
+    _ = await restarted.runCycle(trigger: .launch)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(await restarted.heldRetires() == [plan])
+    #expect(await restarted.retryHeld(plan) == .removed(7))
+    #expect(await rig.ledger.retired == [plan])
+    #expect(await rig.restarted().heldRetires().isEmpty)
+  }
+
+  @Test func keepThemDropsTheKeptRemoval() async throws {
+    let rig = Rig()
+    let plan = try await withPlan(rig)
+    await rig.ledger.setRetireFails(true)
+    #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
+    await rig.ledger.setRetireFails(false)
+    await rig.engine.dropHeld(plan)
+    #expect(await rig.engine.heldRetires().isEmpty)
+    _ = await rig.restarted().runCycle(trigger: .launch)
+    #expect(await rig.ledger.retired.isEmpty)
+  }
+
+  @Test func twoTapsOnRemoveThemAuthorTheRemovalOnce() async throws {
+    let rig = Rig()
+    let plan = try await withPlan(rig)
+    await rig.ledger.setRetireFails(true)
+    #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
+    await rig.ledger.setRetireFails(false)
+    let gate = Gate()
+    await rig.ledger.setRetireGate { await gate.pass() }
+    let first = Task { await rig.engine.retryHeld(plan) }
+    for _ in 0..<100_000 where !gate.reached { await Task.yield() }
+    #expect(gate.reached)
+    let second = Task { await rig.engine.retryHeld(plan) }
+    await rig.ledger.setRetireGate(nil)
+    gate.open()
+    #expect(await first.value == .removed(7))
+    #expect(await second.value == .removed(7))
+    #expect(await rig.ledger.retired == [plan])
   }
 
   @Test func aLinkThatCouldNotBeDeletedRemovesNothing() async throws {
