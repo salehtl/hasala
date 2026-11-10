@@ -80,6 +80,7 @@ final class BootController {
   @ObservationIgnored private var observingProtectedData = false
   @ObservationIgnored private var startRetry: Task<Void, Never>?
   @ObservationIgnored private var startRetryDelay: Duration = .seconds(1)
+  @ObservationIgnored private var syncWatch: Task<Void, Never>?
 
   init(env: AppEnvironment) {
     self.env = env
@@ -285,6 +286,8 @@ final class BootController {
         reviewOrderDefaults: .standard, amountsDefaults: .standard)
       if BuildSurface.showsCloudSuggestions { app.cloudSort = LiveCloudSortController(runtime: rt) }
       rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
+      app.syncNotices.eraseThisIPhone = { [weak self] in await self?.eraseThisIPhone() }
+      self.watchSync(rt.engine, notices: app.syncNotices)
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app
@@ -317,6 +320,15 @@ final class BootController {
     PushRegistrar.shared.register(env: env.account, userID: binding.user_id)
   }
 
+  private func watchSync(_ engine: SyncEngine, notices: SyncNotices) {
+    syncWatch?.cancel()
+    syncWatch = Task { [weak notices] in
+      for await status in await engine.statusUpdates() {
+        notices?.update(status)
+      }
+    }
+  }
+
   /// This iPhone left the account (signed out, removed, the account deleted): the
   /// runtime closes and the gate goes back to Welcome, whichever screen asked.
   private func left() async {
@@ -338,6 +350,8 @@ final class BootController {
     badge = nil
     AppIconBadge.clear()
     BackgroundScheduler.shared.cancelAll()
+    syncWatch?.cancel()
+    syncWatch = nil
     syncHalt = nil
     wall = Self.wallAfterClosing(wall)
     setupFacts = OnboardingStep.Facts(hasSession: true, keysReady: true)

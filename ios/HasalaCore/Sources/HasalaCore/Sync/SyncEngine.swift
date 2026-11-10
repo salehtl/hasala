@@ -211,7 +211,9 @@ public actor SyncEngine {
       if !asked, let at = accountFullAtMs, context.clock.nowMs() - at < Self.accountFullPauseMs { return }
     case .chainBreak:
       guard asked else { return }
-    case .hardStop, .sealerFault, nil:
+    case .hardStop, .sealerFault:
+      guard let build = context.build, state.latchBuild != build else { return }
+    case nil:
       return
     }
     try context.storeCall { () throws(StoreError) in try context.store.setLatch(nil) }

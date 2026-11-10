@@ -251,6 +251,40 @@ struct LedgerStoreTests {
     #expect(ev.count == 64 && ev.last?.detail == "69")
   }
 
+  @Test("the build that raised a latch stays with it across a reopen, and goes when the latch is replaced or lifted")
+  func latchBuild() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-latch-\(ProcessInfo.processInfo.globallyUniqueString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    do {
+      let s = try LedgerStore.open(directory: dir)
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+      try s.setLatch(.hardStop, build: "261101.1")
+    }
+    let s = try LedgerStore.open(directory: dir)
+    #expect(try s.syncState().latch == .hardStop)
+    #expect(try s.syncState().latchBuild == "261101.1")
+    try s.setLatch(.accountFull)
+    #expect(try s.syncState().latchBuild == nil)
+    try s.setLatch(.sealerFault, build: "2")
+    try s.setLatch(nil, build: "2")
+    #expect(try s.syncState().latch == nil)
+    #expect(try s.syncState().latchBuild == nil)
+  }
+
+  @Test("a latch kept before its build was noted reads with no build")
+  func latchFromBeforeTheBuildColumn() throws {
+    let queue = try DatabaseQueue()
+    try LedgerSchema.migrator.migrate(queue, upTo: "mailbox_provider")
+    try queue.write { db in
+      try db.execute(
+        sql: "INSERT INTO sync_state (id, authored_hash, outbox_latch) VALUES (1, zeroblob(32), 'hard_stop')")
+    }
+    try LedgerSchema.migrator.migrate(queue)
+    let s = try LedgerStore(db: queue)
+    #expect(try s.syncState().latch == .hardStop)
+    #expect(try s.syncState().latchBuild == nil)
+  }
+
   @Test("a once-only fold event is one row, however often it is recorded, and leaves the rest of the ring")
   func foldEventOnce() throws {
     let s = try created()

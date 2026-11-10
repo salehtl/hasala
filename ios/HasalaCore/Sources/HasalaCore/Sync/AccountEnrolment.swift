@@ -271,17 +271,19 @@ public enum Enrolment {
   }
 
   /// Opens an enrolled account's sync context from its binding.
-  public static func context(_ env: AccountEnvironment, binding: AccountBinding) throws(CeremonyError) -> SyncContext {
+  public static func context(
+    _ env: AccountEnvironment, binding: AccountBinding, build: String? = nil
+  ) throws(CeremonyError) -> SyncContext {
     guard let u = binding.userID, let w = binding.writerID else { throw .badResponse("binding ids") }
     let store = try env.openStore(for: u)
     return SyncContext(
       userID: u, writerID: w, store: store, secrets: env.secrets, client: env.client, clock: env.clock,
-      random: env.random)
+      random: env.random, build: build)
   }
 
-  public static func context(_ env: AccountEnvironment, account: EnrolledAccount) -> SyncContext {
+  public static func context(_ env: AccountEnvironment, account: EnrolledAccount, build: String? = nil) -> SyncContext {
     SyncContext(
       userID: account.userID, writerID: account.writerID, store: account.store, secrets: env.secrets,
-      client: env.client, clock: env.clock, random: env.random)
+      client: env.client, clock: env.clock, random: env.random, build: build)
   }
 }

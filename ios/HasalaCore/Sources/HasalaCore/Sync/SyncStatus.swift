@@ -63,6 +63,8 @@ public struct SyncStatus: Sendable, Hashable {
   public var retryAfterSeconds: Int?
 
   public init() {}
+
+  public var uploadsStuck: Bool { latch?.keepsChangesFromUploading == true }
 }
 
 /// Why a stage stopped. The engine turns each into a phase.

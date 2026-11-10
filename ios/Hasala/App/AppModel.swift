@@ -64,6 +64,7 @@ final class AppModel {
   }
 
   let sync = SyncActivity()
+  let syncNotices = SyncNotices()
 
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var toastWindow: ToastWindow?

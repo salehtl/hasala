@@ -1,4 +1,6 @@
 #if HASALA_MOCKS
+  import CoreStore
+  import CoreSync
   import Foundation
   import HasalaMocks
   import HasalaModels
@@ -66,6 +68,12 @@
         graph.onboarding.finishSetupModel().askNotifications()
       },
       Screen("home.noAlerts", scenario: "noAlerts"),
+      Screen("home.uploadsStuck", scenario: "maya", prepare: { graph in
+        var status = CoreSync.SyncStatus()
+        status.latch = .hardStop
+        graph.app.syncNotices.update(status)
+        graph.app.syncNotices.eraseThisIPhone = {}
+      }),
       Screen("home.noAlerts.sheet", scenario: "noAlerts") { graph in
         graph.onboarding.finishSetupModel().openNoAlerts()
       },

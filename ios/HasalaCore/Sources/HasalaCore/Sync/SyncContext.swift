@@ -17,10 +17,11 @@ public final class SyncContext: Sendable {
   public let client: AuthClient
   public let clock: any CoreTime.Clock
   public let random: any RandomSource
+  public let build: String?
 
   public init(
     userID: UserID, writerID: WriterID, store: LedgerStore, secrets: Secrets, client: AuthClient, clock: any CoreTime.Clock,
-    random: any RandomSource
+    random: any RandomSource, build: String? = nil
   ) {
     self.userID = userID
     self.writerID = writerID
@@ -29,6 +30,7 @@ public final class SyncContext: Sendable {
     self.client = client
     self.clock = clock
     self.random = random
+    self.build = build
   }
 
   /// The bearer token; no session → `needsSignIn`; a pending logout is

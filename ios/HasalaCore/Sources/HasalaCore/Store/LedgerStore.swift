@@ -50,6 +50,8 @@ public enum OutboxLatch: String, Sendable, Hashable, CaseIterable {
   case hardStop = "hard_stop"
   case sealerFault = "sealer_fault"
   case accountFull = "account_full"
+
+  public var keepsChangesFromUploading: Bool { self == .hardStop || self == .sealerFault }
 }
 
 /// `sync_state` (§4.2).
@@ -60,6 +62,7 @@ public struct SyncStateRow: Sendable, Hashable {
   public var checkpointJSON: Data?
   public var rosterJSON: Data?
   public var latch: OutboxLatch?
+  public var latchBuild: String?
   public var epochHWM: UInt32
   public var logGeneration: Int64?
   public var lastPullAt: Int64?
@@ -275,14 +278,17 @@ public final class LedgerStore: Sendable {
     return SyncStateRow(
       cursorHot: row["cursor_hot"], authoredHead: Chain.Head(counter: row["authored_counter"], hash: h),
       checkpointJSON: row["checkpoint_json"], rosterJSON: row["roster_json"],
-      latch: latch.flatMap(OutboxLatch.init(rawValue:)), epochHWM: UInt32(row["epoch_hwm"] as Int64),
+      latch: latch.flatMap(OutboxLatch.init(rawValue:)), latchBuild: row["latch_build"],
+      epochHWM: UInt32(row["epoch_hwm"] as Int64),
       logGeneration: row["log_generation"], lastPullAt: row["last_pull_at"], lastPushAt: row["last_push_at"],
       lastFullCheckAt: row["last_full_check_at"])
   }
 
-  public func setLatch(_ latch: OutboxLatch?) throws(StoreError) {
+  public func setLatch(_ latch: OutboxLatch?, build: String? = nil) throws(StoreError) {
     try write { db in
-      try db.execute(sql: "UPDATE sync_state SET outbox_latch = ? WHERE id = 1", arguments: [latch?.rawValue])
+      try db.execute(
+        sql: "UPDATE sync_state SET outbox_latch = ?, latch_build = ? WHERE id = 1",
+        arguments: [latch?.rawValue, latch == nil ? nil : build])
     }
   }
 

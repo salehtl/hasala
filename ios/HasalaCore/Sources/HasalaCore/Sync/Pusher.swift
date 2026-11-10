@@ -153,7 +153,7 @@ enum Pusher {
       } catch {
         switch error {
         case .sealerFault:
-          // Persisted, so later runs do not seal (and fault) again (§5.5).
+          // Persisted, so later runs of this build do not seal (and fault) again (§5.5).
           throw latch(ctx, .sealerFault, alarm: true)
         default: throw .latched(.hardStop)
         }
@@ -256,7 +256,7 @@ enum Pusher {
   static func latch(
     _ ctx: SyncContext, _ latch: OutboxLatch, alarm: Bool = false, reportedAs stop: SyncStop? = nil
   ) -> SyncStop {
-    do { try ctx.store.setLatch(latch) } catch { return .store(error) }
+    do { try ctx.store.setLatch(latch, build: ctx.build) } catch { return .store(error) }
     return stop ?? .latched(latch, alarm: alarm)
   }
 

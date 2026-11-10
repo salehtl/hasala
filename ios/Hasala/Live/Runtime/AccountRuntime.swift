@@ -277,9 +277,9 @@ final class AccountRuntime {
   ) async throws -> AccountRuntime {
     let context: SyncContext
     if let enrolled, enrolled.userID.string == binding.user_id {
-      context = Enrolment.context(env, account: enrolled)
+      context = Enrolment.context(env, account: enrolled, build: build.buildNumber)
     } else {
-      context = try Enrolment.context(env, binding: binding)
+      context = try Enrolment.context(env, binding: binding, build: build.buildNumber)
     }
     let projection: ProjectionStore
     if let dir = env.storeDirectory(for: context.userID) {
