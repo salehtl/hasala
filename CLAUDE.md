@@ -48,6 +48,15 @@ On the phone (`ios/HasalaCore/Sources/HasalaCore/`):
    and `Projection/` makes the read model that the screens use (through
    `HasalaKit/Sources/HasalaModels`).
 
+A mailbox disconnect that also removes that mailbox's transactions ends
+unlinked, even when the removal fails. A failed removal is kept in the ledger
+store, with its row count (`mailbox_retire_held`, an additive migration), and
+Bank alerts offers it as **Remove them** on the email page and on the bank
+texts page. It is hidden and not written while the server says another iPhone
+holds a link on that provider. It ends with nothing written when its mailbox is
+linked again on this iPhone, or when that mailbox has brought in more rows
+since it was kept.
+
 On the server (`server/internal/`): `api` has the routes. `oplog` stores the
 sealed frames and examines only the framing, the position and the hash chain.
 `gmailpush` and `outlookpush` turn provider notices into content-free APNs
@@ -382,11 +391,16 @@ CI for iOS:
 
 `hasalad <mode>` has these modes: `serve`, `migrate`, `verify`,
 `purge-user`, `invite` (`mint [--review | --email]`, `list`, `revoke`),
-`account` (`review`, `unfreeze`), `mailbox`
+`account` (`review`, `unfreeze`, `suspend`, `unsuspend`), `mailbox`
 (`rekey --drop-links --keep-key-id <id>`), `waitlist`, `email test`, `console`
 and `version`. `account unfreeze <uuid> --confirm <uuid>` lifts any freeze. It is
 the out-of-band path for a holder who cannot lift their own freeze (for
 example a freeze dated to a phrase recovery). Refer to
+`docs/runbooks/restore.md`. `account suspend <uuid> --confirm <uuid>` and
+`account unsuspend <uuid> --confirm <uuid>` set `users.status` and
+`suspended_at` together, write an `admin_audit` row (`cli.account_suspend` or
+`cli.account_unsuspend`) and record a `suspend` or `unsuspend` line in the
+restore ledger. Refer to "Suspend an account, or lift a suspension" in
 `docs/runbooks/restore.md`. `console` is the operator
 console of spec 07. It is minimal: waitlist approval, invites and the email
 log.
@@ -423,8 +437,9 @@ restore must not undo. `hasala-purge-replay` applies them again before
   removals, password changes, passkey removals, key wrap deletions (`wrap`),
   waitlist leaves, waitlist entries deleted after a bounced invite, the first
   view of the 12 words after a signup that skipped them, sign-outs of all
-  sessions (`sessions`), email changes (`email`) and the operator's invite
-  revocations (`invite-revoked`). It records only internal IDs and
+  sessions (`sessions`), email changes (`email`), the operator's invite
+  revocations (`invite-revoked`) and the operator's suspensions of an account
+  and their lifts (`suspend`, `unsuspend`). It records only internal IDs and
   times. Do not add an email address or a name.
 - A deletion's line is written before its commit. When the commit fails and
   the account is still there, `purge-cancelled` cancels that line, and the
@@ -453,6 +468,10 @@ restore must not undo. `hasala-purge-replay` applies them again before
 - The replay applies an unfreeze too. A replay never leaves a holder-frozen
   account with no passkey and no password: it lifts that freeze and records
   an `account_unfrozen` event.
+- The replay applies each account's latest `suspend` or `unsuspend` line
+  only when the database has no `cli.account_suspend` or
+  `cli.account_unsuspend` audit row for that account from that second or
+  later.
 - The ledger has times in whole seconds. The replay compares a database time
   with a ledger time at second precision.
 - When you add a change that a restore must not undo, record it in the ledger
@@ -468,11 +487,13 @@ restore must not undo. `hasala-purge-replay` applies them again before
 > the event kinds (before branch `legal/accuracy-fixes`) fails on each line
 > with a third field. A build from before `onboarding/w5-review-fixes` fails on
 > each kind newer than itself (for example `phrase-seen`, `sessions`, `email`,
-> `invite-revoked` and `wrap`). A build from before `hardening/ledger-and-limits`
-> skips `sessions`, `email` and `invite-revoked`, so its replay does not apply
-> them again. A build from before `security/server-lifecycle` skips
-> `purge-cancelled`, so its replay purges an account whose deletion was
-> cancelled. Before you deploy one of these, copy the ledger file. Then,
+> `invite-revoked`, `wrap`, `suspend` and `unsuspend`). A build from before
+> `hardening/ledger-and-limits` skips `sessions`, `email` and `invite-revoked`,
+> so its replay does not apply them again. A build from before
+> `security/server-lifecycle` skips `purge-cancelled`, so its replay purges an
+> account whose deletion was cancelled. A build from before
+> `hasalad account suspend` skips `suspend` and `unsuspend`, so its replay does
+> not apply them again. Before you deploy one of these, copy the ledger file. Then,
 > in this order: list the accounts whose latest deletion or `purge-cancelled`
 > line is `purge-cancelled`; remove every deletion line of those accounts; remove
 > all `purge-cancelled` lines; remove each other line the build cannot read.
@@ -572,7 +593,8 @@ The PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
   "Check your email", with the step to confirm the address within 7 days.
   The request shows on the waitlist in `hasalad console`. Without script, in a
   build with a site key, `/joined` shows the error card, because such a post
-  has no token and is refused.
+  has no token and is refused. With script, in that build, `/joined` with no
+  `?error` goes to `/#invite` (`location.replace`, `web/src/scripts/joined.ts`).
 - `email` (use this only when the API does not operate). The form opens a
   prepared email to support@hasala.app. It sends nothing and does not load
   Turnstile. Without JavaScript, the form goes to `/joined`, which tells
@@ -678,7 +700,10 @@ the approval of the owner for that deployment.
   sender, Run Immediately, Hasala › Add bank text); Shortcuts needs a sender or
   a phrase, and every DIB payment text has a full stop in its amount. It hands
   each such incoming text to the app on the phone. An account uses bank email or bank texts, not both: texts work
-  only while the account has no mailbox link, on every device. The phone keeps
+  only while the account has no mailbox link, on every device. If an iPhone has
+  seen the automation run, a mailbox disconnect on it says so. A mailbox connect
+  on an iPhone clears its automation last-run time, so only a run since then
+  counts, including runs before the first unlock that came after the connect. The phone keeps
   only payment texts and drops all other texts at once, with no storage; when
   it is not sure, a text with a payment shape goes to Review. Nothing sends a
   text off the phone, and hasalad never sees one. Do not put a raw text in the
@@ -782,6 +807,11 @@ the approval of the owner for that deployment.
   `/meta` reports that a shipped build writes that version. Raise
   `OpVersionCeiling` and deploy `hasalad` before a build that writes a new
   schema. Refer to `docs/decisions/op-version-ceiling.md`.
+- **Writer checkpoints (2026-11-11)**: the beta writes no `writer_checkpoint`
+  ops, and I11 is not checked. Each device pins its own chain and every writer
+  chain it reads. Checkpoints come later, with a written rule for the cadence
+  and for what a mismatch does. Refer to
+  `docs/decisions/sync-writer-checkpoints.md`.
 - **Outbound mail**: Cloudflare Email Service.
 - **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
   only on loopback. It has no TLS code.
