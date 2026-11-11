@@ -378,11 +378,12 @@ struct UseBankTextsSection: View {
     switching = true
     Task {
       defer { switching = false }
-      switch await SourceSwitch.toTexts(mailbox: app.mailbox, texts: lane, mailboxOff: mailboxOff) {
+      let attempt = await SourceSwitch.attempt(mailbox: app.mailbox, texts: lane, mailboxOff: mailboxOff)
+      if attempt.mailboxOff { mailboxOff = true }
+      switch attempt.outcome {
       case .switched:
         guiding = true
       case .failed(let line):
-        if line == SourceSwitch.switchUnfinished { mailboxOff = true }
         app.say(line, icon: .info)
       }
     }

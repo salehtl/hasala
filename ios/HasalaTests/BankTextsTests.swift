@@ -374,6 +374,38 @@ struct BankTextsTests {
     #expect(lane.source == .texts)
   }
 
+  @Test func aSwitchThatDisconnectedAMailboxButStoppedShortStillSaysTheMailboxIsOffOnTheNextTry() async {
+    let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
+    mailbox.connectDelay = .zero
+    let lane = MockBankTexts(mailbox: mailbox, link: .linked)
+    let first = await SourceSwitch.attempt(mailbox: mailbox, texts: lane)
+    #expect(first == SourceSwitch.Attempt(outcome: .failed(SourceSwitch.linkRemains), mailboxOff: true))
+    lane.linkOverride = nil
+    lane.finishFails = true
+    #expect(
+      await SourceSwitch.attempt(mailbox: mailbox, texts: lane, mailboxOff: first.mailboxOff)
+        == SourceSwitch.Attempt(outcome: .failed(SourceSwitch.switchUnfinished), mailboxOff: true))
+
+    let two = MockMailbox(mailboxes: [MockMailbox.gmail, MockMailbox.outlook])
+    two.connectDelay = .zero
+    two.disconnectFailsFor = [MockMailbox.outlook.id]
+    let partway = MockBankTexts(mailbox: two)
+    let stopped = await SourceSwitch.attempt(mailbox: two, texts: partway)
+    #expect(stopped.mailboxOff)
+    two.disconnectFailsFor = []
+    try? await two.disconnect(MockMailbox.outlook.id, removeTransactions: false)
+    partway.finishFails = true
+    #expect(
+      await SourceSwitch.attempt(mailbox: two, texts: partway, mailboxOff: stopped.mailboxOff).outcome
+        == .failed(SourceSwitch.switchUnfinished))
+
+    let untouched = MockMailbox(mailboxes: [MockMailbox.gmail])
+    untouched.connectDelay = .zero
+    untouched.disconnectFails = true
+    let still = MockBankTexts(mailbox: untouched)
+    #expect(await !SourceSwitch.attempt(mailbox: untouched, texts: still).mailboxOff)
+  }
+
   @Test func aSwitchWithNoMailboxToDisconnectThatCannotBeSavedSaysItCouldNotSave() async {
     let mailbox = MockMailbox(mailboxes: [])
     let lane = MockBankTexts(mailbox: mailbox)

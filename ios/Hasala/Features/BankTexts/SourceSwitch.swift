@@ -8,6 +8,11 @@ enum SourceSwitch {
     case failed(String)
   }
 
+  struct Attempt: Equatable {
+    var outcome: Outcome
+    var mailboxOff: Bool
+  }
+
   static func reading(_ mailbox: (any MailboxConnecting)?) -> [MailboxSnapshot] {
     mailbox?.mailboxes.filter { $0.state != .disconnected } ?? []
   }
@@ -39,7 +44,13 @@ enum SourceSwitch {
   static func toTexts(
     mailbox: (any MailboxConnecting)?, texts: any BankTextsConnecting, mailboxOff: Bool = false
   ) async -> Outcome {
-    if let blocker = textsBlocker(mailbox, texts: texts) { return .failed(blocker) }
+    await attempt(mailbox: mailbox, texts: texts, mailboxOff: mailboxOff).outcome
+  }
+
+  static func attempt(
+    mailbox: (any MailboxConnecting)?, texts: any BankTextsConnecting, mailboxOff: Bool = false
+  ) async -> Attempt {
+    if let blocker = textsBlocker(mailbox, texts: texts) { return Attempt(outcome: .failed(blocker), mailboxOff: mailboxOff) }
     var off: [MailboxSnapshot] = []
     if let mailbox {
       for m in reading(mailbox) {
@@ -47,18 +58,21 @@ enum SourceSwitch {
           try await mailbox.disconnect(m.id, removeTransactions: false)
           off.append(m)
         } catch {
-          return .failed(partialFailure(disconnected: off, failed: m))
+          return Attempt(outcome: .failed(partialFailure(disconnected: off, failed: m)), mailboxOff: mailboxOff || !off.isEmpty)
         }
       }
     }
+    let wasOff = mailboxOff || !off.isEmpty
     texts.refresh()
-    guard !texts.readsEmail else { return .failed(off.isEmpty ? readElsewhereLink : linkRemains) }
+    guard !texts.readsEmail else {
+      return Attempt(outcome: .failed(off.isEmpty ? readElsewhereLink : linkRemains), mailboxOff: wasOff)
+    }
     do {
       try await texts.finishSetUp()
     } catch {
-      return .failed(off.isEmpty && !mailboxOff ? error.message : switchUnfinished)
+      return Attempt(outcome: .failed(wasOff ? switchUnfinished : error.message), mailboxOff: wasOff)
     }
-    return texts.usesTexts ? .switched : .failed(linkRemains)
+    return Attempt(outcome: texts.usesTexts ? .switched : .failed(linkRemains), mailboxOff: wasOff)
   }
 
   static func partialFailure(disconnected: [MailboxSnapshot], failed: MailboxSnapshot) -> String {
