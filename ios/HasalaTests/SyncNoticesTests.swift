@@ -1,5 +1,6 @@
 import CoreStore
 import CoreSync
+import HasalaMocks
 import Testing
 
 @testable import Hasala
@@ -67,6 +68,32 @@ struct SyncNoticesTests {
     status.rowAlarms = 1
     notices.update(status)
     #expect(notices.setAside == 1)
+  }
+
+  @Test func onlyThePersonDismissingTheSheetAcknowledgesIt() {
+    let app = AppModel(store: InMemoryLedger())
+    var status = CoreSync.SyncStatus()
+    status.integrityAlarms = 1
+    status.rowAlarms = 1
+    app.syncNotices.update(status)
+    let showing = MainView.setAsideShowing(app)
+    #expect(showing.wrappedValue)
+
+    app.router.sheet = .search
+    #expect(!showing.wrappedValue)
+    showing.wrappedValue = false
+    #expect(app.syncNotices.setAside == 1)
+    app.router.sheet = nil
+    app.router.cover = .review
+    #expect(!showing.wrappedValue)
+    showing.wrappedValue = false
+    #expect(app.syncNotices.setAside == 1)
+    app.router.cover = nil
+    #expect(showing.wrappedValue)
+
+    showing.wrappedValue = false
+    #expect(app.syncNotices.setAside == 0)
+    #expect(!showing.wrappedValue)
   }
 
   @Test func theSheetSaysWhatWasSetAsideWithNoContent() {
