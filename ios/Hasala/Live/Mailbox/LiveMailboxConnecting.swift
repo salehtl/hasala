@@ -561,9 +561,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     }
     let outcome = await lane.retryHeld(plan)
     await rt.refreshMailbox()
+    return Self.heldOutcome(outcome)
+  }
+
+  static func heldOutcome(_ outcome: MailboxHeldRetryOutcome) -> MailHeldRemovalOutcome {
     switch outcome {
-    case .removed(let n): return .removed(n)
-    case .failed: return .failed
+    case .removed(let n): .removed(n)
+    case .failed: .failed
+    case .readElsewhere: .readElsewhere
+    case .ended: .ended
     }
   }
 

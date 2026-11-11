@@ -162,6 +162,13 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailCopy.heldRemovalTitle(MailHeldRemoval(address: "maya.k@example.com", transactions: nil))
       == "Transactions weren't removed")
 
+    #expect(MailCopy.heldRemovalLine(.removed(42), held) == "42 transactions removed.")
+    #expect(MailCopy.heldRemovalLine(.removed(nil), held) == "The old transactions were removed.")
+    #expect(MailCopy.heldRemovalLine(.failed, held)
+      == "The transactions from maya.k@example.com couldn't be removed. They stay for now.")
+    #expect(MailCopy.heldRemovalLine(.readElsewhere, held) == "Your email is read on your other iPhone.")
+    #expect(MailCopy.heldRemovalLine(.ended, held) == nil)
+
     failing.heldRemoveFails = true
     #expect(await failing.removeHeld() == .failed)
     #expect(failing.heldRemoval == held)
@@ -176,6 +183,14 @@ struct MailboxFlowTests: AccountSuite {
     #expect(kept.heldRemoval != nil)
     await kept.keepHeld()
     #expect(kept.heldRemoval == nil && kept.removed.isEmpty)
+  }
+
+  @Test func theLiveRemoveThemSaysWhatTheEngineDid() {
+    #expect(LiveMailboxConnecting.heldOutcome(.removed(42)) == .removed(42))
+    #expect(LiveMailboxConnecting.heldOutcome(.removed(nil)) == .removed(nil))
+    #expect(LiveMailboxConnecting.heldOutcome(.failed) == .failed)
+    #expect(LiveMailboxConnecting.heldOutcome(.readElsewhere) == .readElsewhere)
+    #expect(LiveMailboxConnecting.heldOutcome(.ended) == .ended)
   }
 
   @Test func theLiveRowNamesTheMailboxAndCountOfTheKeptRemoval() {

@@ -177,6 +177,13 @@ public enum MailboxRetireOutcome: Sendable, Equatable {
   case failed
 }
 
+public enum MailboxHeldRetryOutcome: Sendable, Equatable {
+  case removed(Int?)
+  case failed
+  case readElsewhere
+  case ended
+}
+
 public struct MailboxSwitchQuestion: Sendable, Equatable {
   public var oldAddress: String
   public var newAddress: String
@@ -309,6 +316,8 @@ public actor MailboxEngine {
   public private(set) var disconnectsWaiting = 0
   private var retiresRunning: Set<String> = []
   private var retiresNotRecorded: Set<String> = []
+  private var readElsewhere: Set<String> = []
+  private var heldAskedAtMs: Int64?
   private var lastStatus: MailboxStatus?
   private var strayTokenAskedAtMs: Int64?
 
@@ -599,6 +608,7 @@ public actor MailboxEngine {
       if otherMailbox { await abandonSwitch() }
       return .failed(.keychain)
     }
+    readElsewhere = []
     return .connected(address: claims.email, anotherAddress: otherMailbox)
   }
 
@@ -663,7 +673,7 @@ public actor MailboxEngine {
     let removed = MailboxRetireOutcome.removed(plan.countKnown ? plan.total : nil)
     switch await runRetire(plan) {
     case .notHeld:
-      return (try? await store.heldRetires())?.contains(plan) == true ? .failed : removed
+      return (try? await store.heldRetires())?.contains { Self.same($0, plan) } == true ? .failed : removed
     case .failed:
       await holdRetire(plan)
       return .failed
@@ -707,8 +717,22 @@ public actor MailboxEngine {
   private func holdRetire(_ plan: MailboxRetirePlan) async {
     retiresNotRecorded.remove(plan.grantID)
     var c = MailboxCommit()
-    c.holdRetire = plan
+    c.holdRetire = await counted(plan)
     try? await store.commit(c)
+  }
+
+  private func counted(_ plan: MailboxRetirePlan) async -> MailboxRetirePlan {
+    let now = await ledger.retirePlan(grantID: plan.grantID, provider: plan.provider)
+    guard now.countKnown else { return plan }
+    var kept = plan
+    kept.total = now.total
+    kept.edited = now.edited
+    kept.countKnown = true
+    return kept
+  }
+
+  private static func same(_ a: MailboxRetirePlan, _ b: MailboxRetirePlan) -> Bool {
+    a.grantID == b.grantID && a.provider == b.provider
   }
 
   public func heldRetires() async -> [MailboxRetirePlan] {
@@ -717,7 +741,45 @@ public actor MailboxEngine {
   }
 
   private func offered(_ held: [MailboxRetirePlan], _ state: MailboxState) -> [MailboxRetirePlan] {
-    held.filter { !links(state, $0) }
+    held.filter { !links(state, $0) && !readElsewhere.contains($0.provider) }
+  }
+
+  private enum HeldLink { case free, thisIPhone, elsewhere, unknown }
+
+  private func heldLink(_ provider: String) async -> HeldLink {
+    guard let id = MailProviderID(rawValue: provider) else { return .unknown }
+    let link: HeldLink
+    do throws(MailboxServerError) {
+      switch try await server.linkStatus(provider: id) {
+      case .noLink: link = .free
+      case .holder(isThisDevice: true, _): link = .thisIPhone
+      case .holder(isThisDevice: false, _): link = .elsewhere
+      }
+    } catch .otherProvider {
+      link = .free
+    } catch {
+      return .unknown
+    }
+    if link == .elsewhere { readElsewhere.insert(provider) } else { readElsewhere.remove(provider) }
+    return link
+  }
+
+  private func readAgain(_ plan: MailboxRetirePlan) async -> Bool {
+    guard plan.countKnown else { return false }
+    let now = await ledger.retirePlan(grantID: plan.grantID, provider: plan.provider)
+    return now.countKnown && now.total > plan.total
+  }
+
+  private func checkHeld(_ trigger: MailboxTrigger) async {
+    let now = clock.nowMs()
+    let due = heldAskedAtMs.map { now < $0 || now - $0 >= config.holderCheckIntervalMs } ?? true
+    guard due || trigger == .launch || trigger == .retry || trigger == .refresh else { return }
+    guard let held = try? await store.heldRetires(), !held.isEmpty else { return }
+    heldAskedAtMs = now
+    for provider in Set(held.map(\.provider)) { _ = await heldLink(provider) }
+    for plan in held {
+      if await readAgain(plan) { await endRetire(plan) }
+    }
   }
 
   private func links(_ state: MailboxState, _ plan: MailboxRetirePlan) -> Bool {
@@ -725,23 +787,27 @@ public actor MailboxEngine {
     return config.grantID(provider: linked, address: state.address) == plan.grantID
   }
 
-  public func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome {
-    let removed = MailboxRetireOutcome.removed(plan.countKnown ? plan.total : nil)
-    let authored: Bool? = await exclusive {
-      guard let held = try? await store.heldRetires(), let state = try? await store.loadState() else { return nil }
-      guard held.contains(plan) else { return false }
-      guard !links(state, plan) else { return nil }
-      do throws(MailboxLedgerError) { try await ledger.authorRetire(plan) } catch { return nil }
-      await endRetire(plan)
-      return true
+  public func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxHeldRetryOutcome {
+    let outcome: MailboxHeldRetryOutcome = await exclusive {
+      guard let held = try? await store.heldRetires(), let state = try? await store.loadState() else { return .failed }
+      guard let kept = held.first(where: { Self.same($0, plan) }) else { return .ended }
+      guard !links(state, kept) else { return .failed }
+      switch await heldLink(kept.provider) {
+      case .elsewhere: return .readElsewhere
+      case .unknown: return .failed
+      case .thisIPhone where state.heldProvider?.rawValue != kept.provider: return .failed
+      case .free, .thisIPhone: break
+      }
+      if await readAgain(kept) {
+        await endRetire(kept)
+        return .ended
+      }
+      do throws(MailboxLedgerError) { try await ledger.authorRetire(kept) } catch { return .failed }
+      await endRetire(kept)
+      return .removed(kept.countKnown ? kept.total : nil)
     }
-    switch authored {
-    case nil: return .failed
-    case false?: return removed
-    case true?:
-      _ = await ledger.flush()
-      return removed
-    }
+    if case .removed = outcome { _ = await ledger.flush() }
+    return outcome
   }
 
   public func dropHeld(_ plan: MailboxRetirePlan) async {
@@ -801,7 +867,7 @@ public actor MailboxEngine {
       var c = MailboxCommit()
       c.clearAll = true
       c.state = MailboxState()
-      if removeFailed { c.holdRetire = plan } else { c.endRetire = plan }
+      if removeFailed, let plan { c.holdRetire = await counted(plan) } else { c.endRetire = plan }
       do { try await commitForgetting(c) } catch { return .failed }
       return removeFailed ? .disconnectedRemoveFailed : .disconnected
     }
@@ -884,6 +950,7 @@ public actor MailboxEngine {
       return report
     }
     report.phase = state.phase
+    if state.heldProvider == nil || state.phase == .reconnectRequired { await checkHeld(trigger) }
     if paused {
       // The provider asked for a pause (`Retry-After`): every request now would count against
       // the same limit. Nothing changes; a later trigger runs.
@@ -924,6 +991,7 @@ public actor MailboxEngine {
           state.lastHolderCheckAtMs = now
           return await finish(&state, report)
         case .holder(isThisDevice: true, let watch):
+          readElsewhere = []
           state.phase = resumePhase(state)
           state.haltedOn = nil
           state.haltedDetail = nil
@@ -972,6 +1040,7 @@ public actor MailboxEngine {
           await tokens.forget()
           return await setPhase(&state, .otherDevice, halt: .notHolder, report, clearReader: true)
         case .holder(isThisDevice: true, let watch):
+          readElsewhere = []
           state.lastHolderCheckAtMs = now
           if state.watchExpiresAtMs != Self.stoppedWatchExpiryMs { state.watchExpiresAtMs = watch }
         }

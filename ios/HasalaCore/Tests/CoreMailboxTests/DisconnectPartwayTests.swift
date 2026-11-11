@@ -130,8 +130,9 @@ import Testing
     #expect(await rig.ledger.retired == [plan])
     #expect(await rig.ledger.flushes == flushes + 1)
     #expect(await rig.engine.heldRetires().isEmpty)
-    #expect(await rig.engine.retryHeld(plan) == .removed(7))
+    #expect(await rig.engine.retryHeld(plan) == .ended)
     #expect(await rig.ledger.retired == [plan])
+    #expect(await rig.ledger.flushes == flushes + 1)
   }
 
   @Test func aKeptRemovalOutlivesARestartAndNoCycleTriesIt() async throws {
@@ -176,8 +177,105 @@ import Testing
     await rig.ledger.setRetireGate(nil)
     gate.open()
     #expect(await first.value == .removed(7))
-    #expect(await second.value == .removed(7))
+    #expect(await second.value == .ended)
     #expect(await rig.ledger.retired == [plan])
+  }
+
+  func keptAfterAFailedDisconnect(_ rig: Rig, total: Int = 7) async throws -> MailboxRetirePlan {
+    let plan = try await withPlan(rig, total: total)
+    await rig.ledger.setRetireFails(true)
+    #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
+    await rig.ledger.setRetireFails(false)
+    return plan
+  }
+
+  @Test func aKeptRemovalIsNotOfferedOrWrittenWhileAnotherIPhoneHoldsThatProvidersLink() async throws {
+    let rig = Rig()
+    let plan = try await keptAfterAFailedDisconnect(rig)
+    #expect(await rig.engine.status().heldRetires == [plan])
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    #expect(await rig.engine.retryHeld(plan) == .readElsewhere)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.engine.heldRetires().isEmpty)
+    #expect(await rig.engine.status().heldRetires.isEmpty)
+    #expect(try await rig.store.heldRetires() == [plan])
+
+    await rig.server.setLink(.noLink)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.engine.status().heldRetires == [plan])
+    #expect(await rig.engine.retryHeld(plan) == .removed(7))
+    #expect(await rig.ledger.retired == [plan])
+  }
+
+  @Test func theNextRunHidesAKeptRemovalOnceAnotherIPhoneHoldsThatProvidersLink() async throws {
+    let rig = Rig()
+    let plan = try await keptAfterAFailedDisconnect(rig)
+    let restarted = rig.restarted()
+    #expect(await restarted.status().heldRetires == [plan])
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    _ = await restarted.runCycle(trigger: .launch)
+    #expect(await restarted.status().heldRetires.isEmpty)
+    #expect(await restarted.heldRetires().isEmpty)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(try await rig.store.heldRetires() == [plan])
+  }
+
+  @Test func aLinkOnTheOtherProviderLeavesTheKeptRemovalWritable() async throws {
+    let rig = Rig()
+    let plan = try await keptAfterAFailedDisconnect(rig)
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    await rig.server.setLinkProvider(.outlook)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    #expect(await rig.engine.status().heldRetires == [plan])
+    #expect(await rig.engine.retryHeld(plan) == .removed(7))
+    #expect(await rig.ledger.retired == [plan])
+  }
+
+  @Test func aKeptRemovalIsNotWrittenWhenTheServerCannotSayWhoReadsThatProvider() async throws {
+    let rig = Rig()
+    let plan = try await keptAfterAFailedDisconnect(rig)
+    await rig.server.setOffline(true)
+    #expect(await rig.engine.retryHeld(plan) == .failed)
+    await rig.server.setOffline(false)
+    await rig.server.setLink(.holder(isThisDevice: true, watchExpiresAtMs: nil))
+    #expect(await rig.engine.retryHeld(plan) == .failed)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.engine.heldRetires() == [plan])
+  }
+
+  @Test func aKeptRemovalEndsOnceItsMailboxBroughtInMoreSinceItWasKept() async throws {
+    let rig = Rig()
+    let plan = try await keptAfterAFailedDisconnect(rig)
+    var more = plan
+    more.total = 9
+    await rig.ledger.setPlan(more)
+    #expect(await rig.engine.retryHeld(plan) == .ended)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(try await rig.store.heldRetires().isEmpty)
+
+    let cycled = Rig()
+    let kept = try await keptAfterAFailedDisconnect(cycled)
+    var grown = kept
+    grown.total = 8
+    await cycled.ledger.setPlan(grown)
+    _ = await cycled.engine.runCycle(trigger: .launch)
+    #expect(try await cycled.store.heldRetires().isEmpty)
+    #expect(await cycled.ledger.retired.isEmpty)
+  }
+
+  @Test func aKeptRemovalCountsWhatItsMailboxBroughtInWhenItWasKept() async throws {
+    let rig = Rig()
+    let plan = try await withPlan(rig)
+    var imported = plan
+    imported.total = 8
+    await rig.ledger.setPlan(imported)
+    await rig.ledger.setRetireFails(true)
+    #expect(await rig.engine.disconnect(removing: plan) == .disconnectedRemoveFailed)
+    await rig.ledger.setRetireFails(false)
+    let kept = try #require(await rig.engine.heldRetires().first)
+    #expect(kept.total == 8 && kept.grantID == plan.grantID && kept.address == plan.address)
+    #expect(await rig.engine.retryHeld(plan) == .removed(8))
+    #expect(await rig.ledger.retired.map(\.grantID) == [plan.grantID])
   }
 
   @Test(arguments: [Backend.sqlite, .memory])

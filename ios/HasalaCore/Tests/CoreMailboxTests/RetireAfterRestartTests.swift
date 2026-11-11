@@ -125,6 +125,8 @@ import Testing
   @Test func aProviderSwitchWhoseRemoveFailedKeepsItForTheNewLane() async throws {
     let rig = Rig()
     await connectedReplacing(rig)
+    await rig.ledger.setPlan(otherLane)
+    await rig.server.setLinkProvider(.gmail)
     await rig.ledger.setRetireFails(true)
     #expect(await rig.engine.retire(otherLane) == .failed)
     #expect(await rig.engine.retire(otherLane) == .failed)

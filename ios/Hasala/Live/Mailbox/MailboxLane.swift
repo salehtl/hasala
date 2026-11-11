@@ -210,7 +210,7 @@ nonisolated final class MailboxLane: Sendable {
     await engine.disconnect(removing: plan)
   }
   func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome { await engine.retire(plan) }
-  func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome { await engine.retryHeld(plan) }
+  func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxHeldRetryOutcome { await engine.retryHeld(plan) }
   func dropHeld(_ plan: MailboxRetirePlan) async { await engine.dropHeld(plan) }
   /// The other provider's link replaced this one: end this provider's grant here.
   func endGrant() async {

@@ -98,8 +98,14 @@ enum MailCopy {
     return "From \(held.address), which you disconnected. \(still) in your totals."
   }
 
-  static func heldRemovalFailed(_ held: MailHeldRemoval) -> String {
-    "The transactions from \(held.address) couldn't be removed. Try again."
+  static func heldRemovalLine(_ outcome: MailHeldRemovalOutcome, _ held: MailHeldRemoval) -> String? {
+    switch outcome {
+    case .removed(let n?): removed(n)
+    case .removed(nil): "The old transactions were removed."
+    case .failed: "The transactions from \(held.address) couldn't be removed. They stay for now."
+    case .readElsewhere: MailConnectFailure.readOnOtherIPhone
+    case .ended: nil
+    }
   }
 
   static func impactLines(_ impact: MailboxDisconnectImpact, from source: String = "It") -> [String] {
@@ -827,11 +833,9 @@ struct HeldRemovalRow: View {
     settling = true
     Task {
       defer { settling = false }
-      switch await lane.removeHeld() {
-      case .removed(let n?): app.say(MailCopy.removed(n))
-      case .removed(nil): app.say("The old transactions were removed.")
-      case .failed: app.say(MailCopy.heldRemovalFailed(held), icon: .info)
-      }
+      let outcome = await lane.removeHeld()
+      guard let line = MailCopy.heldRemovalLine(outcome, held) else { return }
+      if case .removed = outcome { app.say(line) } else { app.say(line, icon: .info) }
     }
   }
 

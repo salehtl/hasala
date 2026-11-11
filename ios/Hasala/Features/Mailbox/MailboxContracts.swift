@@ -67,7 +67,7 @@ enum MailConnectFailure: Error, Equatable {
     switch self {
     case .cancelled, .switchDeclined: nil
     case .alreadyConnected(let address): "\(address) is already connected."
-    case .takenByOtherIPhone: "Your email is read on your other iPhone."
+    case .takenByOtherIPhone: Self.readOnOtherIPhone
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
     case .noMailbox(let account): Self.noMailboxLine(account)
     case .permissionMissing(let account): Self.permissionMissingLine(account)
@@ -81,6 +81,8 @@ enum MailConnectFailure: Error, Equatable {
     case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .failed: false
     }
   }
+
+  static let readOnOtherIPhone = "Your email is read on your other iPhone."
 
   static func permissionMissingLine(_ provider: MailProviderKind) -> String {
     switch provider {
@@ -189,6 +191,8 @@ struct MailHeldRemoval: Equatable, Sendable {
 enum MailHeldRemovalOutcome: Equatable, Sendable {
   case removed(Int?)
   case failed
+  case readElsewhere
+  case ended
 }
 
 struct MailboxDisconnectImpact: Equatable, Sendable {
