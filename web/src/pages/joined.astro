@@ -80,24 +80,9 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
 
 <script>
   import { onPage } from '../scripts/page';
+  import { landJoined } from '../scripts/joined';
 
-  const ERRORS: Record<string, string> = {
-    bad_email: 'We couldn’t use that email address. Check it and try again.',
-    bad_bank: 'We couldn’t use that bank. Pick one from the list, or type its name with letters, numbers and spaces.',
-    turnstile_failed: 'We couldn’t check that you’re not a bot. Try again.',
-    rate_limited: 'Too many tries from here. Wait a few minutes, then try again.',
-    waitlist_full: 'The waitlist is full for now. Please try again in a few days.',
-  };
-  onPage(() => {
-    const ok = document.querySelector<HTMLElement>('[data-joined-ok]');
-    const code = new URLSearchParams(location.search).get('error');
-    if (!ok || !code) return;
-    ok.hidden = true;
-    document.querySelector<HTMLElement>('[data-joined-error]')!.hidden = false;
-    document.querySelector<HTMLElement>('[data-joined-error-text]')!.textContent = ERRORS[code] ?? 'Something went wrong on our side. Try again in a minute.';
-    document.querySelector<HTMLElement>('.joined__panel')!.dataset.state = 'error';
-    document.title = 'Hasala · That didn’t go through';
-  });
+  onPage(() => landJoined(document, location));
 </script>
 
 <style>
