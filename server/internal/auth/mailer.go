@@ -6,9 +6,7 @@ package auth
 //     mailq.SendNow off the request path, so the answer's timing never
 //     depends on whether an email goes out;
 //   - alerts: enqueued with mailq.EnqueueTx in the event's own transaction;
-//     the alert renderer mints the freeze token at send time;
-//   - a queued code row (the operator's re-verification, C38): the code
-//     renderer issues the code inside the render transaction.
+//     the alert renderer mints the freeze token at send time.
 
 import (
 	"context"
@@ -168,11 +166,10 @@ func (m *Mailer) enqueueAlertTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID
 	return err
 }
 
-// Renderers are this package's renderers for queued rows: alerts and codes.
+// Renderers are this package's renderers for queued rows: alerts.
 func (m *Mailer) Renderers() map[string]mailq.Renderer {
 	return map[string]mailq.Renderer{
 		"alert": mailq.RenderFunc(m.renderAlert),
-		"code":  mailq.RenderFunc(m.renderQueuedCode),
 	}
 }
 
@@ -235,28 +232,6 @@ func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mai
 		link = base + "#" + base64.RawURLEncoding.EncodeToString(raw)
 	}
 	return mail.Alert(row.Recipient, row.Subkind, at, name, link)
-}
-
-// renderQueuedCode issues the code of a queued code row (the operator's
-// re-verification request) inside the render transaction.
-func (m *Mailer) renderQueuedCode(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
-	purpose, _ := row.Params["purpose"].(string)
-	if purpose != PurposeEmailVerify || row.UserID == nil || m.Keys == nil {
-		return mail.Message{}, fmt.Errorf("auth: no queued code renderer for purpose %q", purpose)
-	}
-	var name, addr string
-	if err := tx.QueryRow(ctx, `SELECT display_name, email_norm FROM users WHERE id = $1`, *row.UserID).Scan(&name, &addr); err != nil {
-		return mail.Message{}, err
-	}
-	if addr != row.Recipient {
-		return mail.Message{}, errors.New("auth: the account's address changed since the code was queued")
-	}
-	c, err := insertCodeTx(ctx, tx, m.Keys, m.now(), PurposeEmailVerify, addr, row.UserID, CeremonyEmailVerify,
-		row.UserID.String(), true, false)
-	if err != nil {
-		return mail.Message{}, err
-	}
-	return mail.Code(addr, PurposeEmailVerify, c.Code, name)
 }
 
 // BounceHook marks an account's address undeliverable when a send to its

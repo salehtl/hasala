@@ -34,16 +34,17 @@ coming back:
   the old passkeys that a recovery removes), key wrap deletions, waitlist
   leaves, waitlist entries deleted because their invite email bounced, the first time the
   12 words were shown after a signup that skipped them, a sign-out of all
-  sessions (`logout-all`), an email change, and an invite that the operator
-  revoked (console or `hasalad invite revoke`), with internal ids and times
-  only (a passkey by its credential id, an invite by its id; never an
-  address). For a change made through `hasalad serve`, the line is kept in
+  sessions (`logout-all`), an email change, an invite that the operator
+  revoked (console or `hasalad invite revoke`), and the operator's suspension
+  of an account and its lift (`hasalad account suspend` and `unsuspend`), with
+  internal ids and times only (a passkey by its credential id, an invite by its
+  id; never an address). For a change made through `hasalad serve`, the line is kept in
   `restore_ledger_held` in the change's transaction, moved to the file after
   the commit, and retried by a sweep at start and every minute. The limit: a
   stop followed by a restore before any restart loses a held line. The console
-  and the operator commands (`hasalad account unfreeze`, `hasalad invite
-  revoke`) append after their commit, and a failed append does not undo the
-  change. A
+  and the operator commands (`hasalad account unfreeze`, `hasalad account
+  suspend` and `unsuspend`, `hasalad invite revoke`) append after their commit,
+  and a failed append does not undo the change. A
   console revocation that the ledger did not record shows an error page. The
   console runs as `hasala-console` and appends through the `hasala-ledger`
   group, so `purged` and `purged.lock` are mode `0660`. The
@@ -74,9 +75,14 @@ coming back:
   codes are burned, and no alert with a freeze link goes to that address, no
   recovery can begin or finish (the answer is the same 404 as a frozen account)
   and no password reset code goes to it, until the holder verifies or changes it
-  again), and an operator's invite
+  again), an operator's invite
   revocation (the invite is revoked again, and its waitlist entry goes back to
-  the list when it has no other open invite). A replay never leaves an account frozen with no passkey and no
+  the list when it has no other open invite), and an operator's suspension or
+  its lift (only the account's latest `suspend` or `unsuspend` line, and only
+  when the database has no `cli.account_suspend` or `cli.account_unsuspend`
+  audit row of that account from the same second or later, so a database that
+  was not restored is left as it is; an `unsuspend` does not lift a suspension
+  that began after it). A replay never leaves an account frozen with no passkey and no
   password, because then nothing could lift the freeze: it lifts that holder
   freeze (the sessions stay ended), records an `account_unfrozen` event, and
   the summary counts it. The holder gets back in with the 12 words. The
@@ -100,7 +106,10 @@ coming back:
   `hardening/ledger-and-limits` skips these three kinds, so its replay does
   not apply them again. A `hasalad` from before `security/server-lifecycle`
   skips `purge-cancelled`, so its replay purges an account whose deletion was
-  cancelled. Before you roll back to one of these, keep a copy of the ledger.
+  cancelled. A `hasalad` from before the suspension commands skips `suspend`
+  and `unsuspend`, so its replay does not apply them again, and one from before
+  `onboarding/w5-review-fixes` fails on them. Before you roll back to one of
+  these, keep a copy of the ledger.
   Then, in this order: list the accounts whose latest deletion or
   `purge-cancelled` line is `purge-cancelled`; remove every deletion line of
   those accounts, because the build purges an account for any deletion line;
@@ -283,6 +292,40 @@ operator.
    change in the ledger.
 
 3. The holder recovers with the emailed code and the 12 words.
+
+## Suspend an account, or lift a suspension
+
+The terms let us suspend an account. They say what a suspended account can
+still do, and that we tell the holder why where it is safe and lawful
+("Suspension" in `docs/legal/terms.md`).
+
+1. Suspend the account. Type the account id two times.
+
+   ```sh
+   sudo hasala-admin account suspend <ACCOUNT_ID> --confirm <ACCOUNT_ID>
+   ```
+
+   The output is `account <ACCOUNT_ID>: suspended`, or `account <ACCOUNT_ID>:
+   was already suspended; nothing changed`. The command sets `status` and
+   `suspended_at` together, writes an `admin_audit` row
+   (`cli.account_suspend`) and appends a `suspend` line to the ledger, so a
+   later restore does not lift the suspension.
+2. Lift the suspension the same way.
+
+   ```sh
+   sudo hasala-admin account unsuspend <ACCOUNT_ID> --confirm <ACCOUNT_ID>
+   ```
+
+   The output is `account <ACCOUNT_ID>: no longer suspended`, or `account
+   <ACCOUNT_ID>: was not suspended; nothing changed`. The command writes an
+   `admin_audit` row (`cli.account_unsuspend`) and appends an `unsuspend` line
+   to the ledger, so a later restore does not bring the suspension back.
+
+If an append fails, the command says so and exits 1: the change is made, but a
+restore would undo it. Run the same command again once the ledger takes
+writes: it records the missed line. Do not change `status` or `suspended_at`
+with SQL: the ledger and the audit rows would not record it, and a replay
+reads the audit rows to tell a restored database from one that saw the change.
 
 ## Limit
 

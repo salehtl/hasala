@@ -142,6 +142,7 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	gone, frozen, removed, changed, left := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	thawed, keyless, bounced, wrote := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	signedOut, moved, revoked := uuid.New(), uuid.New(), uuid.New()
+	suspended, unsuspended := uuid.New(), uuid.New()
 	cred := bytes.Repeat([]byte{0xc4}, 16)
 	long := bytes.Repeat([]byte{0x5e}, 1023)
 	d := testDevice()
@@ -159,6 +160,8 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 		{ID: signedOut, At: at, Kind: KindSessions},
 		{ID: moved, At: at, Kind: KindEmail},
 		{ID: revoked, At: at, Kind: KindInviteRevoked},
+		{ID: suspended, At: at, Kind: KindSuspend},
+		{ID: unsuspended, At: at, Kind: KindUnsuspend},
 	}
 	if err := AppendEntries(path, want...); err != nil {
 		t.Fatal(err)
@@ -287,6 +290,8 @@ func TestAMalformedEventIsAnError(t *testing.T) {
 		"email with field":     id + at + "email x",
 		"invite with field":    id + at + "invite-revoked x",
 		"cancel with field":    id + at + "purge-cancelled x",
+		"suspend with field":   id + at + "suspend x",
+		"unsuspend with field": id + at + "unsuspend x",
 		"freeze without time":  id + at + "freeze",
 		"freeze bad time":      id + at + "freeze soon",
 		"freeze after":         id + at + "freeze 2026-10-20T05:30:00Z extra",
@@ -337,6 +342,9 @@ func TestAppendEntriesRefusesWhatItCannotReadBack(t *testing.T) {
 		"device short sig":       {ID: uuid.New(), At: at, Kind: KindDevice, Device: bad},
 		"password with trigger":  {ID: uuid.New(), At: at, Kind: KindPassword, Trigger: at},
 		"unfreeze with trigger":  {ID: uuid.New(), At: at, Kind: KindUnfreeze, Trigger: at},
+		"suspend with trigger":   {ID: uuid.New(), At: at, Kind: KindSuspend, Trigger: at},
+		"unsuspend with id":      {ID: uuid.New(), At: at, Kind: KindUnsuspend, Credential: make([]byte, 16)},
+		"suspend with device":    {ID: uuid.New(), At: at, Kind: KindSuspend, Device: testDevice()},
 		"purge with device":      {ID: uuid.New(), At: at, Device: testDevice()},
 	} {
 		if err := AppendEntries(path, e); err == nil {

@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/salehtl/hasala/server/internal/mailq"
 )
 
 func TestAnUnsentCodeStopsCountingWhenItsSendWindowEnds(t *testing.T) {
@@ -115,27 +113,6 @@ func TestOnlyACodeThatAlwaysMailsSomethingWaitsForItsSend(t *testing.T) {
 				t.Fatalf("waiting for its send: %v, want %v", waiting, c.waits)
 			}
 		})
-	}
-}
-
-func TestACodeTheWorkerRendersCountsAsBefore(t *testing.T) {
-	f := newAcctFixture(t)
-	m := f.passwordMember("Maya")
-	id := m.user.UserID
-	tx, err := f.pool.Begin(bgctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(bgctx)
-	if _, err := f.mailer.renderQueuedCode(bgctx, tx, mailq.Row{Recipient: m.addr, UserID: &id,
-		Params: map[string]any{"purpose": PurposeEmailVerify}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(bgctx); err != nil {
-		t.Fatal(err)
-	}
-	if n := f.count(`SELECT count(*) FROM email_codes WHERE user_id = $1 AND purpose = $2 AND awaiting_send_until IS NOT NULL`, id, PurposeEmailVerify); n != 0 {
-		t.Fatalf("%d queued codes wait for a send that nothing settles", n)
 	}
 }
 
