@@ -405,7 +405,7 @@ extension MailboxLane {
     var grants: [HeldMailGrants.Grant] = []
     for p in MailboxProvider.allCases {
       guard let token = try? SecretsMailRefreshTokenStore(secrets: secrets, userID: userID, provider: p.providerID).read(),
-        !token.isEmpty
+        !token.isEmpty, token != RefreshingMailTokenProvider.writeCheckValue
       else { continue }
       let sub = p == .outlook ? (try? SecretsOutlookLinkStore(secrets: secrets, userID: userID).read())??.subscriptionID : nil
       grants.append(.init(provider: p, refreshToken: token, subscriptionID: sub))

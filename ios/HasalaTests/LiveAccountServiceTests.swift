@@ -267,6 +267,14 @@ struct LiveAccountServiceTests {
     #expect(await ends.settled(within: .seconds(10)))
   }
 
+  @Test func theKeychainWriteCheckIsNoGrantToEnd() throws {
+    let env = Self.phone(MiniHasalad(invite: Self.invite))
+    let user = try #require(UserID("00000000-0000-4000-8000-000000000001"))
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail)
+      .write(RefreshingMailTokenProvider.writeCheckValue)
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
   @Test func aWipeWithNoGrantDoesNotWaitOnAnEnding() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)

@@ -157,6 +157,33 @@ import Testing
     #expect(try held.read() == "fake-refresh-token")
     #expect(try empty.read() == nil)
   }
+
+  @Test func theWriteCheckOnAnEmptyItemNeverLeavesTheGrantBehind() async throws {
+    let grant = MailTokenGrant(accessToken: "fake-access-new", expiresIn: 3600, refreshToken: "fake-refresh-new", idToken: nil, scope: nil)
+    let empty = MemoryGmailRefreshTokenStore()
+    let stuck = WriteRefusingTokenStore(empty)
+    let g = FakeGmail()
+    g.refreshToken = "fake-refresh-new"
+    let p = RefreshingGmailTokenProvider(
+      oauth: GoogleOAuthClient(config: GmailOAuthConfig(clientID: "c", redirectScheme: "s"), http: g), store: stuck,
+      clock: ManualClock(0))
+
+    stuck.refuseDeletes(true)
+    await #expect(throws: MailAuthError.notNow) { try await p.checkWritable(for: grant) }
+    let left = try empty.read()
+    #expect(left != nil)
+    #expect(left != "fake-refresh-new")
+
+    stuck.refuseDeletes(false)
+    await #expect(throws: MailAuthError.reconnectRequired) { try await p.accessToken(forceRefresh: false) }
+    #expect(try empty.read() == nil)
+    #expect(g.requests.isEmpty)
+
+    try empty.write(left ?? "")
+    #expect(await p.revokeAndForget())
+    #expect(try empty.read() == nil)
+    #expect(g.requests.isEmpty)
+  }
 }
 
 @Suite struct BankDomainTests {

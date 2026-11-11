@@ -92,6 +92,8 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   /// Refresh when fewer than this many ms remain.
   public static let refreshMarginMs: Int64 = 60_000
 
+  public static let writeCheckValue = "hasala.keychain-write-check"
+
   public init(oauth: any MailOAuthClient, store: any MailRefreshTokenStore, clock: any Clock) {
     self.oauth = oauth
     self.store = store
@@ -104,6 +106,11 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     do { refresh = try store.read() } catch { throw .notNow }
     guard let refresh, !refresh.isEmpty else {
       cached = nil
+      throw .reconnectRequired
+    }
+    if refresh == Self.writeCheckValue {
+      cached = nil
+      try? store.delete()
       throw .reconnectRequired
     }
     do {
@@ -140,11 +147,11 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   }
 
   public func checkWritable(for grant: MailTokenGrant) throws(MailAuthError) {
-    guard let next = grant.refreshToken else { throw .reconnectRequired }
+    guard grant.refreshToken != nil else { throw .reconnectRequired }
     let prior: String?
     do { prior = try store.read() } catch { throw .notNow }
     do {
-      try store.write(prior ?? next)
+      try store.write(prior ?? Self.writeCheckValue)
       if prior == nil { try store.delete() }
     } catch {
       if prior == nil { try? store.delete() }
@@ -189,7 +196,7 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     cached = nil
     let token: String?
     do { token = try store.read() } catch { return false }
-    if let token, !token.isEmpty {
+    if let token, !token.isEmpty, token != Self.writeCheckValue {
       do throws(MailOAuthError) {
         try await oauth.revoke(token: token)
       } catch {

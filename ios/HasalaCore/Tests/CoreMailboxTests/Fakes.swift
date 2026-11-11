@@ -226,17 +226,22 @@ final class WriteRefusingTokenStore: MailRefreshTokenStore, @unchecked Sendable 
   let inner: MemoryMailRefreshTokenStore
   private let lock = NSLock()
   private var refusing = false
+  private var refusingDeletes = false
 
   init(_ inner: MemoryMailRefreshTokenStore) { self.inner = inner }
 
   func refuseWrites(_ v: Bool) { lock.withLock { refusing = v } }
+  func refuseDeletes(_ v: Bool) { lock.withLock { refusingDeletes = v } }
 
   func read() throws(SecretUnavailable) -> String? { try inner.read() }
   func write(_ token: String) throws(SecretUnavailable) {
     if lock.withLock({ refusing }) { throw SecretUnavailable() }
     try inner.write(token)
   }
-  func delete() throws(SecretUnavailable) { try inner.delete() }
+  func delete() throws(SecretUnavailable) {
+    if lock.withLock({ refusingDeletes }) { throw SecretUnavailable() }
+    try inner.delete()
+  }
 }
 
 enum Backend { case sqlite, memory }

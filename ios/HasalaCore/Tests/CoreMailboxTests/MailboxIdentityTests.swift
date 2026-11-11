@@ -275,6 +275,33 @@ import Testing
     #expect(asks.questions.count == 1)
   }
 
+  @Test func anotherAddressWhoseWriteCheckCannotBeClearedLeavesTheOldAddressSignedOut() async throws {
+    let keychain = MemoryGmailRefreshTokenStore()
+    let refusing = WriteRefusingTokenStore(keychain)
+    let rig = Rig(keychain: keychain, tokenStore: refusing)
+    await linkedThenSignedOut(rig)
+    #expect(try keychain.read() == nil)
+    let before = await rig.state()
+    let puts = await rig.server.puts.count
+    rig.gmail.email = other
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "b-new", dateMs: Rig.t0 - 2 * day))
+    refusing.refuseDeletes(true)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
+        == .failed(.keychain))
+    refusing.refuseDeletes(false)
+    #expect(await rig.state() == before)
+    #expect(await rig.server.puts.count == puts)
+    #expect(try keychain.read() != rig.gmail.refreshToken)
+
+    rig.gmail.clearRequests()
+    let report = await rig.engine.runCycle(trigger: .retry)
+    #expect(report.phase == .reconnectRequired && report.ops == 0)
+    #expect(await rig.accounted("b-new") == nil)
+    #expect(try keychain.read() == nil)
+    #expect(!rig.gmail.requests.contains { $0.form.contains { $0 == ("grant_type", "refresh_token") } })
+  }
+
   @Test func anotherAddressThatCannotBeKeptLeavesNothingToResume() async throws {
     let rig = Rig()
     await linkedThenSignedOut(rig)
