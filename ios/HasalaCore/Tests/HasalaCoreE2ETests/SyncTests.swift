@@ -176,8 +176,12 @@ struct SyncTests {
     #expect(out.stop == nil)
     #expect(out.pulled.alarms == 1)
     #expect(await engine.status.integrityAlarms == 1)
+    #expect(await engine.status.rowAlarms == 1)
     #expect(try b.store.wireRows().first?.disposition == .alarm)
     #expect(try b.store.syncState().cursorHot == 1)
+    await engine.acknowledgeAlarms()
+    #expect(await engine.status.rowAlarms == 0)
+    #expect(await engine.status.integrityAlarms == 0)
   }
 
   func injectAtEpochTwo(
@@ -337,6 +341,7 @@ struct SyncTests {
     _ = await engine.run(.authored)
     #expect(await engine.status.latch == .sealerFault)
     #expect(await engine.status.integrityAlarms == 1)
+    #expect(await engine.status.rowAlarms == 0)
     try a.store.setLatch(nil)
 
     w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")

@@ -65,6 +65,7 @@ struct LatchAfterUpdateTests {
     #expect(try ctx.store.syncState().latch == .sealerFault)
     #expect(try ctx.store.syncState().latchBuild == "1")
     #expect(await engine.status.integrityAlarms == 1)
+    #expect(await engine.status.rowAlarms == 0)
 
     let sent = w.server.uploadCount
     #expect(await engine.run(.refresh).stop == nil)

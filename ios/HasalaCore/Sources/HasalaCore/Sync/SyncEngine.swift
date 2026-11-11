@@ -93,6 +93,7 @@ public actor SyncEngine {
   /// The app acknowledged the integrity-alarm sheet (§5.7).
   public func acknowledgeAlarms() {
     status.integrityAlarms = 0
+    status.rowAlarms = 0
     publish()
   }
 
@@ -154,6 +155,7 @@ public actor SyncEngine {
       if trigger.refreshesRoster { try await refreshRoster() }
       out.pulled = try await Puller.pull(context, observer: observer)
       status.integrityAlarms += out.pulled.alarms
+      status.rowAlarms += out.pulled.alarms
       set(.pushing)
       await observer?.willPush()
       let pushed = try await latchAware { () async throws(SyncStop) in
@@ -166,6 +168,7 @@ public actor SyncEngine {
         out.pulled.rowsStored += again.rowsStored
         out.pulled.opsOpened += again.opsOpened
         status.integrityAlarms += again.alarms
+        status.rowAlarms += again.alarms
       }
       status.phase = .idle
     } catch {

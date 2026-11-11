@@ -31,6 +31,7 @@ struct SyncNoticesTests {
     #expect(notices.setAside == 0)
     #expect(notices.acknowledgeSetAside() == nil)
     status.integrityAlarms = 2
+    status.rowAlarms = 2
     notices.update(status)
     #expect(notices.setAside == 2)
 
@@ -44,6 +45,26 @@ struct SyncNoticesTests {
     #expect(acknowledged == 1)
 
     status.integrityAlarms = 1
+    status.rowAlarms = 1
+    notices.update(status)
+    #expect(notices.setAside == 1)
+  }
+
+  @Test func anUploadAlarmAloneLeavesTheSheetDown() {
+    let notices = SyncNotices()
+    var acknowledged = 0
+    notices.acknowledge = { acknowledged += 1 }
+    var status = CoreSync.SyncStatus()
+    status.latch = .hardStop
+    status.integrityAlarms = 1
+    notices.update(status)
+    #expect(notices.uploadsStuck)
+    #expect(notices.setAside == 0)
+    #expect(notices.acknowledgeSetAside() == nil)
+    #expect(acknowledged == 0)
+
+    status.integrityAlarms = 2
+    status.rowAlarms = 1
     notices.update(status)
     #expect(notices.setAside == 1)
   }

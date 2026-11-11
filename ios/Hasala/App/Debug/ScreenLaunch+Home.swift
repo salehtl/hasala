@@ -77,6 +77,7 @@
       Screen("home.setAside", scenario: "maya", prepare: { graph in
         var status = CoreSync.SyncStatus()
         status.integrityAlarms = 1
+        status.rowAlarms = 1
         graph.app.syncNotices.update(status)
       }),
       Screen("home.noAlerts.sheet", scenario: "noAlerts") { graph in

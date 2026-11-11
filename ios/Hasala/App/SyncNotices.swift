@@ -12,7 +12,7 @@ final class SyncNotices {
 
   func update(_ status: CoreSync.SyncStatus) {
     if uploadsStuck != status.uploadsStuck { uploadsStuck = status.uploadsStuck }
-    let alarms = acknowledging ? 0 : status.integrityAlarms
+    let alarms = acknowledging ? 0 : status.rowAlarms
     if setAside != alarms { setAside = alarms }
   }
 
