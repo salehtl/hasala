@@ -82,13 +82,13 @@ struct BillsProfileEngineParityTests {
     #expect(d.isLate)
     #expect(d.historyNote == "3 on time")
     #expect(d.noticed?.rendered(hidden: false)
-      == "Your last 3 payments arrived between the 30th and 1st. This month there's no bank email yet.")
+      == "Your last 3 payments arrived between the 30th and 1st. No bank email yet this month.")
 
     state.bills[i].history = [LocalDate(2026, 11, 8), LocalDate(2026, 9, 30), LocalDate(2026, 9, 1)]
     let late = try #require(BillsEngine.detail(state, now: LocalDateTime(2026, 12, 4, 9, 0), bill: "rent"))
     #expect(late.historyNote == "2 of 3 on time")
     #expect(late.noticed?.rendered(hidden: false)
-      == "Your last 3 payments arrived between the 30th and 8th. This month there's no bank email yet.")
+      == "Your last 3 payments arrived between the 30th and 8th. No bank email yet this month.")
   }
 
   /// The other bills open the same page: a price change leads with its news, an upcoming bill

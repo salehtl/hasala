@@ -200,7 +200,7 @@ struct BankAlertsPage: View {
     }
 
     static let stoppedTotals =
-      "Payments since then aren't in your totals yet. A new sign-in won't fix this. If Try again doesn't help, email support@hasala.app."
+      "Payments since then aren't counted, and a new sign-in won't fix it. If Try again doesn't help, email support@hasala.app."
 
     var totalsLine: String? {
       if case .stopped = kind { return Self.stoppedTotals }

@@ -180,14 +180,14 @@ struct HomeLayoutTests {
 
   @Test func aTileWithNothingLeftToChooseKeepsItsWaitingSentence() throws {
     let none = try finished(s, "japan")
-    #expect(try item([entry(.project, .project("japan"))], none).waitingSentence == "Start a project in Plan to see it here.")
+    #expect(try item([entry(.project, .project("japan"))], none).waitingSentence == "Start a project in Plan.")
     var taken = none
     taken.projects.append(kitchen)
     let onHome = [entry(.project, .project("japan")), entry(.project, .project("kitchen"))]
-    #expect(try item(onHome, taken).waitingSentence == "Start a project in Plan to see it here.")
+    #expect(try item(onHome, taken).waitingSentence == "Start a project in Plan.")
     var noGoals = s
     noGoals.goals = []
-    #expect(try item([entry(.goal, .goal("emergency"))], noGoals).waitingSentence == "Add a savings goal in Plan to see it here.")
+    #expect(try item([entry(.goal, .goal("emergency"))], noGoals).waitingSentence == "Add a savings goal in Plan.")
   }
 
   @Test func reopeningAProjectBringsItsTileBack() throws {

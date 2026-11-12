@@ -724,7 +724,7 @@ struct MailboxFlowTests: AccountSuite {
       == "Hasala stopped reading maya.k@example.com today.")
     #expect(
       stopped.totalsLine
-        == "Payments since then aren't in your totals yet. A new sign-in won't fix this. If Try again doesn't help, email support@hasala.app.")
+        == "Payments since then aren't counted, and a new sign-in won't fix it. If Try again doesn't help, email support@hasala.app.")
     halted.lastChecked = nil
     #expect(hero([halted], .reconnect).detail == "Hasala stopped reading maya.k@example.com.")
     let none = hero([], .notConnected, offer: .connect)

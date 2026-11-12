@@ -230,7 +230,7 @@ payment cannot arrive through two channels, and no merge is needed.
   arrival minute becomes the last-run time if it is not before the time the link copy
   learned the link, which the connect sets. When this device
   has a last-run time, and no other mailbox stays, the disconnect alert says: "If your
-  Shortcuts automation is still there, bank texts come in from now on." That
+  Shortcuts automation is still there, Hasala will add bank texts from now on." That
   disconnect also sets the texts-chosen flag on this iPhone, so Bank alerts shows the texts
   page. A device that saw no run since its last connect and never finished the texts path
   shows no source until the person picks one, and offers the automation again; a person

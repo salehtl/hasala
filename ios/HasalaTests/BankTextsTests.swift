@@ -774,7 +774,7 @@ struct BankTextsTests {
     #expect(ran.status == .notSetUp && ran.lastRanAt == now && ran.sawAutomationRun)
     #expect(
       BankTexts.disconnectNote(ran, mailbox: mailbox, disconnecting: MockMailbox.gmail.id)
-        == "If your Shortcuts automation is still there, bank texts come in from now on.")
+        == "If your Shortcuts automation is still there, Hasala will add bank texts from now on.")
     let ignored = MockBankTexts(mailbox: mailbox, ignored: 2)
     #expect(BankTexts.disconnectNote(ignored, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     #expect(BankTexts.disconnectNote(MockBankTexts(mailbox: mailbox), mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)

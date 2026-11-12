@@ -202,7 +202,7 @@ enum BankTexts {
   }
 
   static let automationStillThere =
-    "If your Shortcuts automation is still there, bank texts come in from now on."
+    "If your Shortcuts automation is still there, Hasala will add bank texts from now on."
 
   static func disconnectNote(
     _ lane: (any BankTextsConnecting)?, mailbox: (any MailboxConnecting)?, disconnecting id: String
