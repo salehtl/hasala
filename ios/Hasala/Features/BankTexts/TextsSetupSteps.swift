@@ -11,7 +11,7 @@ struct SourceStep: View {
     let busy = model.busy || model.connectBusy
     AccountScreen(
       title: "How do your banks reach you?",
-      subtitle: "Pick one. Hasala reads it on this iPhone, and reads only one at a time.",
+      subtitle: "Pick one. It's read on this iPhone.",
       trailing: ("Skip", model.skipSource)
     ) {
       VStack(alignment: .leading, spacing: 12) {
@@ -23,7 +23,7 @@ struct SourceStep: View {
           .disabled(busy)
         }
         SetupFailureBanner(failure: model.failure)
-        DockNote(text: "Skip to add spending by hand and set this up later in Profile. Either way, payments are read on this iPhone.")
+        DockNote(text: "Skip to add spending by hand. Set this up later in Profile \u{203A} Bank alerts.")
           .padding(.top, 4)
       }
       .padding(.top, -8)
@@ -53,8 +53,8 @@ enum SourceCardCopy {
   static func downsides(_ source: PaymentSource) -> [String] {
     source == .texts
       ? [
-        "Hasala sees each text with a full stop, from anyone, and drops all but payments",
-        "Only from your next payment on, and you set it up in the Shortcuts app",
+        "Sees each text with a full stop, from anyone, and keeps only payments",
+        "Only new payments, and you set it up in Shortcuts",
       ]
       : ["Gmail shows an unverified-app warning in the beta"]
   }
@@ -145,7 +145,7 @@ struct TextsSetUpStep: View {
     let returned = copy.returned(opened: opened)
     AccountScreen(title: copy.title, subtitle: copy.subtitle, back: .system) {
       VStack(alignment: .leading, spacing: 16) {
-        TextsNote(icon: .privacy, text: BankTexts.keepsPayments)
+        TextsNote(icon: .privacy, text: BankTexts.keepsPayments, tip: BankTexts.keepsDetail)
           .accessibilityIdentifier("texts.keepsOnly")
         NumberedStepsCard(steps: copy.steps)
         TextsLinkRow(title: copy.guideTitle, identifier: "texts.showMeHow") { guiding = true }
@@ -243,9 +243,9 @@ struct BankTextsTestScreen: View {
           receivedCard(at)
           TextsNote(text: BankTexts.confirmNote)
             .accessibilityIdentifier("textsTest.confirmNote")
-          TextsNote(text: "Texts from before now don't come in. Paste one from Review if you need it.")
+          TextsNote(text: "Older texts don't come in; paste them in Review.")
           if inSetup {
-            TextsNote(icon: .history, text: "Change it any time in Profile \u{203A} Bank alerts.")
+            TextsNote(icon: .history, text: "Change this later in Profile \u{203A} Bank alerts.")
           }
         case .nothingYet:
           checklist
@@ -253,8 +253,8 @@ struct BankTextsTestScreen: View {
             .accessibilityIdentifier("textsTest.watching")
         case .idle, .waiting:
           waitingCard
-          TextsNote(text: "Hasala adds nothing for this text. It only checks that the automation runs.")
-          TextsNote(icon: .chat, text: "If nothing arrives in a minute, Hasala shows what to check.")
+          TextsNote(text: "The test adds nothing; it only checks the automation runs.")
+          TextsNote(icon: .chat, text: "Nothing in a minute? Hasala shows what to check.")
         }
         SetupFailureBanner(failure: startFailure ?? failure)
         if test == .nothingYet { skipLink }
@@ -283,7 +283,7 @@ struct BankTextsTestScreen: View {
   }
 
   static let worksLine =
-    "From now on, each bank payment text comes in as it arrives, filed or to Review for you to check."
+    "Payment texts now come in as they arrive, filed or in Review."
 
   static func title(_ test: BankTextsTest) -> String {
     switch test {
@@ -296,8 +296,8 @@ struct BankTextsTestScreen: View {
   static func subtitle(_ test: BankTextsTest) -> String {
     switch test {
     case .received: Self.worksLine
-    case .nothingYet: "Check these in the Shortcuts app, then send the test again."
-    case .idle, .waiting: "Messages opens with the test written. Send it to your own number. Hasala is watching for it."
+    case .nothingYet: "Check these in Shortcuts, then send the test again."
+    case .idle, .waiting: "Messages opens with the test written. Send it to your own number."
     }
   }
 

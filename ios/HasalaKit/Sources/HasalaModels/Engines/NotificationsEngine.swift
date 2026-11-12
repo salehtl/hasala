@@ -140,7 +140,7 @@ public enum NotificationsEngine {
     if let late = salaryLate(s, today: today) {
       dated.append((late, NotificationItem(
         id: "salary", disc: .hue(.mint, .salary), title: "Salary not seen yet",
-        line: MoneyPhrase(stringLiteral: "Usually the \(PlanEngine.ordinal(s.plan.payday)) · it may be waiting in Review"),
+        line: MoneyPhrase(stringLiteral: "Usually the \(PlanEngine.ordinal(s.plan.payday)) · may be in Review"),
         when: when(late, today: today), destination: .review(nil)
       )))
     }

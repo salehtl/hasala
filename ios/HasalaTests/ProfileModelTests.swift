@@ -145,7 +145,7 @@ struct ProfileModelTests {
   /// Signing out keeps this iPhone's data (S-26), so the alert never says "erased"; the
   /// profile and Sign-in & security say the same words.
   @Test func signingOutSaysTheDataStays() {
-    #expect(AccountCopy.signOutMessage.contains("Hasala's data stays on this iPhone"))
+    #expect(AccountCopy.signOutMessage.contains("Your data stays here"))
     #expect(!AccountCopy.signOutMessage.contains("erased"))
   }
 

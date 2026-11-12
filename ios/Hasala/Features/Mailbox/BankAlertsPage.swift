@@ -151,7 +151,7 @@ struct BankAlertsPage: View {
       }
       switch kind {
       case .notConnected:
-        detail = "Add a mailbox so Hasala can read your bank alerts."
+        detail = "Add a mailbox for your bank alerts."
       case .checking:
         detail = summary.detail
       case .signInAgain(let id, _):
@@ -385,6 +385,7 @@ struct BankAlertsPage: View {
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
+        .infoTip(MailCopy.mailboxesFootnoteDetail, about: "what our server sees")
         .padding(.horizontal, 16)
     }
   }
@@ -518,7 +519,7 @@ struct BankAlertsPage: View {
     var id: String { domain }
   }
 
-  static let unlistedDetail = "Not read on Outlook. Add the address it sends from."
+  static let unlistedDetail = "Add the address it sends from."
 
   @ViewBuilder private var unlistedSection: some View {
     let domains = (lane as? SenderAddressAdding)?.unlistedSenders ?? []
@@ -652,10 +653,9 @@ struct BankAlertsPage: View {
     VStack(alignment: .leading, spacing: 14) {
       Text("How Hasala reads your email").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      readsRow(icon: .envelope, "Your iPhone asks your mail provider only for emails from your banks' alert addresses.")
+      readsRow(icon: .envelope, "Your iPhone asks your mail provider only for your banks' alerts.")
       readsRow(PaperGlyph.eyeOff, "The rest of your inbox, headers included, is never downloaded.")
-      readsRow(PaperGlyph.link,
-               "The alert text is kept on your iPhone, so every transaction shows where it came from. It syncs only end\u{2011}to\u{2011}end encrypted.")
+      readsRow(PaperGlyph.link, "Alert text stays with each transaction and syncs only end\u{2011}to\u{2011}end encrypted.")
     }
     .padding(.top, 18)
     .padding([.horizontal, .bottom], 20)

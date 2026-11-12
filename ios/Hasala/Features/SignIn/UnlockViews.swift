@@ -77,7 +77,7 @@ final class UnlockModel {
     } catch .noCredential, .unsupported {
       // No PRF output: the words instead (S-28).
       stage = .choosing
-      failure = .badPhrase("Your passkey provider can't unlock Hasala on a new device. Use your recovery phrase instead.")
+      failure = .badPhrase("Your passkey provider can't unlock your data. Use your 12 words.")
       failedOnWords = true
       path = [.words]
     } catch {
@@ -204,8 +204,8 @@ struct UnlockView: View {
 
   private var sealedLine: String {
     model.passkeyCanUnlock
-      ? "Your budget is still sealed. Open it on this iPhone with one of these."
-      : "Your budget is still sealed. Your 12 words open it on this iPhone."
+      ? "Your budget is still sealed. Open it here with one of these."
+      : "Your budget is still sealed. Your 12 words open it here."
   }
 
   private var choose: some View {
@@ -213,7 +213,7 @@ struct UnlockView: View {
       hero: HeroDisc(icon: .lock, hue: .sand),
       title: afterReset ? "You're in. Your data is still locked." : "Unlock your data",
       subtitle: afterReset
-        ? "Your other iPhone let you in, but it can't hand over your data. Your 12 words open it on this iPhone. A new password never can."
+        ? "Your other iPhone let you in. Only your 12 words open your data here."
         : signedInEmail == nil ? "You're signed in. \(sealedLine)" : "You're signed in as",
       email: afterReset ? nil : signedInEmail.map { EmailAside(address: $0, after: sealedLine) }
     ) {
@@ -227,11 +227,11 @@ struct UnlockView: View {
             Task { await model.unlockWithPasskey() }
           }
           OptionCard(icon: .paper, hue: .sand, title: "Enter your recovery phrase",
-                     detail: "From the paper you wrote when you joined.", buttonTitle: "Enter words",
+                     detail: "Written on paper when you joined.", buttonTitle: "Enter words",
                      identifier: "unlock.words") { model.enterWords() }
         } else {
           OptionCard(icon: .paper, hue: .sand, title: "Have your paper ready",
-                     detail: "The 12 words you wrote down when you joined. Once per iPhone.",
+                     detail: "Your 12 words from when you joined. Once per iPhone.",
                      buttonTitle: "Enter my 12 words", buttonKind: .primary, identifier: "unlock.words") {
             model.enterWords()
           }
@@ -239,7 +239,7 @@ struct UnlockView: View {
         if !model.failedOnWords { FailureBanner(failure: model.failure) }
         if !afterReset {
           NoteRow(icon: .shield,
-                  text: "A password can't do this, on purpose. Someone with your password still can't open your budget.")
+                  text: "A password can't do this, so a stolen one can't open your budget.")
         }
       }
     } footer: {
@@ -281,7 +281,7 @@ struct UnlockView: View {
   private func unlocking(_ method: UnlockModel.Way) -> some View {
     ProgressCelebrationScreen(
       title: "Unlocking your data",
-      subtitle: "Keep Hasala open. It takes about a minute, and everything is opened here on this iPhone."
+      subtitle: "Keep Hasala open for about a minute."
     ) {
       // The service reports no progress: the words are checked here before it starts, the
       // rest is under way together.
@@ -298,7 +298,7 @@ struct UnlockView: View {
         ])
     } foot: {
       InfoCard(icon: .shieldCheck, hue: .mint, title: "Sealed all the way here",
-               detail: "We only ever hold the locked copy. It's opened here, on this iPhone, and the key never leaves it.")
+               detail: "We hold only the locked copy. Its key never leaves this iPhone.")
     }
     .accessibilityIdentifier("unlock.unlocking")
   }
@@ -310,13 +310,13 @@ struct UnlockView: View {
     return CelebrationScreen(
       badge: .check,
       title: name.isEmpty ? "Welcome back." : "Welcome back, \(name).",
-      subtitle: "Everything is here and unlocked on this iPhone. We emailed you about this new sign-in."
+      subtitle: "Everything is unlocked on this iPhone. We emailed you about this sign-in."
     ) {
       EmptyView()
     } footer: {
       if model.offersPasskey {
         InfoCard(icon: .faceID, hue: .sky, title: "Add a passkey to this iPhone",
-                 detail: "Next time \(biometry.name ?? "your passkey") signs you in and unlocks everything. Keep your paper as your backup.")
+                 detail: "Next time \(biometry.name ?? "your passkey") signs you in and unlocks everything. Keep your paper as backup.")
           .padding(.bottom, 12)
         Button("Add a passkey") {
           model.confirmPassword = ""

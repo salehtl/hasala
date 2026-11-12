@@ -33,7 +33,7 @@ struct UXSetupconnectTests {
     #expect(SetupModel.showsErrorScreen(.permissionMissing(.outlook)))
     let copy = MailConnectErrorView.copy(.permissionMissing(.gmail), .gmail)
     #expect(copy.title == "Gmail isn't connected.")
-    #expect(copy.subtitle == "Hasala can't see your alerts without read access. Nothing was connected and nothing was read.")
+    #expect(copy.subtitle == "Hasala needs read access to see your alerts. Nothing was read.")
     #expect(copy.reasons?.title == "What to do" && copy.reasons?.numbered == true)
     #expect(copy.reasons?.items.count == 1)
     #expect(copy.reasons?.items.first?.title == "Tick \u{201C}View your email messages and settings\u{201D}")
@@ -63,15 +63,15 @@ struct UXSetupconnectTests {
   @Test func bankNotListedPointsToTextsWhereTheyAreOffered() {
     #expect(AnotherBankCard.line(sent: false, sample: false, texts: true) == "Bank texts work with any bank.")
     #expect(AnotherBankCard.line(sent: false, sample: false, texts: false)
-      == "Tell us yours. Meanwhile, Skip lets you add spending by hand.")
+      == "Tell us. Meanwhile, tap Skip to add spending by hand.")
     #expect(AnotherBankCard.line(sent: false, sample: true, texts: false)
-      == "Tell us, and look around with sample data meanwhile.")
+      == "Tell us. Meanwhile, try sample data.")
     #expect(AnotherBankCard.line(sent: true, sample: false, texts: true) == "Thanks. We'll email you when it's ready.")
   }
 
   @Test func googleBriefingExplainsTheWidePermission() {
     #expect(GoogleBriefingCard.tickLine
-      == "Tick \u{201C}View your email messages and settings\u{201D}. Google has no permission for bank alerts alone. Hasala asks Gmail only for mail from your banks\u{2019} alert addresses, and downloads only that.")
+      == "Tick \u{201C}View your email messages and settings\u{201D}. Only your banks\u{2019} alerts are downloaded.")
     #expect(!GoogleBriefingCard.tickLine.contains("narrower"))
   }
 
@@ -88,9 +88,9 @@ struct UXSetupconnectTests {
 
   @Test func pastEmailAlertIsShort() {
     #expect(MailCopy.pastMailMessage(days: 90)
-      == "Hasala can read the last 90 days of bank alerts on this iPhone. You can also do this later in Bank alerts.")
+      == "Hasala can read the last 90 days of bank alerts, now or later in Bank alerts.")
     #expect(MailCopy.pastMailMessage(days: 365)
-      == "Hasala can read the last year of bank alerts on this iPhone. You can also do this later in Bank alerts.")
+      == "Hasala can read the last year of bank alerts, now or later in Bank alerts.")
   }
 
   @Test func otherEmailServiceLinkSaysItLeavesTheApp() {
@@ -105,10 +105,10 @@ struct UXSetupconnectTests {
   }
 
   @Test func mailboxesFootnoteHasNoJargon() {
-    let note = MailCopy.mailboxesFootnote
+    let note = MailCopy.mailboxesFootnoteDetail
     #expect(note.contains("keeps only a code for each mailbox, made with a secret key"))
     #expect(!note.lowercased().contains("hash"))
-    #expect(note.hasPrefix("Read on this iPhone, read-only. Only alerts from your banks are downloaded."))
+    #expect(MailCopy.mailboxesFootnote == "Read-only, on this iPhone.")
   }
 
   @Test func keepRowNamesTheCount() {
@@ -129,7 +129,7 @@ struct UXSetupconnectTests {
     #expect(MailCopy.permissionsTitle(.outlook) == "Remove the permission at Microsoft")
     #expect(MailCopy.consentURL(.gmail).absoluteString == "https://myaccount.google.com/permissions")
     #expect(MailCopy.consentURL(.outlook).absoluteString == "https://account.live.com/consent/Manage")
-    #expect(MailCopy.disconnectPlainMessage == "Hasala stops reading this mailbox and deletes its sign-in from this iPhone.")
+    #expect(MailCopy.disconnectPlainMessage == "Hasala stops reading it and deletes its sign-in from this iPhone.")
   }
 
   @Test func yourBanksRowSaysHowManyArePicked() {
@@ -147,7 +147,7 @@ struct UXSetupconnectTests {
   }
 
   @Test func offlineLinesFollowOnePattern() {
-    #expect(SetupFailure.offline.message == "You're offline. Finish setup when you're back online.")
+    #expect(SetupFailure.offline.message == "You're offline. Finish setup once you're online.")
     #expect(RequestBankSheet.offlineNote == "You're offline. Check again when you're back online.")
     #expect(BankAlertsPage.unreadableLine(1) == "1 email Hasala couldn't read")
     #expect(BankAlertsPage.unreadableLine(3) == "3 emails Hasala couldn't read")

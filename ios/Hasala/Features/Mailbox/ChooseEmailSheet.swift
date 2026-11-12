@@ -20,28 +20,25 @@ enum ChooseEmailTitle: Sendable {
 
   /// With `oneLink` no line promises a second mailbox.
   func subtitle(oneLink: Bool) -> String {
-    let setup = "Pick where your bank sends its alerts. \(Self.notSignIn) Access is read-only, and this iPhone does the reading."
+    let setup = "Pick where your bank sends alerts. \(Self.notSignIn) Read-only, on this iPhone."
     switch self {
-    case .setup: return setup
+    case .setup, .change: return setup
     case .addMailbox:
-      return oneLink
-        ? setup : "Pick the one your bank also sends alerts to. \(Self.notSignIn) Access is read-only, and this iPhone does the reading."
-    case .change:
-      return "Hasala reads one mailbox at a time. Pick the one your bank sends its alerts to. \(Self.notSignIn) Access is read-only, and this iPhone does the reading."
+      return oneLink ? setup : "Pick another email your bank sends alerts to. \(Self.notSignIn) Read-only, on this iPhone."
     }
   }
 
-  static let notSignIn = "It can be different from the email you sign in to Hasala with."
+  static let notSignIn = "It can differ from your Hasala sign-in email."
 
   func footnote(oneLink: Bool) -> String {
     switch self {
     case .setup:
       oneLink
-        ? "You can change it later in Profile › Bank alerts."
-        : "You can add another mailbox later in Profile › Bank alerts. Disconnect any of them at any time."
+        ? "Change it later in Profile › Bank alerts."
+        : "You can add another mailbox later in Profile › Bank alerts."
     case .addMailbox:
-      oneLink ? "You can disconnect it at any time." : "Each mailbox can be disconnected on its own, at any time."
-    case .change: "The one you pick replaces the mailbox Hasala reads now. You choose whether its transactions stay."
+      oneLink ? "You can disconnect it at any time." : "You can disconnect each one separately."
+    case .change: "Your pick replaces the current mailbox. You choose whether its transactions stay."
     }
   }
 }
@@ -159,7 +156,7 @@ struct ChooseEmailSheet: View {
     let own = mailboxes.filter { $0.provider == provider }
     if case .signInAgain(let id) = ConnectMailPage.context(provider, offer: offer),
        let broken = own.first(where: { $0.id == id }) {
-      return "\(broken.address) needs a new sign-in. Sign in to \(provider.appName) again."
+      return "Sign in to \(broken.address) again."
     }
     if let connected = own.first(where: { [.connected, .syncing, .readingStopped].contains($0.state) }) {
       return oneLink

@@ -86,13 +86,12 @@ final class PasteBankTextModel {
 
   static func matchQuestion(_ m: BankTextMatch) -> String {
     switch m.kind {
-    case .payment: "A payment like this is already in Hasala. Add this text anyway?"
-    case .unreadText: "This may be the bank text Hasala couldn't read. Replace it with this one?"
+    case .payment: "A payment like this is already in Hasala. Add it anyway?"
+    case .unreadText: "This may be the text Hasala couldn't read. Replace it?"
     }
   }
 
-  static let undatedNote =
-    "This text has no date, so Hasala dates it when you paste it. Change the date in Review if the payment was earlier."
+  static let undatedNote = "The text has no date, so it's dated when you paste it. Change it in Review if it was earlier."
 
   static func amountLine(_ p: BankTextPreview, hidden: Bool = false) -> String {
     if hidden { return "Amount hidden" }
@@ -121,7 +120,7 @@ final class PasteBankTextModel {
   }
 
   static func severalNote(_ n: Int) -> String {
-    "This paste has \(MoneyFormat.count(n)) payments. Hasala adds only the one shown above. Paste the others one at a time."
+    "\(MoneyFormat.count(n)) payments in this paste. Only the one above is added; paste the others separately."
   }
 
   static func cardLine(_ p: BankTextPreview) -> String? {
@@ -180,7 +179,7 @@ struct PasteBankTextSheet: View {
           if let failure = model.failure {
             InlineStatus(tone: .warning, text: failure, size: .regular)
           }
-          TextsNote(text: "Pasted texts always go to Review, so you check them before they count.")
+          TextsNote(text: "Pasted texts always go to Review for you to check.")
         }
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 8)
@@ -332,7 +331,7 @@ struct PasteBankTextSheet: View {
         }
       case .unreadable?:
         InlineStatus(
-          tone: .warning, text: "Hasala couldn't read this text. Add it to Review and fill in the payment yourself.",
+          tone: .warning, text: "Couldn't read this. Add it to Review and fill in the payment.",
           size: .regular)
           .accessibilityIdentifier("pasteText.unreadable")
       case .notAPayment?:

@@ -403,7 +403,7 @@ struct CodeStepScreen: View {
         if state != .expired {
           ResendRow(sentAt: sentAt, busy: busy, trailing: trailing, onResend: onResend)
         }
-        HintCard(text: "Not there? Check Spam or Promotions for an email from no-reply@hasala.app.")
+        HintCard(text: "Not there? Check Spam or Promotions for no-reply@hasala.app.")
       }
     } footer: {
       if state == .expired {

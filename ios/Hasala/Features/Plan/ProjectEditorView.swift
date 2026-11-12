@@ -85,7 +85,7 @@ final class ProjectEditorModel {
 
   func save() {
     guard let d = draft else {
-      refusal = "Enter the money set aside as an amount, like 8,000"
+      refusal = "Enter an amount, like 8,000"
       return
     }
     if let why = d.refusal {
@@ -200,7 +200,7 @@ struct ProjectEditorView: View {
             .frame(minHeight: 52)
             .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
             .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
-            Text("The money set aside for it. Leave it empty for no budget.").hType(.footnote).foregroundStyle(HColor.textSecondary)
+            Text("Leave empty for no budget.").hType(.footnote).foregroundStyle(HColor.textSecondary)
               .padding(.horizontal, 4)
           }
         }

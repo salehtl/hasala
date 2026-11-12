@@ -496,11 +496,19 @@ struct ReviewReasonInfo: View {
   private var explanation: String {
     switch reason {
     case .probableCopy:
-      "Another alert has the same bank, card, amount and merchant, a few minutes apart. Bank alerts often reach two inboxes. Until you choose, it doesn't count in your totals."
+      "Another alert matches it, minutes apart. This one doesn't count until you choose."
     case .samePurchase:
-      "Your bank sent an alert in another currency, then this one in AED a few days later on the same card. It's often the same purchase. Until you choose, both count in your totals. If it's the same purchase, the original keeps this AED amount and this alert moves to Archived."
+      "An alert in another currency, then this AED one a few days later, same card. Often one purchase. Both count until you choose."
     case .mayRepeat:
-      "A bank text and a bank email, or two bank texts, can tell of one payment in different words, so Hasala couldn't be sure. Until you choose, both count in your totals."
+      "This and a bank text may be one payment. Both count until you choose."
+    }
+  }
+
+  static func mergeDetail(_ reason: TxnReviewReason) -> String? {
+    switch reason {
+    case .probableCopy: "Same bank, card, amount, merchant. Alerts often reach two inboxes. Merging removes this copy."
+    case .samePurchase: "If it's one purchase, the original gets this AED amount; this alert is archived."
+    case .mayRepeat: nil
     }
   }
 
@@ -554,6 +562,7 @@ struct ReviewReasonInfo: View {
         .hType(.subheadline)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
+        .infoTip(Self.mergeDetail(reason), about: reason == .probableCopy ? "this copy" : "what happens when you merge")
     }
     .padding(.top, 4)
   }

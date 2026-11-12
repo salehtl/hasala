@@ -96,7 +96,7 @@ struct VerifyEmailView: View {
     case .wrong, .typing:
       FailureBanner(failure: otherFailure(model))
       resendRow(model)
-      HintCard(icon: .envelope, text: "Not there? Check Spam or Promotions for an email from no-reply@hasala.app.")
+      HintCard(icon: .envelope, text: "Not there? Check Spam or Promotions for no-reply@hasala.app.")
     }
   }
 

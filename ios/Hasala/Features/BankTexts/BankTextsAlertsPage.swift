@@ -45,7 +45,7 @@ struct BankTextsAlertsPage: View {
       case .waitingForFirstText:
         state = .ready
         title = "Ready"
-        detail = "Waiting for your first bank text.\nYour next payment shows up here."
+        detail = "Waiting for your first bank text."
         hue = .sky
       case .notSetUp:
         state = .notSetUp
@@ -70,11 +70,11 @@ struct BankTextsAlertsPage: View {
 
   static func heldRemoval(_ mailbox: (any MailboxConnecting)?) -> MailHeldRemoval? { mailbox?.heldRemoval }
 
-  static let readsRows: [(icon: HIcon, text: String)] = [
-    (.chat, "The automation hands Hasala each text with a full stop, on this iPhone."),
-    (.bank, BankTexts.anyBankLine),
-    (.privacy, BankTexts.keepsNoText),
-    (.info, BankTexts.fakedTextNote),
+  static let readsRows: [(icon: HIcon, text: String, tip: String?)] = [
+    (.chat, "Hasala reads each text as it arrives.", nil),
+    (.bank, BankTexts.anyBankLine, nil),
+    (.privacy, BankTexts.keepsPayments, BankTexts.keepsDetail),
+    (.info, BankTexts.fakedTextNote, nil),
   ]
 
   var body: some View {
@@ -226,6 +226,7 @@ struct BankTextsAlertsPage: View {
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
+        .infoTip(BankTexts.setAsideTip, about: "skipped texts")
         .padding(.horizontal, 16)
     }
     .accessibilityElement(children: .contain)
@@ -258,24 +259,26 @@ struct BankTextsAlertsPage: View {
       Text("How Hasala reads your texts").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
       ForEach(Array(Self.readsRows.enumerated()), id: \.offset) { _, row in
-        readsRow(row.icon, row.text)
+        readsRow(row.icon, row.text, tip: row.tip)
       }
     }
     .padding(.top, 18)
     .padding([.horizontal, .bottom], 20)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
-    .accessibilityElement(children: .combine)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bankAlerts.texts.howItReads")
   }
 
-  private func readsRow(_ icon: HIcon, _ text: String) -> some View {
+  private func readsRow(_ icon: HIcon, _ text: String, tip: String?) -> some View {
     HStack(alignment: .top, spacing: 12) {
       HIconView(icon, size: 22, color: HColor.iconPrimary, strokeWidth: 1.8)
       Text(text).hType(.subheadline).foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
+        .infoTip(tip, about: BankTexts.keepsTopic)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+    .accessibilityElement(children: tip == nil ? .combine : .contain)
   }
 
   private var switchSection: some View {

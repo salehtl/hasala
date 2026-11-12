@@ -1033,7 +1033,7 @@ struct BankTextsIntakeTests {
       let l = lane(r)
       l.refresh()
       #expect(l.lockedNotice == 2)
-      #expect(BankTexts.lockedNoticeLine(2).hasPrefix("2 texts that look like payments arrived while your iPhone was locked"))
+      #expect(BankTexts.lockedNoticeLine(2).hasPrefix("2 texts that look like payments arrived after a restart"))
       l.lockedNoticeShown()
       #expect(l.lockedNotice == nil && r.marker.read() == nil)
       #expect(r.factsData.ignoredTotal(nowMs: BankTextIntake.ms(Self.t0)) == 0)
@@ -1497,7 +1497,7 @@ struct BankTextsIntakeTests {
   @Test func theCopyForIgnoredTextsAndTheDisconnectAlert() {
     #expect(
       BankTexts.ignoredLine(3)
-        == "3 texts that look like payments were ignored in the last 30 days because this account reads bank email.")
+        == "3 texts that look like payments were ignored in the last 30 days.")
     let mock = MockBankTexts()
     #expect(!mock.sawAutomationRun)
     mock.ignoredLast30Days = 1

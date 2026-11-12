@@ -25,7 +25,7 @@ struct NoAlertsSheet: View {
               .hType(.largeTitle)
               .foregroundStyle(HColor.textPrimary)
               .accessibilityAddTraits(.isHeader)
-            Text("Hasala looked back \(Self.windowDays) days in \(model.noAlertsMailbox.appName) for \(bankList). Your bank may send alerts only by SMS.")
+            Text("Searched \(Self.windowDays) days of \(model.noAlertsMailbox.appName) for \(bankList). Your bank may send only SMS alerts.")
               .hType(.body)
               .foregroundStyle(HColor.textOnWashSecondary)
               .frame(maxWidth: 320)
@@ -99,7 +99,7 @@ struct NoAlertsSheet: View {
             .accessibilityIdentifier("noAlerts.howTo.\(bank.rawValue)")
         }
       }
-      Text("Check for new alerts reads what reached \(model.noAlertsMailbox.appName) since Hasala looked. Alerts go to another address? Use that mailbox instead.")
+      Text("Alerts go to another address? Use that mailbox.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)

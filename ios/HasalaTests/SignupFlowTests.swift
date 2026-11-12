@@ -363,7 +363,7 @@ struct SignupFlowTests: AccountSuite {
     m.submitInvite()
     m.displayName = "Maya Rahman"
     m.email = "maya@example.com"
-    #expect(m.emailHelp == "If it's the address your invite went to, there's no code. Security alerts go here.")
+    #expect(m.emailHelp == "No code if it's where your invite went. Security alerts go here.")
     await m.submitAboutYou()
     #expect(m.ticket?.emailProven == true && m.path.last == .method)
 
@@ -371,7 +371,7 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .aboutYou)
     m.displayName = "Maya K Rahman"
     #expect(m.emailConfirmed)
-    #expect(m.emailHelp == "Your invite link confirmed it, so there's no code. Security alerts go here.")
+    #expect(m.emailHelp == "Confirmed by your invite link. Security alerts go here.")
     await m.submitAboutYou()
     #expect(account.signupsBegun == 2)
     #expect(m.ticket?.emailProven == true && m.ticket?.displayName == "Maya K Rahman")
@@ -380,7 +380,7 @@ struct SignupFlowTests: AccountSuite {
     m.navigationPath = Array(m.path.dropLast())
     m.email = "maya.k@example.com"
     #expect(!m.emailConfirmed)
-    #expect(m.emailHelp == "If it's the address your invite went to, there's no code. Security alerts go here.")
+    #expect(m.emailHelp == "No code if it's where your invite went. Security alerts go here.")
   }
 
   /// The typed-code path, Back to About you, then a changed name: a new signup needs a new
@@ -399,11 +399,11 @@ struct SignupFlowTests: AccountSuite {
     m.navigationPath = Array(m.path.dropLast(2))
     #expect(m.path.last == .aboutYou)
     #expect(m.emailConfirmed)
-    #expect(m.emailHelp == "Your code confirmed it. Security alerts go here.")
+    #expect(m.emailHelp == "Confirmed by your code. Security alerts go here.")
 
     m.displayName = "Maya K Rahman"
     #expect(!m.emailConfirmed)
-    #expect(m.emailHelp == "We'll send a code to confirm it. Security alerts go here too.")
+    #expect(m.emailHelp == "We'll send a code to confirm it. Security alerts go here.")
     await m.submitAboutYou()
     #expect(account.signupsBegun == 2)
     #expect(m.path.last == .verifyEmail)
@@ -418,7 +418,7 @@ struct SignupFlowTests: AccountSuite {
     m.submitInvite()
     m.displayName = "Maya Rahman"
     m.email = "maya@example.com"
-    #expect(m.emailHelp == "We'll send a code to confirm it. Security alerts go here too.")
+    #expect(m.emailHelp == "We'll send a code to confirm it. Security alerts go here.")
     await m.submitAboutYou()
     #expect(m.ticket?.emailProven == false && m.path.last == .verifyEmail)
   }

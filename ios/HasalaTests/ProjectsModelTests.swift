@@ -38,7 +38,7 @@ struct ProjectsModelTests {
     editor.name = "Trip"
     editor.budgetText = "12.345"
     editor.save()
-    #expect(editor.refusal == "Enter the money set aside as an amount, like 8,000")
+    #expect(editor.refusal == "Enter an amount, like 8,000")
     #expect(app.store.state.projects.count == 1)
   }
 

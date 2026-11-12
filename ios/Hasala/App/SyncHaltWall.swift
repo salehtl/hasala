@@ -12,6 +12,7 @@ struct SyncHaltWall: View {
     NavigationStack {
       AccountScreen(title: Self.title, subtitle: Self.subtitle) {
         NoteRow(icon: .info, text: Self.reason(halt))
+          .infoTip(Self.reasonDetail(halt), about: "why syncing stopped")
         NoteRow(icon: .phone, text: Self.next(halt))
         SupportCodeLine(lead: Self.codeLead, code: Self.code(halt), identifier: "wall.syncHalted.code")
       } footer: {
@@ -31,33 +32,40 @@ struct SyncHaltWall: View {
   static let codeLead = "If you email us, mention:"
 
   static let kept =
-    "Everything on this iPhone is kept, including changes that haven't uploaded yet. Nothing is removed."
+    "Everything on this iPhone is kept, including changes not yet uploaded."
 
   static func reason(_ halt: HaltKind) -> String {
     switch halt {
     case .tampered, .tamperedResend:
-      "What the server sent doesn't match what this iPhone already holds, so Hasala stopped before anything got mixed up."
+      "The server's data doesn't match this iPhone's."
     case .serverRestored:
-      "Our server was restored from an earlier copy and is missing changes this iPhone holds, so Hasala stopped before they could be lost."
+      "Our server was restored from an older copy that's missing changes this iPhone holds."
     case .inconsistent:
-      "Some changes in your account don't fit together, so Hasala stopped before anything got mixed up."
+      "Some changes in your account don't fit together."
     case .rosterInvalid:
-      "Hasala couldn't confirm which devices belong to your account, so it stopped before anything got mixed up."
+      "Hasala couldn't confirm your account's devices."
     case .unprovedRevocation:
-      "Our server said this iPhone was removed from your account, but your account's device list doesn't show that, so Hasala stopped before anything was removed."
+      "Our server says this iPhone was removed; your device list disagrees."
     case .unexpectedGone:
-      "Our server gave an answer Hasala doesn't expect, so it stopped before anything got mixed up."
+      "Our server gave an unexpected answer."
     case .updateRequired:
-      "This version of Hasala can't read the newest changes in your account."
+      "This version can't read your newest changes."
     }
+  }
+
+  static let stoppedDetail =
+    "Hasala checks everything it syncs, and stops rather than guess when something doesn't fit."
+
+  static func reasonDetail(_ halt: HaltKind) -> String? {
+    halt == .updateRequired ? nil : stoppedDetail
   }
 
   static func next(_ halt: HaltKind) -> String {
     switch halt {
     case .updateRequired:
-      "Install the newest build from TestFlight, then open Hasala again. If it stays stopped, email \(BuildSurface.supportEmail)."
+      "Update Hasala in TestFlight, then open it again. Still stopped? Email \(BuildSurface.supportEmail)."
     default:
-      "Try again in a while. If it stays stopped, email \(BuildSurface.supportEmail)."
+      "Try again later, or email \(BuildSurface.supportEmail)."
     }
   }
 

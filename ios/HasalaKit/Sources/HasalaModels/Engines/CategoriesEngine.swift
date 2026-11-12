@@ -112,7 +112,7 @@ public struct CategoryImpact: Sendable, Hashable {
     if assigned.minor > 0 {
       out.append(
         hidden
-          ? "The money assigned this month goes to Ready to assign."
+          ? "This month's assigned money goes to Ready to assign."
           : "AED \(MoneyFormat.string(assigned.minor)) assigned this month goes to Ready to assign.")
     }
     return out

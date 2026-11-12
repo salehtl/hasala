@@ -86,17 +86,17 @@ enum MailConnectFailure: Error, Equatable {
 
   static func permissionMissingLine(_ provider: MailProviderKind) -> String {
     switch provider {
-    case .gmail: "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it."
-    case .outlook: "Hasala needs permission to read your bank alerts. Try again and allow it."
+    case .gmail: "\u{201C}View your email messages and settings\u{201D} wasn't ticked. Try again and tick it."
+    case .outlook: "Mail access wasn't allowed. Try again and allow it."
     }
   }
 
   static func noMailboxLine(_ provider: MailProviderKind) -> String {
     switch provider {
     case .outlook:
-      "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com."
+      "This Microsoft account has no Outlook mailbox. Use the one your alerts go to, like you@outlook.com or you@hotmail.com."
     case .gmail:
-      "This Google account has no Gmail. Sign in with the account your bank alerts go to."
+      "This Google account has no Gmail. Use the one your alerts go to."
     }
   }
 }
@@ -370,7 +370,7 @@ struct MailboxesSummary: Equatable {
       self.init(title: "Sign in again", detail: detail, hue: .sand, needsYou: true)
     } else if live.isEmpty {
       self.init(
-        title: "Your email isn't connected", detail: "Connect it so Hasala can read your bank alerts.", hue: .sky,
+        title: "Your email isn't connected", detail: "Connect it to read your bank alerts.", hue: .sky,
         needsYou: offer == .connect)
     } else if health.status == .reconnect {
       // The lane halted for a reason a new sign-in doesn't fix (a full account, missing

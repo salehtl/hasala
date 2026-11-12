@@ -39,7 +39,7 @@ struct CategoryDetailView: View {
     } else {
       PlanDetailScreen(app: app, title: "Category", wash: .onTrack) {
         EmptyStateCard(icon: .tag, tone: .neutral, title: "This category is gone",
-                       message: "It was archived or removed. Plan shows the categories you have now.")
+                       message: "It was archived or removed.")
           .padding(.horizontal, HSpacing.insetPage)
       }
     }

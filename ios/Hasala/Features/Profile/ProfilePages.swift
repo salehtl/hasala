@@ -11,10 +11,10 @@ struct HelpPage: View {
       VStack(alignment: .leading, spacing: 16) {
         HListCard {
           ProfileInfoRow(icon: .phone, title: "Send feedback from TestFlight",
-                         text: "Take a screenshot in Hasala, then tap Share Beta Feedback. Or open TestFlight, choose Hasala and tap Send Beta Feedback.")
+                         text: "Screenshot, then tap Share Beta Feedback. Or in TestFlight \u{203A} Hasala, tap Send Beta Feedback.")
           HDivider(inset: .icon52)
           ProfileInfoRow(icon: .chat, title: "Talk to a person",
-                         text: "Write to us about anything that isn't working or that you'd like changed. A person reads every email.")
+                         text: "Tell us what isn't working or what you'd change. A person reads every email.")
         }
         SupportLink(lead: "Questions, or something not working?", identifier: "help.email", web: false)
         WebLink(title: "Help and support", url: "https://hasala.app/support", identifier: "help.support")
@@ -50,9 +50,10 @@ struct NotificationSettingsPage: View {
             .accessibilityIdentifier("notifications.\(level.rawValue)")
           }
         }
-        Text("Important only keeps everything except new transactions under AED 100 and the daily sorting nudge. Turning it off adds both back. The Lock Screen stays generic unless you choose otherwise.")
+        Text("Important only skips new transactions under AED 100 and the daily sorting nudge.")
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
+          .infoTip("The Lock Screen stays generic unless you change it.", about: "the Lock Screen")
           .padding(.horizontal, 4)
       }
       .padding(.horizontal, HSpacing.sheetPadding)

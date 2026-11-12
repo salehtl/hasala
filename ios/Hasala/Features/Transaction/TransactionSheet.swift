@@ -77,7 +77,7 @@ struct TransactionSheet: View {
       .confirmationDialog("Keep as two transactions?", isPresented: $confirmApart, titleVisibility: .visible) {
         Button("Keep both") { model.keepApart() }
       } message: {
-        Text("Both emails will count in your totals. Do this only if you made two payments.")
+        Text("Both emails will count. Do this only if you made two payments.")
       }
     }
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
@@ -203,7 +203,7 @@ struct TransactionSheet: View {
     .buttonStyle(.plain)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(reason.title). \(line ?? reason.detail)")
-    .accessibilityHint("Shows what this means and what to do")
+    .accessibilityHint("Explains this and your choices")
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("txn.reviewReason.\(reason.rawValue)")
   }
@@ -292,7 +292,7 @@ struct TransactionSheet: View {
         if BuildSurface.showsUnfinished, !p.isText {
           // TODO(spec 04 §16.2 G7): re-fetch the message on the holder iPhone.
           Button {
-            app.say("The bank email opens in a later build", icon: .envelope)
+            app.say("Coming in a later build", icon: .envelope)
           } label: {
             HStack(spacing: 2) {
               Text("View the email").hType(.subheadline.weight(.semibold))
@@ -386,7 +386,7 @@ struct TransactionSheet: View {
   private var sampleNote: some View {
     HStack(alignment: .top, spacing: 14) {
       HIconView(.info, size: 22, color: HColor.iconPrimary)
-      Text("This is sample data. There's no email behind it.")
+      Text("Sample data. No bank email behind it.")
         .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -402,7 +402,7 @@ struct TransactionSheet: View {
         HIconView(.envelope, size: 22, color: HColor.iconPrimary)
         VStack(alignment: .leading, spacing: 2) {
           Text("Combined with a second bank email").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-          Text("Your bank sent a transfer notice and an account alert for this transaction. It counts once.")
+          Text("Transfer notice and account alert, counted once.")
             .hType(.footnote).foregroundStyle(HColor.textSecondary)
         }
         .fixedSize(horizontal: false, vertical: true)

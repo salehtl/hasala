@@ -436,20 +436,14 @@ public enum ReviewEngine {
     m.bank.map { "Text from \($0)" } ?? "Bank text"
   }
 
-  public static func unreadTextWhen(_ m: UnreadText, today: LocalDate) -> String {
-    m.receivedAt.date == today ? m.receivedAt.time : "\(m.receivedAt.time) on \(m.receivedAt.date.short(today: today))"
-  }
-
   public static func unreadTextDetail(_ m: UnreadText, today: LocalDate) -> String {
     m.receivedAt.date == today ? "Received today, \(m.receivedAt.time)" : "Received \(m.receivedAt.date.short(today: today)), \(m.receivedAt.time)"
   }
 
   public static func unreadTextBody(_ m: UnreadText, today: LocalDate, canPaste: Bool) -> String {
-    let from = m.bank.map { "the text from \($0)" } ?? "the text"
-    let find = "Find \(from) at \(unreadTextWhen(m, today: today)) in Messages"
-    return canPaste
-      ? "Hasala couldn't read this bank text. \(find), copy it and paste it here, or add the payment yourself."
-      : "Hasala couldn't read this bank text. \(find) and add the payment yourself."
+    canPaste
+      ? "Copy it from Messages and paste it here, or add the payment yourself."
+      : "Find it in Messages and add the payment yourself."
   }
 
   public static func months(_ cards: [ReviewCardModel], now: LocalDateTime) -> [ReviewMonth] {
@@ -618,5 +612,5 @@ public enum SamePurchaseText {
     "Settled the \(foreign.currency) \(MoneyFormat.string(foreign.minor)) purchase"
   }
 
-  public static let restoreRefused = "This alert is counted in the foreign purchase. Restoring it would count it twice."
+  public static let restoreRefused = "It's counted in the foreign purchase. Restoring would count it twice."
 }

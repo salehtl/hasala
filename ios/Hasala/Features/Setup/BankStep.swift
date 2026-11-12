@@ -116,8 +116,8 @@ struct BankStep: View {
     DockNote(text: model.chosenBanks.isEmpty
       ? "Pick at least one bank to continue."
       : connected != nil
-        ? "Only alerts from the banks you pick are downloaded, straight to this iPhone."
-        : "Read-only. Downloaded and read on this iPhone; our server never receives your emails. \(MailCopy.confirmNote)")
+        ? "Only alerts from your picked banks come to this iPhone."
+        : "Read-only, on this iPhone; our server never gets your emails. \(MailCopy.confirmNote)")
   }
 }
 
@@ -225,7 +225,7 @@ private struct AlertsHowToLink: View {
     Button(action: action) {
       HStack(alignment: .top, spacing: 8) {
         HIconView(.info, size: 16, color: HColor.actionAccent, strokeWidth: 1.6).frame(height: lane)
-        Text("How to turn on email alerts in your bank's app")
+        Text("How to turn on email alerts")
           .hType(HType.subheadline.weight(.medium))
           .foregroundStyle(HColor.textLink)
           .multilineTextAlignment(.leading)
@@ -285,9 +285,11 @@ private struct MailboxChoiceCard: View {
 
 struct GoogleBriefingCard: View {
   static let unverifiedLine =
-    "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala."
+    "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Tap Advanced, then Go to Hasala."
   static let tickLine =
-    "Tick \u{201C}View your email messages and settings\u{201D}. Google has no permission for bank alerts alone. Hasala asks Gmail only for mail from your banks\u{2019} alert addresses, and downloads only that."
+    "Tick \u{201C}View your email messages and settings\u{201D}. Only your banks\u{2019} alerts are downloaded."
+  static let whyDetail =
+    "Hasala is in beta, so it\u{2019}s unverified. No Google permission covers bank alerts alone."
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -295,6 +297,7 @@ struct GoogleBriefingCard: View {
         .hType(.overline)
         .foregroundStyle(HColor.statusWarningForeground)
         .accessibilityAddTraits(.isHeader)
+        .infoTip(Self.whyDetail, about: "Google\u{2019}s warnings")
       NumberedLine(number: 1, text: Self.unverifiedLine, numberColor: HColor.statusWarningForeground)
       NumberedLine(number: 2, text: Self.tickLine, numberColor: HColor.statusWarningForeground)
     }
@@ -314,7 +317,7 @@ struct EmailAlertsHelpSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          Text("Hasala reads the alert emails your bank sends. Many banks send alerts by SMS only until you turn on email.")
+          Text("Many banks send SMS alerts until you turn on email.")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -322,7 +325,7 @@ struct EmailAlertsHelpSheet: View {
           ForEach(banks) { bank in
             BankAlertsSteps(bank: bank)
           }
-          Text("Can\u{2019}t find it? Your bank\u{2019}s support team can turn on email alerts for you.")
+          Text("Can\u{2019}t find it? Your bank\u{2019}s support team can turn them on.")
             .hType(.footnote)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -353,9 +356,9 @@ private struct BankAlertsSteps: View {
   private var steps: [String] {
     [
       "Open the \(bank.name) app and sign in.",
-      "Find the alert or notification settings. They\u{2019}re often under Settings or Profile.",
+      "Find the alert or notification settings, often under Settings or Profile.",
       "Turn on email alerts for card and account transactions.",
-      "Check the alerts go to the email you connect to Hasala.",
+      "Check they go to the email you connect to Hasala.",
     ]
   }
 
@@ -520,8 +523,8 @@ struct AnotherBankCard: View {
     if sent { return "Thanks. We'll email you when it's ready." }
     if texts { return "Bank texts work with any bank." }
     return sample
-      ? "Tell us, and look around with sample data meanwhile."
-      : "Tell us yours. Meanwhile, Skip lets you add spending by hand."
+      ? "Tell us. Meanwhile, try sample data."
+      : "Tell us. Meanwhile, tap Skip to add spending by hand."
   }
 
   var body: some View {

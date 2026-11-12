@@ -74,7 +74,7 @@ struct FrozenWall: View {
     case (.operator, _): "We froze your account to protect it. Talk to us to unfreeze it."
     case (.holder, true): holderBody(info)
     case (.holder, false):
-      "Your recovery phrase was used before this freeze, so only we can lift it. We'll check it's you first."
+      "Your recovery phrase was used before this freeze, so only we can lift it."
     }
   }
 
@@ -82,7 +82,7 @@ struct FrozenWall: View {
     let source = info.inApp ? "" : " from our email"
     let when = info.when.map { " \($0)" } ?? ""
     return "\u{201C}Freeze my account\u{201D} was used\(source)\(when). "
-      + "Everyone is signed out, and nothing on your account can change until you unfreeze."
+      + "Everyone is signed out, and nothing can change until you unfreeze."
   }
 
   static func unfreezeDetail(_ info: FreezeInfo) -> String {
@@ -90,10 +90,10 @@ struct FrozenWall: View {
   }
 
   static let notYouNote =
-    "Didn't freeze it yourself? Someone may be reading your email. Change your email's password first. Then unfreeze and check Sign-in & security."
-  static let needsUsDetail = "Write to us from your account's email address, so we can check it's you."
+    "Didn't freeze it? Someone may be reading your email. Change your email password, then unfreeze and check Sign-in & security."
+  static let needsUsDetail = "Email us from your account's address, so we can check it's you."
   static let needsUsNote =
-    "Didn't use your phrase yourself? Someone may be reading your email. Change your email's password first."
+    "Didn't use your phrase? Someone may be reading your email. Change your email password first."
 }
 
 /// "Unfreeze your account · Sign in fully" (Paper MUT): the passkey on its own, or the
@@ -117,7 +117,7 @@ struct UnfreezeView: View {
   private var offersPassword: Bool { hasPassword != false || !offersPasskey }
 
   var body: some View {
-    AccountScreen(title: "Unfreeze your account", subtitle: "Sign in fully, so we know it's really you.", back: .system) {
+    AccountScreen(title: "Unfreeze your account", subtitle: "Sign in fully to prove it's you.", back: .system) {
       VStack(alignment: .leading, spacing: 12) {
         if offersPasskey {
           VStack(spacing: 8) {
@@ -179,7 +179,7 @@ struct UnfreezeView: View {
     if failedWith == .password, failure != .stepUpFailed { FailureBanner(failure: failure) }
   }
 
-  static let notConfirmed = "That didn't confirm. A passkey or password added after the freeze can't unfreeze the account."
+  static let notConfirmed = "That didn't confirm. A passkey or password added after the freeze can't unfreeze it."
 
   private func run(password: String?) async {
     let using: SignInMethod = password == nil ? .passkey : .password

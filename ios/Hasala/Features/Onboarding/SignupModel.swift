@@ -242,12 +242,12 @@ final class SignupModel {
   var emailHelp: String {
     if emailConfirmed {
       return ticket?.emailProven == true
-        ? "Your invite link confirmed it, so there's no code. Security alerts go here."
-        : "Your code confirmed it. Security alerts go here."
+        ? "Confirmed by your invite link. Security alerts go here."
+        : "Confirmed by your code. Security alerts go here."
     }
     return linkProvesAddress
-      ? "If it's the address your invite went to, there's no code. Security alerts go here."
-      : "We'll send a code to confirm it. Security alerts go here too."
+      ? "No code if it's where your invite went. Security alerts go here."
+      : "We'll send a code to confirm it. Security alerts go here."
   }
 
   /// Continue on About you. Back and Forward never begin a second signup for the same

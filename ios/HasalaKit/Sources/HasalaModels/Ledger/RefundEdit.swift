@@ -21,7 +21,7 @@ public struct RefundFiling: Sendable, Hashable {
 public enum RefundEdit {
   public static let refusedOut = "Only money in can be a refund."
   public static let refusedTarget = "Choose a payment out to match this refund."
-  public static let refusedMatchedTransfer = "This is one side of a matched transfer."
+  public static let refusedMatchedTransfer = "It's one side of a matched transfer."
 
   public static func mark(_ t: Txn, in s: LedgerState) throws(ActionError) -> RefundFiling {
     if t.isRefund {

@@ -104,7 +104,7 @@ public struct LockSpentRingView: View {
 
   nonisolated static func spoken(_ model: SpentSoFarWidget?, showsAmounts: Bool) -> String {
     let title = LockSpentRectView.title
-    guard let model else { return "\(title), your first bank alert will fill this in" }
+    guard let model else { return "\(title), your first bank alert fills this in" }
     if showsAmounts {
       return "\(title), \(model.spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(model.spent.minor, style: .rounded)), \(model.verdictWord)"
     }
@@ -162,7 +162,7 @@ public struct LockSpentRectView: View {
           }
         }
       } else {
-        Text("Your first bank alert will fill this in.").hType(.lockCaption).foregroundStyle(lockSecondary)
+        Text("Your first bank alert fills this in.").hType(.lockCaption).foregroundStyle(lockSecondary)
           .lineLimit(2)
       }
     }

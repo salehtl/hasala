@@ -22,13 +22,13 @@ struct BootWallTests {
 
   @Test func setUpAgainSaysWhatHappenedPlainly() {
     #expect(BootWallView.subtitle(for: .unenrolled)
-      == "This iPhone lost its key to your account. Remove its data and sign in again. Everything you uploaded comes back.")
+      == "This iPhone lost its key to your account.")
     #expect(BootWallView.eraseTitle(for: .unenrolled) == "Remove data and sign in again")
     #expect(BootWallView.eraseTitle(for: .openFailed) == "Remove this iPhone's data")
   }
 
   @Test func updateWallSaysTheBuildIsOutOfDate() {
     #expect(BootWallView.subtitle(for: .updateRequired)
-      == "This version of Hasala is out of date. Install the newest build from TestFlight, then open Hasala again.")
+      == "This version is out of date. Update Hasala in TestFlight, then open it again.")
   }
 }

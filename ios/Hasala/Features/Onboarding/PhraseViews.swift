@@ -14,20 +14,23 @@ struct PhraseIntroView: View {
   var model: SignupModel
 
   static func onlyYouHaveThem(wordsOnlyInSetup: Bool) -> String {
-    let setup = wordsOnlyInSetup ? " You'll only see these words during setup." : ""
-    return "We never see them, so we can't reset or resend them.\(setup) If you lose these words and every device that can unlock Hasala, your data is gone for good."
+    let setup = wordsOnlyInSetup ? " You'll see them only during setup." : ""
+    return "We can't reset or resend them.\(setup) Lose them and every device that can unlock Hasala, and your data is gone for good."
   }
+
+  static let keyDetail = "Only your devices hold your data's key. We never see it or these words."
 
   var body: some View {
     AccountScreen(
       title: "Your recovery phrase is your spare key",
-      subtitle: "Hasala seals your data with a key only your devices hold. These words can rebuild that key on a new iPhone.",
+      subtitle: "These 12 words can rebuild the key that locks your data.",
       steps: (3, 3)
     ) {
       VStack(alignment: .leading, spacing: 18) {
-        point(.paper, .sand, "Write them on paper", "Keep it somewhere safe at home. Not in your photos, notes or email.")
+        point(.paper, .sand, "Write them on paper", "Keep it safe at home, not in photos, notes or email.")
         point(.phone, .sky, "For a new iPhone", newIPhone)
         point(.lock, .rose, "Only you have them", Self.onlyYouHaveThem(wordsOnlyInSetup: model.wordsOnlyInSetup))
+          .infoTip(Self.keyDetail, about: "how your data is locked")
       }
       .padding(20)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -45,8 +48,8 @@ struct PhraseIntroView: View {
   /// signing in there (a Release copy exception, plan P1).
   private var newIPhone: String {
     model.capabilities.contains(.recoverAccess)
-      ? "If your passkey isn't there, these words unlock your data. A password can't."
-      : "They unlock your data on a new iPhone once you sign in there. A password can't."
+      ? "No passkey there? These words unlock your data. A password can't."
+      : "After you sign in there, they unlock your data. A password can't."
   }
 
   private func point(_ icon: HIcon, _ hue: Hue, _ title: String, _ text: String) -> some View {
@@ -103,8 +106,8 @@ struct PhraseShowView: View {
     AccountScreen(
       title: "Write these down, in order",
       subtitle: shown
-        ? "On paper, numbered, in this order. Check each word twice."
-        : "Check that no one can see your screen, then tap to show them.",
+        ? "On paper, numbered. Check each word twice."
+        : "Make sure no one's watching, then tap to show them.",
       steps: mode == .create ? (3, 3) : nil,
       // Creating, there is no way back (Paper S12); viewing, back closes the words.
       back: mode == .view ? onBack.map { AccountBack.action($0) } ?? AccountBack.none : AccountBack.none
@@ -113,10 +116,10 @@ struct PhraseShowView: View {
         PhraseGrid(words: words, revealed: $revealed, masked: captured)
         FailureBanner(failure: failure)
         if screenshotWarning {
-          FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
+          FailureBanner(failure: .badPhrase("That screenshot shows your recovery phrase. Delete it from Photos and Recently Deleted."))
         }
         WarningCallout(icon: .cameraSlash,
-                       text: "No screenshots or copying. Photos sync to the cloud, and other apps can read your clipboard.")
+                       text: "No screenshots or copying. Photos sync, and apps can read your clipboard.")
       }
       // Revealed, the phrase header joins the card and the content moves up to make room
       // (Paper F9O-0: 12 under the question block, 10 apart; hidden, 24 and 12).
@@ -184,9 +187,9 @@ struct AccountReadyView: View {
 
   static func subtitle(capabilities: AccountCapabilities, passkey: Bool, passkeyHoldsKeys: Bool) -> String {
     let keep = "Keep the paper safe, away from this iPhone."
-    guard capabilities.contains(.viewPhrase) else { return "\(keep) It's the only copy of your words." }
-    if passkey && passkeyHoldsKeys { return "\(keep) You can see the words again in Profile after Face ID." }
-    return "\(keep) Your words can't be shown again on this account."
+    guard capabilities.contains(.viewPhrase) else { return "\(keep) It's your only copy." }
+    if passkey && passkeyHoldsKeys { return "\(keep) See the words again in Profile, with Face ID." }
+    return "\(keep) Your words can't be shown again."
   }
 
   var body: some View {
@@ -232,7 +235,7 @@ struct AccountReadyView: View {
   /// Paper's hand-off card ("Next: connect your email").
   private var handOff: some View {
     InfoCard(icon: .envelope, hue: .sky, title: "Next: connect your email",
-             detail: "Hasala reads your bank's alert emails on this iPhone. Read-only, and only from your banks.")
+             detail: "Read-only, on this iPhone. Only your banks' alerts.")
   }
 
   private func row(_ title: String, _ value: String) -> some View {

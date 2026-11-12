@@ -183,7 +183,7 @@ struct PhraseEntryGrid: View {
           .accessibilityIdentifier("phraseEntry.masked")
       }
       if screenshotWarning {
-        FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
+        FailureBanner(failure: .badPhrase("That screenshot shows your recovery phrase. Delete it from Photos and Recently Deleted."))
       }
       if let unknown = state.unknownIndex, edit.wrappedValue == nil {
         FieldErrorLine(text: Self.unknownLine(unknown), announceDelay: .seconds(1.5), announceKey: text)

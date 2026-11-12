@@ -50,7 +50,7 @@ struct ProjectsListView: View {
         .padding(.horizontal, HSpacing.insetPage)
     } else {
       VStack(alignment: .leading, spacing: 16) {
-        Text("Money set aside for one thing, like a trip or a move. It stays out of your monthly plan unless you count it.")
+        Text("Money for one thing, like a trip. Outside your monthly plan unless counted.")
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
         Button("New project") { model.newProject() }
@@ -108,7 +108,7 @@ struct ProjectsEmptyState: View {
             .hType(.title2)
             .foregroundStyle(HColor.textPrimary)
             .accessibilityAddTraits(.isHeader)
-          Text("A trip, a move, Eid gifts. Give it a budget, add its payments, and see what's left. It stays out of your monthly budgets.")
+          Text("A trip, a move, Eid gifts. Track what's left, apart from your monthly budgets.")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
         }

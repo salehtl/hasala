@@ -61,14 +61,14 @@ struct BillsProfileEngineParityTests {
     #expect(d.hue == .sand)
     #expect(d.cadence == "every month · usually the 7th · Emirates NBD")
     #expect(d.noticed?.rendered(hidden: false)
-      == "Your last 6 payments arrived between the 6th and 8th. This month there's no bank email yet.")
+      == "Your last 6 payments arrived between the 6th and 8th. No bank email yet this month.")
     #expect(d.history.map(\.title) ==
       ["Wed 7 Oct", "Mon 7 Sep", "Fri 7 Aug", "Mon 6 Jul", "Mon 8 Jun", "Thu 7 May", "Tue 7 Apr"])
     #expect(d.history.first?.kind == .expected(late: true))
     #expect(d.history.first?.note == "Expected · no bank email yet")
     #expect(d.history.dropFirst().allSatisfy { $0.kind == .paid && $0.amount == .aed(550_00) })
     #expect(d.historyNote == "6 on time")
-    #expect(d.footnote == "Recurring payments are found from your history. Nothing is shared with AXA Insurance.")
+    #expect(d.footnote == "Found in your history. Nothing is shared with AXA Insurance.")
   }
 
   @Test func aPaymentThatLeftBeforeTheMonthTurnedCountsAgainstItsOwnDue() throws {

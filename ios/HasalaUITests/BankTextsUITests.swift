@@ -93,7 +93,7 @@ final class BankTextsUITests: XCTestCase {
     let app = launch(scenario: "setupTexts")
     tap(app, "source.email", opening: "bank.summary")
     XCTAssertTrue(app.staticTexts["Connect your bank alerts"].exists)
-    let sms = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'not only SMS'"))
+    let sms = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'not SMS'"))
     XCTAssertEqual(sms.count, 0, "the email-only line is still there")
     back(app)
     XCTAssertTrue(el(app, "source.texts").waitForExistence(timeout: uiWait), "back did not return to the choice")
@@ -117,13 +117,28 @@ final class BankTextsUITests: XCTestCase {
   }
 
   @MainActor
+  func testTheKeepingTipOpensItsDetail() throws {
+    let app = launch(scenario: nil, screen: "bankAlerts.texts")
+    XCTAssertTrue(el(app, "bankAlerts.status").waitForExistence(timeout: 30))
+    let tip = app.buttons["About what Hasala keeps"]
+    XCTAssertTrue(tip.waitForExistence(timeout: uiWait), "the privacy row's info tip is missing")
+    XCTAssertTrue(reveal(app, tip), "the info tip can't be reached")
+    tip.tap()
+    let detail = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'The text itself is never kept'")).firstMatch
+    XCTAssertTrue(detail.waitForExistence(timeout: uiWait), "the info tip did not open")
+    attach(app, "Bank alerts · Texts · info tip")
+    try audit(app)
+  }
+
+  @MainActor
   func testBankAlertsForTexts() throws {
     let app = launch(scenario: nil, screen: "bankAlerts.texts")
     let status = el(app, "bankAlerts.status")
     XCTAssertTrue(status.waitForExistence(timeout: 30))
     XCTAssertTrue(status.label.contains("Working") && status.label.contains("Last text added 4 min ago"), status.label)
     XCTAssertTrue(el(app, "bankAlerts.texts.automation").label.contains("Ran 4 min ago"))
-    XCTAssertTrue(el(app, "bankAlerts.texts.howItReads").label.contains("from any bank"))
+    let anyBank = el(app, "bankAlerts.texts.howItReads").staticTexts.matching(NSPredicate(format: "label CONTAINS 'from any bank'"))
+    XCTAssertTrue(anyBank.firstMatch.exists, "the any-bank line is missing")
     let bankList = NSPredicate(format: "label ==[c] %@ OR label CONTAINS[c] %@ OR identifier BEGINSWITH %@", "Banks", "bank isn't listed", "bankAlerts.texts.bank.")
     XCTAssertEqual(app.descendants(matching: .any).matching(bankList).count, 0, "texts still show a bank list")
     XCTAssertFalse(el(app, "bankAlerts.requestBank").exists, "texts still ask for a bank")
@@ -142,7 +157,7 @@ final class BankTextsUITests: XCTestCase {
     tap(app, "bankAlerts.texts.useEmail")
     let alert = app.alerts["Switch to bank email?"]
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait), "the switch alert did not open")
-    let message = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'may be the same payment as a bank text waits in Review'"))
+    let message = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Mail that may repeat a text waits in Review'"))
     XCTAssertEqual(message.count, 1, "the overlap sentence is missing")
     attach(app, "Switch to bank email")
     alert.buttons["Connect email"].firstMatch.tap()
@@ -156,7 +171,8 @@ final class BankTextsUITests: XCTestCase {
     let app = launch(scenario: nil, screen: "setup.texts")
     let skip = el(app, "texts.skip")
     XCTAssertTrue(skip.waitForExistence(timeout: 30), "Skip is missing from the automation step")
-    dragUntilHittable(app, skip)
+    app.swipeUp()
+    XCTAssertTrue(reveal(app, skip), "Skip stays under the dock")
     skip.tap()
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "Skip did not finish setup")
   }
@@ -201,7 +217,7 @@ final class BankTextsUITests: XCTestCase {
     XCTAssertTrue(ignored.label.contains("3 texts that look like payments were ignored in the last 30 days"), ignored.label)
     XCTAssertTrue(el(app, "bankAlerts.useTexts.deleteAutomation").exists, "Delete the automation is missing")
     XCTAssertTrue(el(app, "bankAlerts.useTexts").exists)
-    XCTAssertTrue(el(app, "bankAlerts.useTexts.note").label.contains("Delete the automation in the Shortcuts app"))
+    XCTAssertTrue(el(app, "bankAlerts.useTexts.note").label.contains("This account reads bank email, so bank texts aren't added."))
     attach(app, "Bank alerts · Email · Ignored texts")
     try audit(app, overSheet: true)
   }
@@ -269,7 +285,7 @@ final class BankTextsUITests: XCTestCase {
     let alert = app.alerts["Bank texts while locked"]
     XCTAssertTrue(alert.waitForExistence(timeout: 30), "the notice did not show")
     let line = alert.staticTexts.matching(
-      NSPredicate(format: "label CONTAINS '2 texts that look like payments arrived while your iPhone was locked after a restart'"))
+      NSPredicate(format: "label CONTAINS '2 texts that look like payments arrived after a restart'"))
     XCTAssertEqual(line.count, 1)
     attach(app, "Notice after unlock")
     alert.buttons["Paste a text"].tap()

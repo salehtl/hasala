@@ -441,7 +441,7 @@ public enum BillsEngine {
     let noticed: MoneyPhrase?
     switch state {
     case .late:
-      noticed = MoneyPhrase(stringLiteral: lateNotice(b) + " This month there's no bank email yet.")
+      noticed = MoneyPhrase(stringLiteral: lateNotice(b) + " No bank email yet this month.")
     case .priceChange(let usual):
       noticed = priceNotice ? nil : priceChange(b, usual: usual)
     case .upcoming, .income, .paused, .ended:
@@ -471,7 +471,7 @@ public enum BillsEngine {
       cadence: cadence.joined(separator: " · "), noticed: noticed, history: steps, historyNote: historyNote,
       footnote: b.source == .manual
         ? "You added this one. Nothing is shared with \(payee(b))."
-        : "Recurring payments are found from your history. Nothing is shared with \(payee(b))."
+        : "Found in your history. Nothing is shared with \(payee(b))."
     )
     d.source = b.source
     d.banners = banners(b)

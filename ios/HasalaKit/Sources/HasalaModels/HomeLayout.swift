@@ -54,7 +54,7 @@ public enum HomeWidgetKind: String, Sendable, Hashable, CaseIterable, Codable, C
     case .categoryWatch: "a category you pick"
     case .nextBill: "from bills Hasala found"
     case .netWorth: "after your first check-in"
-    case .comingUp: "bills and salary for the next 14 days"
+    case .comingUp: "bills and salary, next 14 days"
     case .project: "a project you pick"
     case .goal: "a savings goal you pick"
     case .toReview: "opens the review deck"
@@ -80,12 +80,12 @@ public enum HomeWidgetKind: String, Sendable, Hashable, CaseIterable, Codable, C
   public var waitingSentence: String {
     switch self {
     case .nextBill: "Bills Hasala finds will show here."
-    case .netWorth: "Your first account check-in will fill this in."
-    case .project: "Start a project in Plan to see it here."
-    case .goal: "Add a savings goal in Plan to see it here."
-    case .categoryWatch: "Set a budget in Plan to watch a category."
+    case .netWorth: "Your first account check-in fills this in."
+    case .project: "Start a project in Plan."
+    case .goal: "Add a savings goal in Plan."
+    case .categoryWatch: "Set a category budget in Plan."
     case .comingUp: "Bills Hasala finds will show here."
-    default: "Your first bank alert will fill this in."
+    default: "Your first bank alert fills this in."
     }
   }
 

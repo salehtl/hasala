@@ -36,6 +36,7 @@ struct ExchangeRatesPage: View {
         Text(Self.footnote)
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
+          .infoTip(Self.footnoteDetail, about: "estimated amounts")
           .padding(.horizontal, 4)
       }
       .padding(.horizontal, HSpacing.sheetPadding)
@@ -48,7 +49,9 @@ struct ExchangeRatesPage: View {
   }
 
   static let footnote =
-    "AED for 1 unit of each currency. A rate counts that currency's transactions that aren't counted yet, and new ones, as estimates. Transactions already counted keep their rate."
+    "Rates are AED per unit, for uncounted and new transactions. Counted ones keep theirs."
+
+  static let footnoteDetail = "Transactions converted with your rate count as estimates."
 
   static func notCountedLine(_ n: Int) -> String {
     n == 1 ? "1 transaction not counted" : "\(MoneyFormat.count(n)) transactions not counted"
@@ -119,6 +122,7 @@ struct RateEditorPage: View {
         Text(RateEditorPage.note(target, peg: peg))
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
+          .infoTip(ExchangeRates.note(target), about: "the peg")
           .padding(.horizontal, 4)
         Button("Save rate") { save() }
           .buttonStyle(.pill(.primary, fill: true))
@@ -148,11 +152,11 @@ struct RateEditorPage: View {
   }
 
   static func note(_ currency: String, peg: Int64?) -> String {
-    let removeLine = " Removing a rate leaves counted transactions as they are; new ones wait for a rate."
+    let removeLine = " Removing a rate leaves counted transactions alone; new ones wait for one."
     guard peg != nil, !currency.isEmpty else {
-      return "Use the rate on your card statement if you have it." + removeLine
+      return "Your card statement's rate is best." + removeLine
     }
-    return "\(currency) is pegged to the US dollar, so the peg is a close estimate. Your bank can charge a little more." + removeLine
+    return "Your bank may charge a little more than the peg." + removeLine
   }
 
   private func field(_ prompt: String, text: Binding<String>, id: String) -> some View {
@@ -172,7 +176,7 @@ struct RateEditorPage: View {
       return
     }
     guard ccy != Money.home else {
-      failure = "AED is your home currency, so it needs no rate."
+      failure = "AED is your home currency; no rate needed."
       return
     }
     guard let micro = ExchangeRates.parse(rate) else {

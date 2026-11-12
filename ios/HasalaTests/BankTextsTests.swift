@@ -174,10 +174,10 @@ struct BankTextsTests {
   }
 
   @Test func theTextsCopyNamesNoBank() {
-    #expect(BankTexts.anyBankLine.contains("from any bank") && BankTexts.anyBankLine.contains("adds the ones it reads with confidence") && BankTexts.anyBankLine.contains("waits in Review"))
+    #expect(BankTexts.anyBankLine.contains("from any bank") && BankTexts.anyBankLine.contains("waits in Review"))
     #expect(!BankTexts.anyBankLine.lowercased().contains("automatically"))
     let lines = [
-      BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsNoText, BankTexts.fakedTextNote,
+      BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsDetail, BankTexts.fakedTextNote,
       BankTexts.setAsideFootnote, BankTextsTestScreen.worksLine, BankTextsGuide.intro,
     ] + BankTextsGuide.shortSteps + BankTextsGuide.fullSteps + BankTextsGuide.installSteps + BankTextsGuide.checklist.map(\.detail)
     for line in lines {
@@ -261,13 +261,13 @@ struct BankTextsTests {
   }
 
   @Test func theWorksLineDoesNotPromiseEveryTextFiles() {
-    #expect(BankTextsTestScreen.worksLine.contains("filed or to Review"))
+    #expect(BankTextsTestScreen.worksLine.contains("filed or in Review"))
     #expect(!BankTextsTestScreen.worksLine.contains("adds a payment"))
   }
 
   @Test func switchingToEmailCompletesOnlyWhenAMailboxConnects() async throws {
     let message = BankTexts.switchToEmailMessage
-    #expect(message.contains("Once it connects") && message.contains("all the bank mail it finds") && message.contains("waits in Review"))
+    #expect(message.contains("Once email connects") && message.contains("may repeat a text") && message.contains("waits in Review"))
     #expect(!message.contains("only payments after") && !message.contains("nothing counts twice"))
     #expect(!BankTexts.oneSourceNote.contains("no payment counts twice"))
     let mailbox = MockMailbox()
@@ -282,13 +282,13 @@ struct BankTextsTests {
   }
 
   @Test func thePrivacyLineSaysPaymentShapedTextsFromAnySenderAreKept() {
-    for line in [BankTexts.keepsPayments, BankTexts.keepsNoText] {
+    for line in [BankTexts.keepsPayments] {
       #expect(line.contains("from any sender") && line.contains("dropped at once"))
       #expect(!line.contains("only your banks"))
     }
-    for surface in [BankTextsGuide.intro, BankTexts.keepsPayments + " " + BankTexts.anyBankLine] {
-      #expect(surface.contains("from any sender") && surface.contains("waits in Review"), "\(surface)")
-    }
+    #expect(BankTextsGuide.intro.contains("from any sender"))
+    let surface = BankTexts.keepsPayments + " " + BankTexts.anyBankLine
+    #expect(surface.contains("from any sender") && surface.contains("waits in Review"), "\(surface)")
   }
 
   @Test func switchingToTextsDisconnectsTheMailboxFirst() async {
@@ -350,8 +350,8 @@ struct BankTextsTests {
       Issue.record("the switch went ahead")
       return
     }
-    #expect(line.contains("disconnected \(MockMailbox.gmail.address)") && line.contains("couldn't disconnect \(MockMailbox.outlook.address)"))
-    #expect(line.contains("still reads bank email"))
+    #expect(line.contains("Disconnected \(MockMailbox.gmail.address)") && line.contains("not \(MockMailbox.outlook.address)"))
+    #expect(line.contains("finish the switch"))
     #expect(lane.source == .email && lane.finishCalls == 0 && SourceSwitch.reading(mailbox).map(\.id) == [MockMailbox.outlook.id])
     mailbox.disconnectFailsFor = []
     #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .switched)
@@ -757,8 +757,8 @@ struct BankTextsTests {
 
   @Test func anEmailAccountCountsTheTextsThatLookLikePaymentsItIgnored() {
     #expect(BankTexts.ignoredLine(0) == nil)
-    #expect(BankTexts.ignoredLine(1) == "1 text that looks like a payment was ignored in the last 30 days because this account reads bank email.")
-    #expect(BankTexts.ignoredLine(3) == "3 texts that look like payments were ignored in the last 30 days because this account reads bank email.")
+    #expect(BankTexts.ignoredLine(1) == "1 text that looks like a payment was ignored in the last 30 days.")
+    #expect(BankTexts.ignoredLine(3) == "3 texts that look like payments were ignored in the last 30 days.")
     let linked = MockBankTexts(link: .linked, lastRan: now, ignored: 3)
     #expect(UseBankTextsSection.ignoredLine(linked) == BankTexts.ignoredLine(3))
     #expect(linked.sawAutomationRun && UseBankTextsSection.offersDeleteAutomation(linked))
@@ -774,7 +774,7 @@ struct BankTextsTests {
     #expect(ran.status == .notSetUp && ran.lastRanAt == now && ran.sawAutomationRun)
     #expect(
       BankTexts.disconnectNote(ran, mailbox: mailbox, disconnecting: MockMailbox.gmail.id)
-        == "If your Shortcuts automation is still there, Hasala will add bank texts from now on.")
+        == "If your Shortcuts automation is still there, bank texts come in from now on.")
     let ignored = MockBankTexts(mailbox: mailbox, ignored: 2)
     #expect(BankTexts.disconnectNote(ignored, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     #expect(BankTexts.disconnectNote(MockBankTexts(mailbox: mailbox), mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
@@ -817,7 +817,7 @@ struct BankTextsTests {
     #expect(PasteBankTextModel.paymentCount("Your prepaid card XXX1234 has AED 50 to spend.") == 0)
     let promo = "Get AED 20 back when bills are paid with your card"
     #expect(PasteBankTextModel.paymentCount([MockBankTexts.sampleText, promo].joined(separator: "\n")) == 1)
-    #expect(PasteBankTextModel.severalNote(3) == "This paste has 3 payments. Hasala adds only the one shown above. Paste the others one at a time.")
+    #expect(PasteBankTextModel.severalNote(3) == "3 payments in this paste. Only the one above is added; paste the others separately.")
     let lane = MockBankTexts(setUp: true)
     lane.readDelay = .zero
     let m = PasteBankTextModel(lane: lane)
@@ -844,7 +844,7 @@ struct BankTextsTests {
     let linked = model(services(texts: MockBankTexts(link: .linked)))
     #expect(linked.readsBankEmailNote == BankTexts.setupReadsEmailElsewhere)
     #expect(BankTexts.setupReadsEmail.contains("Profile \u{203A} Bank alerts"))
-    #expect(BankTexts.setupReadsEmailElsewhere.contains("on the iPhone that reads your bank email"))
+    #expect(BankTexts.setupReadsEmailElsewhere.contains("on the iPhone that reads it"))
     #expect(!linked.bankStepSubtitle.contains("SMS"))
     let open = model(services(texts: MockBankTexts(link: .notLinked)))
     #expect(open.readsBankEmailNote == nil && !open.bankStepSubtitle.contains("SMS"))
@@ -866,21 +866,21 @@ struct BankTextsTests {
       setup: MockSetupAuthoring(), notifications: MockNotificationPermission(), bankTexts: MockBankTexts())
     #expect(!model(sample).bankStepSubtitle.contains("SMS"))
     let noLane = model(services(texts: nil))
-    #expect(noLane.readsBankEmailNote == nil && noLane.bankStepSubtitle.contains("not only SMS"))
+    #expect(noLane.readsBankEmailNote == nil && noLane.bankStepSubtitle.contains("not SMS"))
   }
 
   @Test func theKeepingCopyCoversUnreadPaymentTexts() {
-    for line in [BankTexts.keepsNoText, BankTexts.keepsPayments] {
+    for line in [BankTexts.keepsDetail, BankTexts.keepsPayments] {
       #expect(!line.contains("payments it reads") && !line.contains("payment Hasala read"))
     }
     let keepsTexts = #/\bkeeps\b[^.]*?\btexts?\b/#
-    for line in [BankTexts.keepsNoText, BankTexts.keepsPayments] {
+    for line in [BankTexts.keepsDetail, BankTexts.keepsPayments] {
       for sentence in line.split(separator: ".") where sentence.contains(keepsTexts) {
         #expect(sentence.contains("details"), "\(sentence)")
       }
     }
     #expect(BankTexts.keepsPayments.contains("texts that look like payments"))
-    #expect(BankTexts.keepsNoText.contains("never the text itself"))
+    #expect(BankTexts.keepsDetail.contains("text itself is never kept"))
   }
 
   @Test func aPasteWhileAddingIsIgnored() async throws {

@@ -33,7 +33,7 @@ final class SyncHaltUITests: XCTestCase {
     let app = launch(release: true, arguments: ["-HasalaSyncHalt", "serverRestored"])
     XCTAssertTrue(el(app, "wall.syncHalted").waitForExistence(timeout: uiWait), "no halt wall")
     XCTAssertTrue(
-      app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'restored from an earlier copy'"))
+      app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'restored from an older copy'"))
         .firstMatch.exists)
     XCTAssertTrue(el(app, "wall.syncHalted.code").label.contains("serverRestored"))
     XCTAssertFalse(el(app, "wall.erase").exists)

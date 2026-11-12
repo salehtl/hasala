@@ -870,7 +870,7 @@ struct LiveRecurringTests {
     }
     await seeded.reload()
     let generic = try #require(try Self.bill(seeded, "Netflix").notices.first { $0.id == "fork.\(loser)" })
-    #expect(generic.kind == .changedOnTwoDevices(summary: "A change made on your other iPhone was replaced"))
+    #expect(generic.kind == .changedOnTwoDevices(summary: "Your other iPhone's change was replaced"))
     try await Mapper.eventually { gate.calls.withLock { $0 } == 1 }
     await seeded.reload()
     #expect(try Self.bill(seeded, "Netflix").notices.contains { $0.id == "fork.\(loser)" })

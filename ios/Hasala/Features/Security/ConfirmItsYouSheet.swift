@@ -68,6 +68,7 @@ struct ConfirmItsYouSheet: View {
           Text(subtitle)
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
+            .infoTip(request.factor == .noKey ? Self.noKeyDetail : nil, about: "why this iPhone can't confirm")
         }
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
@@ -124,12 +125,15 @@ struct ConfirmItsYouSheet: View {
 
   private var subtitle: String {
     switch request.factor {
-    case .faceID: biometry.name.map { "\($0) confirms it's really you, using your passkey." } ?? "Your passkey confirms it's really you."
-    case .password: "Your current password, plus this iPhone's own key. Neither one can do it alone."
+    case .faceID: biometry.name.map { "\($0) confirms it's you, with your passkey." } ?? "Your passkey confirms it's you."
+    case .password: "Your password, plus this iPhone's own key."
     case .noKey:
-      "Changes need your password plus the key of an iPhone where your data is open. Here it's still sealed."
+      "Changes need an iPhone where your data is open. It's still sealed here."
     }
   }
+
+  static let noKeyDetail =
+    "A password alone can't make a change. An iPhone with your data open signs it too."
 
   /// A wrong password rings the field; anything else is said above the button.
   private var otherFailure: AuthFailure? {

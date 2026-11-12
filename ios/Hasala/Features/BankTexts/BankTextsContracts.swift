@@ -145,7 +145,7 @@ enum BankTexts {
   }
 
   static let confirmNote =
-    "If Shortcuts asked before it ran, choose Run Immediately. Otherwise each bank text waits for your tap."
+    "If Shortcuts asked first, choose Run Immediately so texts don't wait for your tap."
 
   static let clock = LiveMailboxConnecting.localTimeZone
 
@@ -175,34 +175,34 @@ enum BankTexts {
   }
 
   static let switchToEmailMessage =
-    "Next, you connect Gmail or Outlook. Once it connects, Hasala stops adding bank texts; delete the automation in the Shortcuts app too. Email brings in all the bank mail it finds. A mail that may be the same payment as a bank text waits in Review beside it, where you keep both or archive one."
+    "Once email connects, texts aren't added; delete the automation in Shortcuts. Mail that may repeat a text waits in Review."
 
   static let readsEmailNow =
-    "This account reads bank email, so Hasala adds no bank texts. Delete the automation in the Shortcuts app."
+    "This account reads bank email, so bank texts aren't added."
 
   static let pasteRefused =
-    "This account reads bank email. Switch to bank texts in Profile \u{203A} Bank alerts to paste a text."
+    "This account reads bank email. Switch to texts in Profile \u{203A} Bank alerts to paste."
 
   static func switchToTextsMessage(disconnects: Bool) -> String {
-    let rest = "Texts count from now on; payments already added stay. Next, you make the automation in the Shortcuts app."
+    let rest = "Payments already added stay. Next, make the automation in the Shortcuts app."
     return disconnects ? "Hasala disconnects your mailbox. \(rest)" : rest
   }
 
   static let setupReadsEmail =
-    "This account already reads bank email, so Hasala doesn't offer bank texts here. To use texts instead, switch in Profile \u{203A} Bank alerts."
+    "This account reads bank email. To use texts, switch in Profile \u{203A} Bank alerts."
 
   static let setupReadsEmailElsewhere =
-    "This account already reads bank email, so Hasala doesn't offer bank texts here. To use texts instead, switch in Profile \u{203A} Bank alerts on the iPhone that reads your bank email."
+    "This account reads bank email. To use texts, switch in Profile \u{203A} Bank alerts on the iPhone that reads it."
 
   static func ignoredLine(_ count: Int) -> String? {
     guard count > 0 else { return nil }
     let texts =
       count == 1 ? "1 text that looks like a payment was" : "\(MoneyFormat.count(count)) texts that look like payments were"
-    return "\(texts) ignored in the last 30 days because this account reads bank email."
+    return "\(texts) ignored in the last 30 days."
   }
 
   static let automationStillThere =
-    "If your Shortcuts automation is still there, Hasala will add bank texts from now on."
+    "If your Shortcuts automation is still there, bank texts come in from now on."
 
   static func disconnectNote(
     _ lane: (any BankTextsConnecting)?, mailbox: (any MailboxConnecting)?, disconnecting id: String
@@ -213,33 +213,33 @@ enum BankTexts {
   }
 
   static func pasteDetail(usesTexts: Bool) -> String {
-    usesTexts ? "For texts from before you set up the automation" : "It waits in Review for you to check"
+    usesTexts ? "For texts from before the automation" : "It waits in Review for you to check"
   }
 
   static func pasteIntro(usesTexts: Bool) -> String {
-    let how = "Copy it in Messages, then paste it here. Hasala reads it on this iPhone."
-    return usesTexts ? "For a text from before your automation. \(how)" : "For a payment text from your bank. \(how)"
+    let how = "Copy the text in Messages, then paste it here. It's read on this iPhone."
+    return usesTexts ? "For a text from before your automation. \(how)" : how
   }
 
-  static let keepsNoText =
-    "Hasala keeps only the details it needs from a text that looks like a payment, from any sender, never the text itself. Every other text is dropped at once, never saved or sent anywhere. The details sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
-
-  static let oneSourceNote =
-    "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
+  static let oneSourceNote = "Hasala reads one source at a time. After a switch, possible repeats wait in Review."
 
   static let keepsPayments =
-    "Hasala looks at each text on this iPhone and keeps the payment details of texts that look like payments, from any sender. Every other text is dropped at once, never saved or sent anywhere."
+    "From texts that look like payments, from any sender, Hasala keeps only the details. Other texts are dropped at once."
+
+  static let keepsDetail =
+    "The text itself is never kept, and no text leaves this iPhone. Details sync end\u{2011}to\u{2011}end encrypted."
+
+  static let keepsTopic = "what Hasala keeps"
 
   static let fakedTextNote =
-    "A text's sender can be faked. If you don't recognise a payment, check your bank's app, then archive it here."
+    "A text's sender can be faked. Don't recognise a payment? Check your bank's app, then archive it."
 
-  static let anyBankLine =
-    "Hasala reads payment texts from any bank and adds the ones it reads with confidence. Any other payment waits in Review for you to check."
+  static let anyBankLine = "Texts from any bank work. A payment Hasala isn't sure of waits in Review."
 
   static func lockedNoticeLine(_ n: Int) -> String {
     n == 1
-      ? "1 text that looks like a payment arrived while your iPhone was locked after a restart. Paste it from Messages."
-      : "\(MoneyFormat.count(n)) texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages."
+      ? "1 text that looks like a payment arrived after a restart. Paste it from Messages."
+      : "\(MoneyFormat.count(n)) texts that look like payments arrived after a restart. Paste them from Messages."
   }
 
   static func kindName(_ kind: BankTextDropKind, count n: Int) -> String {
@@ -265,11 +265,11 @@ enum BankTexts {
     rows.filter { $0.total > 0 }
   }
 
-  static let setAsideFootnote =
-    "Texts from bank senders that aren't payments. Hasala drops them at once and keeps only these counts, on this iPhone. If a payment is counted here, paste it."
+  static let setAsideFootnote = "Bank texts that weren't payments. If a payment shows here, paste it."
 
-  static let automationFootnote =
-    "The automation lives in the Shortcuts app. Hasala can't see or change it; it only gets the texts it is handed."
+  static let setAsideTip = "They're dropped at once; only these counts are kept, on this iPhone."
+
+  static let automationFootnote = "Hasala can't see or change the automation in Shortcuts."
 }
 
 extension MailboxesSummary {

@@ -53,7 +53,7 @@ enum AskSearch {
   }
 
   static func matchedNote(_ q: String, merchants n: Int) -> String {
-    "Hasala matched “\(Bidi.isolate(q))” to \(MoneyFormat.count(n)) merchant\(n == 1 ? "" : "s"). It may have missed some."
+    "Matched “\(Bidi.isolate(q))” to \(MoneyFormat.count(n)) merchant\(n == 1 ? "" : "s"). It may have missed some."
   }
 
   static func seeAllLabel(_ a: AskAnswer, _ s: LedgerState) -> String? {

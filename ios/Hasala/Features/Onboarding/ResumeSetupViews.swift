@@ -13,7 +13,7 @@ struct BootCheckView: View {
         title: session.resumeFailure == nil ? "Opening Hasala" : "Can't reach Hasala",
         subtitle: session.resumeFailure == nil
           ? "Checking your account."
-          : "You're signed in. Hasala needs a connection to open your account on this iPhone."
+          : "You're signed in. Go online to open your account."
       ) {
         if session.resumeFailure == nil || session.resuming || signingOut {
           ProgressView().frame(maxWidth: .infinity).padding(.top, 24)
@@ -56,12 +56,12 @@ struct InterruptedSetupFlowView: View {
     NavigationStack(path: Bindable(model).navigationPath) {
       AccountScreen(
         title: "Let's finish setting up",
-        subtitle: "Your account was made, but setup stopped before your keys were saved. Hasala makes them again now."
+        subtitle: "Setup stopped before your keys were saved, so we'll make new ones."
       ) {
         VStack(alignment: .leading, spacing: 12) {
-          WarningCallout(icon: .paper, text: "This is a new recovery phrase. Throw away any words you wrote down before.")
+          WarningCallout(icon: .paper, text: "New recovery phrase. Throw away any words you wrote before.")
           InfoCard(icon: .faceID, hue: .sky, title: "Then Face ID",
-                   detail: "Your passkey confirms it's you, and your data is locked with the new words.",
+                   detail: "Your passkey confirms it's you, then the new words lock your data.",
                    radius: HRadius.tile)
           FailureBanner(failure: model.failure)
         }

@@ -62,10 +62,11 @@ struct SecurityView: View {
           section("Email") { emailCard(s) }
           if s.hasPasskey || (can(.addPasskey) && s.frozen == nil) {
             section("Passkeys", footer: s.hasPasskey
-              ? "A passkey signs you in and unlocks your data. iCloud Keychain keeps it on all your Apple devices."
-              : "Add one and \(biometry.name ?? "your passkey") signs you in. On a new iPhone your 12 words still unlock your data.") { passkeys(s) }
+              ? "Signs you in and unlocks your data."
+              : "Add one and \(biometry.name ?? "your passkey") signs you in.") { passkeys(s) }
           }
-          section("Password", footer: passwordFooter(s)) { passwordCard(s) }
+          section("Password", footer: passwordFooter(s), tip: s.hasPasskey ? Self.passwordTip : nil,
+                  tipAbout: "unlocking your data") { passwordCard(s) }
           if let lock { AppLockSecuritySection(app: app, lock: lock) }
           section("Devices") { devices(s) }
           section("Recovery phrase", footer: phraseFooter(s)) { phrase(s) }
@@ -125,7 +126,7 @@ struct SecurityView: View {
       if let frozen = s.frozen {
         StatusHero(title: "Frozen", body: Self.frozenBody(frozen, canUnfreeze: can(.unfreeze)), hue: .rose, icon: .lockKeyhole)
       } else if s.hasPasskey, unseen {
-        StatusHero(title: "Almost protected", body: "Your passkey is set. Write down your 12 words to finish.",
+        StatusHero(title: "Almost protected", body: "Write down your 12 words to finish.",
                    hue: .sand, icon: .paper)
       } else if s.hasPasskey {
         StatusHero(title: "Protected", body: "Passkey and 12 words are set.\nLast sign-in \(s.lastSignIn).",
@@ -151,7 +152,7 @@ struct SecurityView: View {
         ? "We froze your account to protect it. Talk to us to unfreeze it."
         : "Only we can lift this freeze. Talk to us to unfreeze it."
     }
-    return canUnfreeze ? "Your account is frozen. Confirm it's you to unfreeze it." : "Your account is frozen."
+    return canUnfreeze ? "Confirm it's you to unfreeze it." : "Your account is frozen."
   }
 
   static func phraseDetail(_ s: SecurityState, unseen: Bool) -> String {
@@ -177,7 +178,10 @@ struct SecurityView: View {
 
   // MARK: Sections
 
-  private func section<C: View>(_ title: String, footer: String? = nil, @ViewBuilder _ content: () -> C) -> some View {
+  private func section<C: View>(
+    _ title: String, footer: String? = nil, tip: String? = nil, tipAbout: String = "",
+    @ViewBuilder _ content: () -> C
+  ) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       Text(title).hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
       HListCard { content() }
@@ -186,6 +190,7 @@ struct SecurityView: View {
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
+          .infoTip(tip, about: tipAbout)
           .padding(.horizontal, 4)
       }
     }
@@ -229,18 +234,20 @@ struct SecurityView: View {
 
   private func passwordFooter(_ s: SecurityState) -> String {
     s.hasPasskey
-      ? "A password never unlocks your data. On a new iPhone you'd still need a passkey or your 12 words."
+      ? "A password never unlocks your data."
       : can(.addPasskey)
-        ? "It's your only way to sign in, so it can't be removed until you add a passkey. It never unlocks your data."
-        : "It's your only way to sign in. It never unlocks your data."
+        ? "Your only sign-in until you add a passkey. It never unlocks your data."
+        : "Your only sign-in. It never unlocks your data."
   }
+
+  static let passwordTip = "On a new iPhone, you'd still need a passkey or your 12 words."
 
   private func phraseFooter(_ s: SecurityState) -> String {
     guard s.hasPasskey else {
-      return "Your recovery phrase can't be shown again on this account. Keep the copy you wrote down."
+      return "It can't be shown again. Keep your written copy."
     }
     return can(.rotatePhrase) && BuildSurface.showsUnfinished
-      ? "We can't see or reset your words. Viewing them emails you; new words replace the old ones everywhere."
+      ? "We can't see or reset your words. Viewing them emails you; new words replace them everywhere."
       : "We can't see or reset your words. Viewing them emails you."
   }
 
@@ -355,7 +362,7 @@ struct SecurityView: View {
       if model.lacksAnAction {
         SupportLink(lead: "Don't recognise something here? Contact us.", identifier: "security.support")
       }
-      Text(s.hasPasskey ? "Changes here ask for \(biometry.noun) first." : "Changes here ask for your password, and this iPhone signs them too.")
+      Text(s.hasPasskey ? "Changes here ask for \(biometry.noun) first." : "Changes here need your password and this iPhone's key.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
@@ -370,7 +377,7 @@ struct SecurityView: View {
   static let removeThisIPhoneTitle = "Remove this iPhone?"
 
   static let removeThisIPhoneMessage =
-    "Some changes on this iPhone can't upload. Removing it loses them for good. Everything you uploaded stays in your account."
+    "Changes that can't upload are lost for good. Everything you uploaded stays in your account."
 
   private var alertTitle: String {
     switch alert {
@@ -389,9 +396,9 @@ struct SecurityView: View {
     let confirmWith = model.state?.hasPasskey == true ? biometry.noun : "your password"
     switch a {
     case .removePasskey:
-      return "It won't be able to sign in to Hasala. You'll confirm with \(confirmWith) next."
+      return "It can't sign in after this. You'll confirm with \(confirmWith) next."
     case .removeDevice:
-      return "It's signed out now. The next time it opens Hasala, its copy of your data is erased."
+      return "It's signed out now. Its copy of your data is erased when it next opens Hasala."
     case .removeThisIPhone:
       return Self.removeThisIPhoneMessage
     case .removePassword:
@@ -403,7 +410,7 @@ struct SecurityView: View {
       // Every session ends; each device keeps its copy and its keys (`02` §9.3).
       return LockdownView.signOutEverywhereMessage
     case .freeze:
-      return "Everyone will be signed out. No one can use your account with a password, reset the password or use the recovery phrase until you confirm it's you with a passkey, or with your password on one of your iPhones."
+      return "Signs everyone out and blocks password sign-in, resets and the recovery phrase. To unfreeze, use a passkey or your password on one of your iPhones."
     }
   }
 

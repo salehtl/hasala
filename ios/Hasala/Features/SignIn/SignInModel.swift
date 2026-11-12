@@ -337,7 +337,7 @@ final class SignInModel {
     }
     if let kind = verifiedRecoveryKind, kind != credential.method {
       // The ceremony is bound to the kind it was verified with; its code is spent.
-      fail(.badPhrase("This recovery was started for a \(kind == .passkey ? "passkey" : "password"). Go back to your words to choose again."),
+      fail(.badPhrase("This recovery is for a \(kind == .passkey ? "passkey" : "password"). To switch, go back to your words."),
            on: screen)
       return .failed
     }

@@ -574,7 +574,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   @Test func removingThisIPhoneWithChangesThatCantUploadSaysWhatIsLost() {
     #expect(SecurityView.removeThisIPhoneTitle == "Remove this iPhone?")
     #expect(SecurityView.removeThisIPhoneMessage
-      == "Some changes on this iPhone can't upload. Removing it loses them for good. Everything you uploaded stays in your account.")
+      == "Changes that can't upload are lost for good. Everything you uploaded stays in your account.")
     let words = SecurityModel.words(for: .perform(.removeThisIPhoneLosingUnsent), email: "maya@example.com", state: nil)
     #expect(words.0 == "Remove this iPhone")
     #expect(words.1 == ["Changes that can't upload are lost for good", "Everything you uploaded stays in your account"])
@@ -636,7 +636,7 @@ struct SignInSecurityFlowTests: AccountSuite {
   /// Paper MTO: the holder's wall says the freeze came from our email (the cue for
   /// "Someone may be reading your email"), unless it was made here.
   @Test func theHolderWallSaysWhereTheFreezeCameFrom() {
-    let tail = " Everyone is signed out, and nothing on your account can change until you unfreeze."
+    let tail = " Everyone is signed out, and nothing can change until you unfreeze."
     #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20"))
       == "\u{201C}Freeze my account\u{201D} was used from our email on Sun 11 Oct at 21:20." + tail)
     #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: nil))
@@ -649,14 +649,14 @@ struct SignInSecurityFlowTests: AccountSuite {
   /// account's device shows the words, and a password account's can't even after it adds
   /// a passkey there.
   @Test func theHonestEndPromisesOnlyWhatTheOtherDeviceCanDo() {
-    let paper = "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
+    let paper = "It can add a passkey or show your words, after Face ID."
     #expect(HonestEndScreen.otherDevice(addsPasskeys: true, method: .passkey) == paper)
     #expect(HonestEndScreen.otherDevice(addsPasskeys: false, method: .passkey).contains("can show your words"))
     for adds in [true, false] {
       let passwordOnly = HonestEndScreen.otherDevice(addsPasskeys: adds, method: .password)
       #expect(!passwordOnly.contains("can show your words"))
-      #expect(passwordOnly == "Your data still opens there, but it can't show your words. Keep it signed in.")
-      #expect(HonestEndScreen.otherDevice(addsPasskeys: adds, method: nil).contains("where your passkey works"))
+      #expect(passwordOnly == "Your data opens there, but it can't show your words. Keep it signed in.")
+      #expect(HonestEndScreen.otherDevice(addsPasskeys: adds, method: nil).contains("If your passkey works there"))
     }
   }
 

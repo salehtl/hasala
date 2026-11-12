@@ -115,7 +115,7 @@ final class CategoryDetailViewModel: CategoryDetailModel {
   }
 
   // TODO(spec 12 §7): "Add a rule" needs a rule-making screen (Categories and rules).
-  func addRule() { app.say("Adding a rule here isn't in this build yet", icon: .wand) }
+  func addRule() { app.say("Adding rules isn't in this build yet", icon: .wand) }
 }
 
 // MARK: - Plan · Japan trip

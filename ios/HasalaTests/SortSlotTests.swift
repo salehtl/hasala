@@ -43,20 +43,20 @@ struct SortSlotTests {
   @Test func theImportCopy() {
     #expect(SortSlot.importingTitle(Self.reading) == "Reading your mail · 312 so far")
     #expect(SortSlot.importingTitle(MailImport(state: .reading, read: 0, total: 0)) == "Reading your mail")
-    #expect(SortSlot.importingLine(Self.reading) == "You can start on the ones here now. More arrive as Hasala reads.")
+    #expect(SortSlot.importingLine(Self.reading) == "Start sorting. More arrive as Hasala reads.")
     #expect(SortSlot.importingSpoken(Self.reading)
-      == "Reading your mail, 312 so far. You can start on the ones here now. More arrive as Hasala reads.")
+      == "Reading your mail, 312 so far. Start sorting. More arrive as Hasala reads.")
     #expect(SortSlot.importingLine(MailImport(state: .offline, read: 3, total: 9))
-      == "Paused. No internet connection. It continues when you're back online.")
-    #expect(SortSlot.importingLine(MailImport(state: .paused, read: 3, total: 9)) == "Paused for now. Hasala tries again soon.")
+      == "No internet. Reading resumes once you're online.")
+    #expect(SortSlot.importingLine(MailImport(state: .paused, read: 3, total: 9)) == "Paused. Trying again soon.")
   }
 
   @Test func withNothingToSortTheImportDoesNotInviteAStart() {
     let line = SortSlot.importingLine(Self.reading, queued: false)
-    #expect(line == "Hasala is reading your bank alerts. Transactions to sort show up here.")
+    #expect(line == "Transactions to sort show up here.")
     #expect(!line.contains("start"))
     #expect(SortSlot.importingSpoken(Self.reading, queued: false)
-      == "Reading your mail, 312 so far. Hasala is reading your bank alerts. Transactions to sort show up here.")
+      == "Reading your mail, 312 so far. Transactions to sort show up here.")
     let offline = MailImport(state: .offline, read: 3, total: 9)
     #expect(SortSlot.importingLine(offline, queued: false) == SortSlot.importingLine(offline))
   }

@@ -44,9 +44,9 @@ struct SearchView: View {
   static func nothingFoundCopy(_ q: String, reason: SearchFallback?) -> (title: String, body: String) {
     let title = "No matches for “\(Bidi.isolate(q))”"
     if case .unavailable = reason {
-      return (title, "Questions need Apple Intelligence on this iPhone. Try a merchant name or a category.")
+      return (title, "Questions need Apple Intelligence. Try a merchant name or a category.")
     }
-    return (title, "Try a merchant name or a category. Bank alerts usually spell merchant names in English.")
+    return (title, "Try a merchant name or a category. Alerts usually spell merchant names in English.")
   }
 
   var body: some View {

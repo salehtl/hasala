@@ -232,7 +232,7 @@ struct SampleDataLabel: View {
     .padding(.vertical, 4)
     .background(HColor.chipInfoSurface, in: Capsule())
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("Sample data. This account shows a sample month, not your email.")
+    .accessibilityLabel("Sample data. A sample month, not your email.")
     .accessibilityIdentifier("home.sampleData")
   }
 }

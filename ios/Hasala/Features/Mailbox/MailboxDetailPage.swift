@@ -136,9 +136,10 @@ struct MailboxDetailPage: View {
         .accessibilityIdentifier("mailbox.headerOrderCheck")
       }
     #endif
-    disconnect(m, footnote: m.state == .disconnected ? nil : Self.disconnectFootnote(m.provider))
+    disconnect(m, footnote: m.state == .disconnected ? nil : Self.disconnectFootnote,
+               tip: Self.providerSettingsTip(m.provider))
     if m.state == .disconnected {
-      Text("Hasala no longer reads this mailbox. Past transactions stay.")
+      Text("No longer read. Past transactions stay.")
         .hType(.footnote).foregroundStyle(HColor.textSecondary)
         .padding(.horizontal, 16)
     }
@@ -201,6 +202,7 @@ struct MailboxDetailPage: View {
         Text(Self.signInHeading(m))
           .hType(.headline).foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
+          .infoTip(m.note == nil ? Self.signInCause : nil, about: "why access ends")
         Text(Self.signInBody(m))
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -228,19 +230,19 @@ struct MailboxDetailPage: View {
     disconnect(m, footnote: "No new alerts from this mailbox. You choose whether its transactions stay.")
   }
 
-  /// "This happens after a password change, a long time signed out, or a work policy. No new
-  /// Outlook alerts since Wed 7 Oct. Sign in again and the iPhone catches up. Nothing else
-  /// changes."
+  /// "No new Outlook alerts since Wed 7 Oct. Sign in again to catch up."
   static func signInBody(_ m: MailboxSnapshot) -> String {
     // A sign-in that the provider didn't end (live: no Outlook mailbox on that account).
     if let note = m.note { return note }
-    var lines = ["This happens after a password change, a long time signed out, or a work policy."]
+    var lines: [String] = []
     if let day = m.lastChecked?.split(separator: ",").first {
       lines.append("No new \(m.provider.appName) alerts since \(day).")
     }
-    lines.append("Sign in again and the iPhone catches up. Nothing else changes.")
+    lines.append("Sign in again to catch up.")
     return lines.joined(separator: " ")
   }
+
+  static let signInCause = "Usually after a password change, a long time signed out, or a work policy."
 
   /// "Microsoft ended Hasala's access", or, when a note says the provider didn't end it
   /// (no Outlook mailbox on that account), just what to do.
@@ -288,7 +290,7 @@ struct MailboxDetailPage: View {
     }
   }
 
-  @ViewBuilder private func disconnect(_ m: MailboxSnapshot, footnote: String?) -> some View {
+  @ViewBuilder private func disconnect(_ m: MailboxSnapshot, footnote: String?, tip: String? = nil) -> some View {
     // Not for a mailbox read on another iPhone: the server's delete would end its reading there.
     if m.readElsewhere {
       // Where Disconnect is for this one: the iPhone that holds its sign-in, or the
@@ -307,21 +309,24 @@ struct MailboxDetailPage: View {
         if let footnote {
           Text(footnote).hType(.footnote).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
+            .infoTip(tip, about: "access in your \(m.provider.company) account")
             .padding(.horizontal, 16)
         }
       }
     }
   }
 
-  /// Paper 1NEG's footnote, naming the provider's own settings.
-  static func disconnectFootnote(_ provider: MailProviderKind) -> String {
-    "New alerts from this mailbox stop, and its sign-in is deleted from this iPhone. You choose whether the transactions it brought in stay. You can also remove Hasala in your \(provider.company) account settings."
+  /// Paper 1NEG's footnote; its tip names the provider's own settings.
+  static let disconnectFootnote = "Stops alerts and deletes its sign-in from this iPhone. You choose whether its transactions stay."
+
+  static func providerSettingsTip(_ provider: MailProviderKind) -> String {
+    "You can also remove Hasala in your \(provider.company) account settings."
   }
 
   /// A mailbox read on another iPhone: this iPhone holds no sign-in to end, so it says
   /// where to disconnect it.
   static func readElsewhereFootnote(_ provider: MailProviderKind) -> String {
-    "Your other iPhone reads this mailbox and holds its sign-in. Disconnect it there, or remove Hasala at \(MailCopy.consentPage(provider))."
+    "Your other iPhone reads this mailbox. Disconnect it there, or remove Hasala at \(MailCopy.consentPage(provider))."
   }
 
   private func signInAgain(_ provider: MailProviderKind) {

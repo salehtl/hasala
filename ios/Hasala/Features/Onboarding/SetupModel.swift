@@ -213,8 +213,8 @@ final class SetupModel {
   }
 
   var bankStepSubtitle: String {
-    let reads = "Hasala reads your banks' alert emails on this iPhone."
-    return bankTexts == nil ? "\(reads) Alerts must come by email, not only SMS." : reads
+    let reads = "Hasala reads your banks' alert emails"
+    return bankTexts == nil ? "\(reads), not SMS." : "\(reads)."
   }
 
   var connectBusy: Bool { connecting || coordinators.values.contains(where: \.busy) }

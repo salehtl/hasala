@@ -36,7 +36,7 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     attach(app, "Release · 12 words")
     assertNoPlaceholders(app, "12 words")
     assertNoText(app, ["code we email"], "12 words")
-    assertText(app, "If your passkey isn't there, these words unlock your data.", "12 words")
+    assertText(app, "No passkey there? These words unlock your data.", "12 words")
     try audit(app)
     tap(app, "phrase.start")
     tap(app, "phrase.reveal")
@@ -45,7 +45,7 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Account ready")
     assertPersonalAccountsOnly(app, "Account ready")
     // The beta can't add a passkey, so a password account can't see its words again.
-    assertText(app, "Keep the paper safe, away from this iPhone. Your words can't be shown again on this account.",
+    assertText(app, "Keep the paper safe, away from this iPhone. Your words can't be shown again.",
                "Account ready")
     assertNoText(app, ["Add Face ID in Profile"], "Account ready")
     // "What Hasala reads, and what it doesn't": Google or Microsoft, as the build connects.

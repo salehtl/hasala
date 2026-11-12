@@ -142,7 +142,7 @@ private struct MailBanksStep: View {
   var body: some View {
     AccountScreen(
       title: "Which bank do you use?",
-      subtitle: "Pick yours. Hasala reads only their transaction alerts, nothing else in your mail.",
+      subtitle: "Hasala reads only your banks' transaction alerts.",
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
@@ -161,7 +161,7 @@ private struct MailBanksStep: View {
         }
       }
     } footer: {
-      LockNote(text: "Next you'll connect \(provider.appName), read-only. Only alerts from the banks you pick are downloaded, straight to this iPhone.")
+      LockNote(text: "Next you'll connect \(provider.appName), read-only, on this iPhone.")
         .padding(.bottom, 8)
       BusyButton(title: chosen.count == 1 ? "Continue with 1 bank" : "Continue with \(chosen.count) banks",
                  busy: busy, enabled: !chosen.isEmpty && setup != nil, identifier: "bank.continue") {

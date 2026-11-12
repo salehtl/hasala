@@ -24,7 +24,7 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
 
     tap(app, "bank.change")
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "Your banks did not open")
-    assertText(app, "Meanwhile, Skip lets you add spending by hand.", "Your banks")
+    assertText(app, "Meanwhile, tap Skip to add spending by hand.", "Your banks")
     assertPresent(app, ["bank.howTo", "bank.tellUs"], "Your banks")
     assertNoPlaceholders(app, "Your banks")
     attach(app, "Release · Your banks")
@@ -105,7 +105,7 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Bank")
     XCTAssertTrue(el(app, "mail.sample").waitForExistence(timeout: 10))
     tap(app, "bank.change")
-    assertText(app, "look around with sample data meanwhile", "Your banks (review account)")
+    assertText(app, "Meanwhile, try sample data.", "Your banks (review account)")
     tap(app, "banks.done")
     attach(app, "Release · Gmail · review account")
     assertNoPlaceholders(app, "Gmail (review account)")

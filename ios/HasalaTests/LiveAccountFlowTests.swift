@@ -720,7 +720,7 @@ struct LiveAccountFlowTests {
       try await mailboxStepUp(a, passkey: false, log: log)
         .proof(kind: "mailbox.link", payloadHash: Data(repeating: 7, count: 32))
     }
-    #expect(log.lines == ["password: Confirm it's you to connect this mailbox to Hasala"])
+    #expect(log.lines == ["password: Confirm it's you to connect this mailbox"])
     #expect(server.lastStepUpAction == "mailbox.link")
   }
 }

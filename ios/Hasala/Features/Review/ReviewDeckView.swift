@@ -242,7 +242,7 @@ struct ReviewDeckView: View {
         }
         if BuildSurface.showsUnfinished, !top.fromText {
           // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
-          Button("View bank email") { app.say("The bank email opens in a later build", icon: .envelope) }
+          Button("View bank email") { app.say("Coming in a later build", icon: .envelope) }
         }
       }
     } label: {
@@ -539,7 +539,7 @@ struct ReviewDeckView: View {
         HColor.borderSubtle.frame(width: 1, height: 20)
         Button {
           // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
-          app.say("The bank email opens in a later build", icon: .envelope)
+          app.say("Coming in a later build", icon: .envelope)
         } label: {
           HStack(spacing: 6) {
             PathGlyph(PathGlyph.envelope, size: 18, color: HColor.textLink, stroke: 1.9)
@@ -1120,7 +1120,7 @@ struct ReviewCardView<Actions: View>: View {
     .buttonStyle(.plain)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(r.title). \(card.reasonLine ?? r.detail)")
-    .accessibilityHint("Shows what this means and what to do")
+    .accessibilityHint("Explains this and your choices")
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("review.reasonStrip.\(r.rawValue)")
   }

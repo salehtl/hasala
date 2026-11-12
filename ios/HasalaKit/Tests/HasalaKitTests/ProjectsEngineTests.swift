@@ -116,7 +116,7 @@ struct ProjectsEngineTests {
 
   @Test func aDraftExplainsWhyItCantBeSaved() {
     #expect(ProjectDraft(name: "  ").refusal == "Give the project a name")
-    #expect(ProjectDraft(name: "Trip", budget: .aed(0)).refusal == "The money set aside must be more than 0")
+    #expect(ProjectDraft(name: "Trip", budget: .aed(0)).refusal == "The budget must be more than 0")
     #expect(ProjectDraft(name: "Trip", starts: LocalDate(2026, 12, 2), ends: LocalDate(2026, 12, 1)).refusal
       == "The end date is before the start date")
     #expect(ProjectDraft(name: "Trip").refusal == nil)

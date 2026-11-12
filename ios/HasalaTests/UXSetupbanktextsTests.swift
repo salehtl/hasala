@@ -189,11 +189,11 @@ struct UXSetupbanktextsTests {
   @Test func theAutomationStepsSayAlmostEveryTextReachesHasala() throws {
     let link = try #require(URL(string: "https://www.icloud.com/shortcuts/test"))
     let subtitle =
-      "One automation in the Shortcuts app hands Hasala almost every text you get, from anyone, on this iPhone. Hasala keeps only payments."
+      "It hands Hasala almost every text you get."
     #expect(TextsSetUpCopy(install: link).subtitle == subtitle && TextsSetUpCopy(install: nil).subtitle == subtitle)
     let sentences = BankTexts.keepsPayments.split(separator: ".").map { $0.trimmingCharacters(in: .whitespaces) }
-    #expect(sentences.filter { $0.hasPrefix("Hasala") }.count == 1)
-    #expect(BankTexts.keepsPayments.contains("from any sender") && BankTexts.keepsPayments.contains("never saved or sent"))
+    #expect(sentences.filter { $0.contains("Hasala") }.count == 1)
+    #expect(BankTexts.keepsPayments.contains("from any sender") && BankTexts.keepsDetail.contains("text itself is never kept"))
   }
 
   @Test func backFromShortcutsTheTestLeadsAndAddingAgainWarnsOfTwoAutomations() throws {
@@ -210,7 +210,7 @@ struct UXSetupbanktextsTests {
     #expect(SourceCardCopy.upsides(.texts) == [
       "No mailbox access, no Google warning", "Any bank that texts you", "Works when your bank only texts",
     ])
-    #expect(SourceCardCopy.downsides(.texts).first == "Hasala sees each text with a full stop, from anyone, and drops all but payments")
+    #expect(SourceCardCopy.downsides(.texts).first == "Sees each text with a full stop, from anyone, and keeps only payments")
     #expect(SourceCardCopy.upsides(.email).first == "Emirates NBD, DIB and ADIB")
     #expect(SourceCardCopy.subtitle(.email) == "Gmail or personal Outlook, read-only")
     #expect(SourceCardCopy.downsides(.email) == ["Gmail shows an unverified-app warning in the beta"])
@@ -218,12 +218,12 @@ struct UXSetupbanktextsTests {
 
   @Test func messagesOpensWithTheTestWritten() {
     #expect(BankTexts.messagesURL.absoluteString == "sms:&body=Hasala%20test.")
-    #expect(BankTextsTestScreen.subtitle(.idle) == "Messages opens with the test written. Send it to your own number. Hasala is watching for it.")
+    #expect(BankTextsTestScreen.subtitle(.idle) == "Messages opens with the test written. Send it to your own number.")
     #expect(BankTextsTestScreen.copiedFor == .seconds(2))
   }
 
   @Test func theFakedSenderLineShowsWhereTextsAreRead() {
-    #expect(BankTexts.fakedTextNote == "A text's sender can be faked. If you don't recognise a payment, check your bank's app, then archive it here.")
+    #expect(BankTexts.fakedTextNote == "A text's sender can be faked. Don't recognise a payment? Check your bank's app, then archive it.")
     #expect(BankTextsAlertsPage.readsRows.map(\.text).contains(BankTexts.fakedTextNote))
   }
 
@@ -235,15 +235,15 @@ struct UXSetupbanktextsTests {
     #expect(BankTextsAlertsPage.skippedTitle == "Skipped texts")
     #expect(BankTexts.setAsideDetail(BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.promotion: 1])) == "1 text skipped in the last 30 days\n1 promotion")
     let rows = BankTextsAlertsPage.readsRows.map(\.text)
-    #expect(rows.count == 4 && rows.contains(BankTexts.keepsNoText))
-    #expect(BankTexts.keepsNoText.contains("never leaves this iPhone") && BankTexts.keepsNoText.contains("end\u{2011}to\u{2011}end encrypted"))
+    #expect(rows.count == 4 && rows.contains(BankTexts.keepsPayments))
+    #expect(BankTexts.keepsDetail.contains("leaves this iPhone") && BankTexts.keepsDetail.contains("end\u{2011}to\u{2011}end encrypted"))
   }
 
   @Test func theBankTextsPageKeepsOneRowForWhatIsKeptAndFlagsTheFakedSender() {
     let rows = BankTextsAlertsPage.readsRows
     #expect(rows.map(\.icon) == [.chat, .bank, .privacy, .info])
-    #expect(BankTexts.keepsNoText.contains("never saved or sent anywhere"))
-    #expect(BankTexts.keepsNoText.hasSuffix("encrypted; the text never leaves this iPhone."))
+    #expect(BankTexts.keepsPayments.contains("dropped at once"))
+    #expect(BankTexts.keepsDetail.contains("text itself is never kept"))
   }
 
   @Test func thePasteIntroGoesAndTheDockIsSolidOnceAMatchShows() async {
@@ -258,7 +258,7 @@ struct UXSetupbanktextsTests {
   }
 
   @Test func theSeveralPaymentsWarningSaysWhichOneIsAdded() {
-    #expect(PasteBankTextModel.severalNote(3) == "This paste has 3 payments. Hasala adds only the one shown above. Paste the others one at a time.")
+    #expect(PasteBankTextModel.severalNote(3) == "3 payments in this paste. Only the one above is added; paste the others separately.")
   }
 
   @Test func theTextsSwitchSaysMailbox() {

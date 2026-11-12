@@ -17,12 +17,12 @@ struct InviteCodeView: View {
   var onSignIn: () -> Void
   @State private var focused = false
 
-  static let notAnInviteLink = "That link isn't a Hasala invite. Check your invite email, or enter the code."
+  static let notAnInviteLink = "Not a Hasala invite link. Enter the code from your invite email."
 
   private var notFound: Bool { model.failure == .notInvited }
 
-  static let alreadyUsedDetail = "Each invite works once. If you made an account, you don't need another."
-  static let linkNotFound = "This invite link didn't work. It may have been used, or it's past its date."
+  static let alreadyUsedDetail = "Each invite works once. Made an account? You don't need another."
+  static let linkNotFound = "This invite link didn't work. It may have been used or expired."
 
   static func notFoundMessage(fromLink: Bool) -> String? {
     fromLink ? linkNotFound : AuthFailure.notInvited.message
@@ -35,7 +35,7 @@ struct InviteCodeView: View {
   var body: some View {
     AccountScreen(
       title: "Enter your invite code",
-      subtitle: "It's in your invite email from Hasala. You only need it once.",
+      subtitle: "It's in your invite email from Hasala.",
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
@@ -43,14 +43,14 @@ struct InviteCodeView: View {
         // Paper's "Not found" (E6F) swaps where to find the code for why it may not work.
         if !notFound {
           InfoCard(icon: .envelope, hue: .sky, title: "Look for \u{201C}Your Hasala invite\u{201D}",
-                   detail: "From no-reply@hasala.app, sent to the email you used on the waitlist.", radius: HRadius.tile)
+                   detail: "From no-reply@hasala.app, to your waitlist email.", radius: HRadius.tile)
             .hTransition(.fade)
         } else {
           ReasonsCard(
             reasons: [
               ("Already used it?", Self.alreadyUsedDetail),
               ("Past the date in your email?",
-               "Expired invites go back to the list. Ask again at hasala.app and we'll send a new one."),
+               "Expired invites go back to the waitlist. Ask again at hasala.app for a new one."),
             ],
             link: ReasonsCard.ReasonLink(row: 0, title: "Sign in instead", identifier: "invite.signIn", action: onSignIn))
           .hTransition(.rise)
@@ -138,7 +138,7 @@ struct AboutYouView: View {
   private var emailError: String? {
     model.emailError
       ?? (AccountFields.emailTooLong(model.email)
-        ? "This address is too long. Use a shorter one." : nil)
+        ? "Too long. Use a shorter address." : nil)
   }
 
   private var chipBeside: Bool { model.emailConfirmed && !typeSize.isAccessibilitySize && chipInline }
@@ -147,13 +147,13 @@ struct AboutYouView: View {
   var body: some View {
     AccountScreen(
       title: "Create your account",
-      subtitle: "Just a name and an email. No usernames.",
+      subtitle: "A name and an email. No usernames.",
       steps: (1, 3),
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 12) {
-          AccountField("Your name", help: "What Hasala calls you, in the app and in emails.", error: nameError) {
+          AccountField("Your name", help: "Used in the app and emails.", error: nameError) {
             WrappingTextField(placeholder: "", text: $model.displayName)
               .textContentType(.name)
               .textInputAutocapitalization(.words)
@@ -177,7 +177,7 @@ struct AboutYouView: View {
         .id(Self.fieldsID)
         FailureBanner(failure: model.failure)
         GlyphNote(icon: .shieldCheck,
-                  text: "We only email you about your account: codes, invites and security alerts. Never your money, never marketing.")
+                  text: "We email only codes, invites and security alerts. Never your money or marketing.")
       }
     } actions: {
       BusyButton(title: "Continue", busy: model.busy, enabled: model.aboutYouReady, identifier: "about.continue") {
@@ -219,12 +219,12 @@ struct SignInMethodView: View {
 
   static func subtitle(emailProvenByLink: Bool) -> String {
     emailProvenByLink
-      ? "Your link opened it and confirmed your email. Now pick how you'll get back in."
-      : "Email verified. Now pick how you'll get back in."
+      ? "Your invite link confirmed your email."
+      : "Your email is verified."
   }
 
   static let passwordDetail =
-    "Signs you in anywhere you can type. It can't unlock your data on a new iPhone, and your 12 words can't be shown again, so keep your paper safe."
+    "Signs you in anywhere. Can't unlock your data on a new iPhone, and your 12 words can't be shown again."
 
   var body: some View {
     AccountScreen(
@@ -235,7 +235,7 @@ struct SignInMethodView: View {
     ) {
       VStack(spacing: 12) {
         choice(.passkey, icon: .faceID, hue: .sky, title: "Use Face ID (passkey)", recommended: true,
-               text: "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone.")
+               text: "Nothing to remember. Syncs in iCloud Keychain and unlocks your data on a new iPhone.")
         choice(.password, icon: .password, hue: .other, title: "Use a password", recommended: false,
                text: Self.passwordDetail)
         FailureBanner(failure: model.failure)
@@ -270,7 +270,7 @@ struct CreatePasswordView: View {
   var body: some View {
     AccountScreen(
       title: "Create a password",
-      subtitle: "12 characters or more. A short phrase you'll remember works well.",
+      subtitle: "12 characters or more. A short phrase works well.",
       steps: (2, 3),
       back: .system
     ) {
@@ -301,7 +301,7 @@ struct CreatePasswordView: View {
         }
         .id(Self.fieldsID)
         NoteRow(icon: .lock,
-                text: "Your password signs you in, but it can't unlock your data on a new iPhone. The 12 words in the next step do that.")
+                text: "A password can't unlock your data on a new iPhone. Your 12 words can.")
       }
       .hAnimation(.rise, value: model.newPassword.isEmpty)
     } actions: {

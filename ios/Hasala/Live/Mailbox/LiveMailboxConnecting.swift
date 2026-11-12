@@ -215,7 +215,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     case .empty, .addressRequired: return "Type the full address, such as alerts@\(domain)."
     case .forwarder: return "That's a personal email service. Type the address your bank sends from."
     case .sharedSuffix, .notQuerySafe: return "Hasala can't read that address. Check it and try again."
-    case .nonASCII: return "Type the address in English letters, as it shows on the alert."
+    case .nonASCII: return "Type it in English letters, as on the alert."
     }
   }
 
@@ -381,7 +381,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   // MARK: Connect, sign in again, disconnect
 
   private func lane() throws(MailConnectFailure) -> MailboxLane {
-    guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
+    guard let rt = runtime() else { throw .failed("Still opening your account. Try again in a moment.") }
     guard let lane = rt.lane else { throw .failed("Email isn't available in this build.") }
     return lane
   }
@@ -417,7 +417,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     _ provider: MailProviderKind, replacing: Bool, removingOld: Bool, pastMail: MailPastChoice,
     ask: @escaping MailSwitchAsk
   ) async throws(MailConnectFailure) -> MailLinked {
-    guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
+    guard let rt = runtime() else { throw .failed("Still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
     if let refusal = Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
       throw .failed(refusal.message)
@@ -590,7 +590,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     case .otherDevice: throw .takenByOtherIPhone
     case .failed: throw .failed("Couldn't disconnect \(provider.appName). Try again.")
     case .disconnectedRemoveFailed:
-      throw .failed("\(provider.appName) is disconnected, but its transactions couldn't be removed. They stay for now.")
+      throw .failed("\(provider.appName) is disconnected, but its transactions couldn't be removed.")
     }
   }
 
@@ -659,7 +659,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   }
 
   func loadSampleData() async throws(SetupFailure) {
-    guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
+    guard let rt = runtime() else { throw .failed("Still opening your account. Try again in a moment.") }
     try await rt.loadSample()
   }
 
@@ -685,7 +685,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     case .noMailbox: MailConnectFailure.noMailboxLine(provider)
     case .stepUpFailed: "We couldn't confirm it's you. Try again."
     case .mailboxInUse:
-      "This \(provider.appName) address is connected to another Hasala account. Disconnect it there, or connect a different address."
+      "This \(provider.appName) address is connected to another Hasala account. Disconnect it there, or use another address."
     case .notConfigured: "\(provider.appName) isn't available in this build."
     case .stateMismatch, .nonceMismatch, .serverRefused, .keychain, .google:
       provider == .outlook

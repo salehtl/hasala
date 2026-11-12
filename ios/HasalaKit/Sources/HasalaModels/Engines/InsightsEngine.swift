@@ -187,7 +187,7 @@ public enum InsightsEngine {
 
     let status: String
     let isRange = months.lowerBound != months.upperBound
-    let rangeNote = isRange ? "Insights shows one month at a time. Home and Activity show \(title(of: months))." : nil
+    let rangeNote = isRange ? "Insights shows one month. Home and Activity show \(title(of: months))." : nil
     if isRange {
       status = "\(focus.shortName) · latest in range"
     } else if ctx.isCurrent {
@@ -264,7 +264,7 @@ public enum InsightsEngine {
       let first = ctx.all.map(\.postedAt.date).min()
       let start = first.map { "Your first scan went back to \($0.day) \($0.yearMonth.name). " } ?? ""
       notice = InsightsNotice(title: "Nothing to compare yet",
-                              message: start + "Changes show here once a month has a month before it.")
+                              message: start + "Changes show from your second month.")
     }
 
     let (flow, flowEmpty) = flow(ctx, now: now) { !Spending.notCounted(s, in: .month($0)).isEmpty }
@@ -389,12 +389,12 @@ public enum InsightsEngine {
   static func flow(_ ctx: Context, now: LocalDateTime, projects: (YearMonth) -> Bool = { _ in false }) -> (InsightsFlow, String?) {
     let none = InsightsFlow(span: ctx.focus.name, months: [], averageOut: nil, note: "")
     guard let first = ctx.all.map(\.postedAt.date.yearMonth).min() else {
-      return (none, "Money in and out shows here once transactions arrive.")
+      return (none, "Shows once transactions arrive.")
     }
     var start = ctx.focus
     for _ in 1..<flowLength where start.previous >= first { start = start.previous }
     guard start <= ctx.focus, first <= ctx.focus else {
-      return (none, "Nothing came in or went out by the end of \(ctx.focus.name).")
+      return (none, "No money in or out through \(ctx.focus.name).")
     }
     var months: [InsightsFlowMonth] = []
     var m = start
@@ -408,7 +408,7 @@ public enum InsightsEngine {
     let complete = months.filter { !$0.inProgress }
     guard !complete.isEmpty else {
       let next = first.next
-      return (none, "Your first full month shows here on 1 \(next.name). Each month after that adds a bar, up to six.")
+      return (none, "Your first full month shows on 1 \(next.name).")
     }
     let avg = average(complete.map(\.out.minor))
     let sortedOnly = ctx.all.allSatisfy { l in
@@ -419,11 +419,11 @@ public enum InsightsEngine {
       ? months[0].month.name : "\(months[0].month.shortName)\u{2013}\(months[months.count - 1].month.shortName)"
     let lead =
       months.contains { projects($0.month) }
-      ? "Out leaves out projects you keep outside your plan, "
+      ? "Out leaves out projects outside your plan, "
       : sortedOnly ? "Out is spending on needs and wants, " : "Out is everything you spent, "
     let note = MoneyPhrase([
       .text(lead), .amount(.aed(avg)),
-      .text(" a month on average. Transfers between your accounts and moves to savings are left out."),
+      .text(" a month on average, not counting transfers or savings."),
     ])
     return (InsightsFlow(span: span, months: months, averageOut: .aed(avg), note: note), nil)
   }

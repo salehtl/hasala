@@ -245,7 +245,7 @@ final class FinishSetupModel {
   }
 
   static func alreadyCheckingLine(_ provider: MailProviderKind) -> String {
-    "Hasala is already reading \(provider.appName). New alerts show on Home as they're read."
+    "Already reading \(provider.appName). New alerts show on Home as they arrive."
   }
 
   var today: LocalDate { (services.setup as? SetupClock)?.today() ?? LedgerToday.device() }
@@ -319,7 +319,7 @@ struct FinishSetupSection: View {
           case .connectEmail:
             FinishSetupRow(
               icon: .envelope, title: "Connect your email",
-              detail: "Where your banks send alerts. Hasala reads them on this iPhone.",
+              detail: "Where your banks send alerts. Read on this iPhone.",
               enabled: true, identifier: "home.finish.connectEmail", action: openBankAlerts)
             TextLinkRow(lead: "Adding transactions by hand?", link: "Hide this.",
                         identifier: "home.finish.connectEmail.byHand", action: model.enterByHand)
@@ -331,12 +331,12 @@ struct FinishSetupSection: View {
           case .bankAlerts:
             FinishSetupRow(
               icon: .envelope, title: "No bank alerts yet",
-              detail: "Turn on email alerts with your bank, then check again.",
+              detail: "Turn on your bank's email alerts, then check again.",
               enabled: true, identifier: "home.finish.bankAlerts", action: model.openNoAlerts)
           case .plan:
             FinishSetupRow(
               icon: .clock, title: "Set your monthly plan",
-              detail: "Your salary and a split, so Hasala can say what's left.",
+              detail: "Your salary and a split, to see what's left.",
               enabled: true, identifier: "home.finish.plan", action: model.setPlan)
           case .notifications:
             FinishSetupRow(
@@ -363,10 +363,10 @@ extension FinishSetupSection {
 
   static func stopped(_ m: MailboxSnapshot?) -> (title: String, detail: String) {
     if let m, m.state == .needsSignIn {
-      return ("Sign in to your email again", "Hasala can't read \(m.address) right now. Open Bank alerts to sign in.")
+      return ("Sign in to your email again", "Can't read \(m.address). Open Bank alerts to sign in.")
     }
     if m?.readElsewhere == true {
-      return ("Read on your other iPhone", "Its transactions show here once that iPhone syncs them.")
+      return ("Read on your other iPhone", "Its transactions show once that iPhone syncs.")
     }
     return ("Reading your alerts stopped", "Open Bank alerts to try again.")
   }

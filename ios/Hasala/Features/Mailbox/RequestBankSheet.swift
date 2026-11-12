@@ -26,7 +26,7 @@ struct RequestBankSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
-          Text("Hasala reads only the banks it lists. Tell us yours and we'll show you here, and email you, when it works. We send only the bank's name.")
+          Text("We'll email you once Hasala reads your bank. We send only its name.")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -140,9 +140,9 @@ struct RequestBankSheet: View {
   private var lookNote: String {
     switch probe {
     case nil:
-      "Your iPhone can check whether your mail has emails from the banks Hasala is adding. It doesn't open them, and nothing is sent unless you tap Ask."
-    case .found(let hints) where hints.isEmpty: "No emails from those banks in the last 6 months."
-    case .found: "Found on this iPhone. Nothing has been sent."
+      "This iPhone checks senders for banks we're adding. Nothing's sent until you tap Ask."
+    case .found(let hints) where hints.isEmpty: "None found in the last 6 months."
+    case .found: "Found on this iPhone. Nothing was sent."
     case .notReading: "Connect your email first."
     case .signInAgain: "Sign in to your email again first."
     case .offline: Self.offlineNote
@@ -314,7 +314,7 @@ enum BankInitials {
 
 enum BankName {
   static let hint = "Use letters or numbers. Spaces and & . ' - ( ) / are fine between them."
-  static let tooLong = "That name is too long. Try a shorter form of it."
+  static let tooLong = "That name is too long. Try a shorter form."
 
   static func problem(_ name: String) -> String? {
     if name.isEmpty { return nil }

@@ -14,8 +14,8 @@ import SwiftUI
 /// (`MailConnectCoordinator.errorScreen`) is the host's to show; the rest show here.
 ///
 /// When the build holds one link and the account's is to the other provider, the sign-in
-/// asks first, in the system alert the disconnect uses: "Change your email?" ("This
-/// replaces your Gmail connection. …", "Use Outlook").
+/// asks first, in the system alert the disconnect uses: "Change your email?" ("Hasala
+/// reads your bank alerts from Outlook instead of Gmail. …", "Use Outlook").
 struct ConnectProviderView: View {
   let provider: MailProviderKind
   @Bindable var coordinator: MailConnectCoordinator
@@ -155,9 +155,9 @@ struct ConnectProviderView: View {
       // A sign-in that the provider didn't end (live: no Outlook mailbox on that account).
       if let note = row?.note { return note }
       let address = row?.address ?? "this mailbox"
-      return "\(provider.company) ended Hasala's access to \(address). Sign in again and this iPhone catches up. Nothing else changes."
+      return "\(provider.company) ended Hasala's access to \(address). Sign in again to catch up."
     }
-    return "Your bank alerts are fetched from \(provider.appName) by this iPhone. Our server never receives your emails."
+    return "Your iPhone fetches your bank alerts from \(provider.appName)."
   }
 
   /// "Not your email? Choose a different email" (Gmail, 6RN); Outlook says first that a work
@@ -196,7 +196,7 @@ struct ConnectProviderView: View {
   /// Outlook's line about which Microsoft accounts work.
   static var outlookAccountLine: String {
     BuildSurface.showsUnfinished
-      ? "Work or school account? Your organisation may need to approve Hasala first."
+      ? "Work or school account? Your organisation may need to approve Hasala."
       : "Outlook: personal Microsoft accounts only."
   }
 

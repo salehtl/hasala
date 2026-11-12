@@ -30,7 +30,7 @@ struct WidgetGallerySheet: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
           PlanSheetHeader(title: "Add a widget", closeID: "gallery.close") { dismiss() }
-          Text("Tap a widget to put it at the end of Home. Amounts follow the eye, as on Home.")
+          Text("Tap a widget to add it to the end of Home.")
             .hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
           ForEach(HomeWidgetKind.Group.allCases, id: \.self) { group in
@@ -38,7 +38,7 @@ struct WidgetGallerySheet: View {
             let shown = available.filter { $0.size == .small } + available.filter { $0.size == .medium }
             if !shown.isEmpty { section(group, shown) }
           }
-          Text("Want these outside the app? Touch and hold your Home Screen, then tap Edit and Add Widget.")
+          Text("On your Home Screen, touch and hold, then tap Edit › Add Widget.")
             .hType(.footnote).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("gallery.homeScreen")
@@ -233,9 +233,9 @@ struct WidgetConfigPage: View {
 
   private var hint: String {
     switch kind.configKind {
-    case .category?: "Pick the category this widget watches. You can change it later from Edit."
-    case .project?: "Pick the project this widget follows. You can change it later from Edit."
-    case .goal?: "Pick the savings goal this widget follows. You can change it later from Edit."
+    case .category?: "Pick a category. Change it later in Edit."
+    case .project?: "Pick a project. Change it later in Edit."
+    case .goal?: "Pick a savings goal. Change it later in Edit."
     case nil: ""
     }
   }

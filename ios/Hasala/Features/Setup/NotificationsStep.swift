@@ -17,9 +17,9 @@ struct NotificationsStep: View {
 
   private var subtitle: String {
     BuildSurface.showsUnfinished
-      ? "A short note when a transaction lands, a bill is due or a budget reaches 80%."
-      // Paper's sentence (GP4-0) verbatim, then what this build does (Release copy exception).
-      : "A short note when a transaction lands, a bill is due or a budget reaches 80%. This beta doesn't send them yet. Allow them now, or later in Settings."
+      ? "New transactions, due bills, budgets at 80%."
+      // Paper's sentence (GP4-0), then what this build does (Release copy exception).
+      : "New transactions, due bills, budgets at 80%. This beta doesn't send them yet."
   }
 
   var body: some View {
@@ -71,7 +71,7 @@ private struct DetailsSwitch: View {
     Toggle(isOn: $isOn) {
       VStack(alignment: .leading, spacing: 2) {
         Text("Show amounts and merchants").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-        Text("Off by default, so a glance at your Lock Screen shows no amounts or names.")
+        Text("Off by default: no amounts or names on your Lock Screen.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)

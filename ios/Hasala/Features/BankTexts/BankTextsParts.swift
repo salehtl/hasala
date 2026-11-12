@@ -3,32 +3,30 @@ import HasalaModels
 import SwiftUI
 
 enum BankTextsGuide {
-  static let intro =
-    "One automation hands Hasala each text you get that has a full stop. \(BankTexts.keepsPayments) \(BankTexts.anyBankLine)"
+  static let intro = "Hasala gets each text with a full stop, from any sender, and keeps only payment details."
 
   static let runImmediately = "Choose Run Immediately, then tap Next."
   static let newBlank = "Tap New Blank Automation, then Add Action."
-  static let actionMissing = (title: "Hasala action not in the list?", detail: "Open Hasala once, then search again in the Shortcuts app.")
+  static let actionMissing = (title: "Hasala action not in the list?", detail: "Open Hasala once, then search again.")
 
   static let installTitle = "Add the automation"
-  static let setUpSubtitle =
-    "One automation in the Shortcuts app hands Hasala almost every text you get, from anyone, on this iPhone. Hasala keeps only payments."
+  static let setUpSubtitle = "It hands Hasala almost every text you get."
   static let installSteps = [
-    "Tap Add to Shortcuts. The Shortcuts app opens with the automation ready.",
+    "Tap Add to Shortcuts. Shortcuts opens with the automation ready.",
     "Tap Add Shortcut. If nothing happens, tap Skip Setup.",
-    "Turn on its automation switch. It stays off until you do, and Hasala can\u{2019}t turn it on for you.",
-    "Check that it\u{2019}s set to Run Immediately. If it asks first, each text waits for your tap.",
+    "Turn on its automation switch. It stays off until you do.",
+    "Check that it\u{2019}s set to Run Immediately, or each text waits for your tap.",
     "Come back here and send a test.",
   ]
   static let twoAutomations = "Two automations bring in each text twice."
   static let alreadyMade = "Already made one? Skip this. \(twoAutomations)"
   static let addAgainNote = "Only if it didn't add. \(twoAutomations)"
   static let newShortcuts =
-    "On iOS 27, Shortcuts looks different. Start a new shortcut and add Message from its automation actions first. The settings below stay the same."
-  static let turnedOn = (title: "The automation is on", detail: "In the Shortcuts app, open Hasala\u{2019}s automation and turn on the switch at the top.")
+    "On iOS 27, start a new shortcut and add Message from its automation actions. Then use the settings below."
+  static let turnedOn = (title: "The automation is on", detail: "In Shortcuts, open Hasala\u{2019}s automation and turn on the switch at the top.")
 
   static let shortSteps = [
-    "In the Shortcuts app, open the Automation tab, tap +, then Message.",
+    "In the Shortcuts app, tap Automation, then +, then Message.",
     "Leave Sender empty. Tap Message Contains and type a full stop (.).",
     runImmediately,
     newBlank,
@@ -36,19 +34,19 @@ enum BankTextsGuide {
   ]
 
   static let fullSteps = [
-    "Open the Shortcuts app and tap Automation at the bottom. Then tap + at the top.",
+    "Open the Shortcuts app, tap Automation at the bottom, then + at the top.",
     "Choose Message as what starts it.",
-    "Leave Sender empty. Tap Message Contains and type just a full stop (.). Bank payment texts usually have one in their amount. A text with no full stop doesn\u{2019}t reach Hasala, so paste it instead.",
+    "Leave Sender empty. Tap Message Contains and type a full stop (.), which bank amounts usually have.",
     runImmediately,
     newBlank,
-    "Search \u{201C}Hasala\u{201D} and pick Add bank text. Check that it shows Message in blue. If it doesn\u{2019}t, tap the blue word and pick Message. Tap Done.",
+    "Search \u{201C}Hasala\u{201D} and pick Add bank text. If Message isn\u{2019}t in blue, tap the blue word and pick Message. Tap Done.",
   ]
 
   static let checklist: [(title: String, detail: String)] = [
-    ("Run Immediately is chosen", "If it asks first, the text waits for your tap."),
-    ("Message Contains is a full stop", "Leave Sender empty and type only a full stop (.) in Message Contains. Any other word can leave payments out."),
+    ("Run Immediately is chosen", "Otherwise each text waits for your tap."),
+    ("Message Contains is a full stop", "Leave Sender empty. Any other word can miss payments."),
     ("Add bank text gets the message", "The action should show Message in blue."),
-    ("The test had its full stop", "Send \u{201C}\(BankTexts.testPhrase)\u{201D} to your own number, or ask someone to text it to you. Without the full stop the automation doesn\u{2019}t run."),
+    ("The test had its full stop", "Send \u{201C}\(BankTexts.testPhrase)\u{201D} to your own number, or have someone text it."),
     actionMissing,
   ]
 }
@@ -138,6 +136,8 @@ struct StepBadge: View {
 struct TextsNote: View {
   var icon: HIcon = .info
   let text: String
+  var tip: String?
+  var tipTopic = BankTexts.keepsTopic
   @ScaledMetric(relativeTo: .subheadline) private var lane: CGFloat = 20
 
   var body: some View {
@@ -147,10 +147,11 @@ struct TextsNote: View {
         .hType(.subheadline)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
+        .infoTip(tip, about: tipTopic)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.horizontal, 4)
-    .accessibilityElement(children: .combine)
+    .accessibilityElement(children: tip == nil ? .combine : .contain)
   }
 }
 

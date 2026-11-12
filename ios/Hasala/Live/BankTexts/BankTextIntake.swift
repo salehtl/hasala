@@ -32,11 +32,11 @@ struct BankTextIntakeDeps {
 }
 
 final class BankTextIntake {
-  static let lockedMessage = "Hasala can't save bank texts until you unlock your iPhone. Paste this text later."
+  static let lockedMessage = "Hasala can't save texts until you unlock your iPhone. Paste this one later."
   static let signedOutMessage = "Sign in to Hasala to add bank texts."
-  static let notOpenMessage = "Hasala couldn't add this text. Open Hasala, then paste the text from Messages."
-  static let limitMessage = "Hasala has saved many texts today. Paste this text later if it's a payment."
-  static let unavailableMessage = "This build of Hasala can't add bank texts yet. Paste the text into Hasala later."
+  static let notOpenMessage = "Hasala couldn't add this text. Open Hasala and paste it from Messages."
+  static let limitMessage = "Hasala saved many texts today. If this is a payment, paste it later."
+  static let unavailableMessage = "This build can't add bank texts yet. Paste it into Hasala later."
 
   private let deps: BankTextIntakeDeps
 
