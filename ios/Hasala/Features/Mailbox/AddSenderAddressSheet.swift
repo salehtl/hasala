@@ -31,7 +31,7 @@ struct AddSenderAddressSheet: View {
   }
 
   static func note(_ domain: String) -> String {
-    "Outlook finds bank alerts only by the exact address they come from. Open an alert from \(domain) and type the address it was sent from."
+    "Outlook needs the exact address. Open an alert from \(domain) and type its sender address."
   }
 
   var body: some View {

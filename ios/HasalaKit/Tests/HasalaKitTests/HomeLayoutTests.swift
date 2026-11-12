@@ -147,7 +147,7 @@ struct HomeLayoutTests {
     let layout = HomeLayout([entry(.project, .project("japan")), entry(.nextBill), entry(.comingUp), entry(.budgetPace)])
     let canvas = HomeEngine.canvas(layout, gone, now: now)
     #expect(canvas.map(\.isWaiting) == [true, true, true, false])
-    #expect(canvas[0].kind.waitingSentence == "Start a project in Plan to see it here.")
+    #expect(canvas[0].kind.waitingSentence == "Start a project in Plan.")
   }
 
   @Test func itRoundTripsThroughJSON() throws {

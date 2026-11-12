@@ -19,7 +19,7 @@ struct GravatarSection: View {
         .buttonStyle(HRowPressStyle())
         .accessibilityIdentifier("profile.privacy")
       }
-      Text("Hasala asks Gravatar for your picture with a code made from your email address. Off, it asks nothing and shows your initials.")
+      Text("Hasala asks Gravatar for your picture with a code made from your email. Off, it asks nothing and shows your initials.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)

@@ -29,7 +29,7 @@ enum RequestedBankState: String, Sendable, Hashable {
 
   func detail(knownToThisBuild: Bool) -> String {
     switch self {
-    case .requested: "Requested. We'll tell you here when it works."
+    case .requested: "Requested. We'll tell you when it works."
     case .collectingSamples: "We're collecting sample alerts for it."
     case .templateInProgress: "Being added to Hasala."
     case .supported: knownToThisBuild ? "Works now. Turn it on in Change banks." : "Works now. Update Hasala to use it."

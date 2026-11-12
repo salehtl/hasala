@@ -161,10 +161,10 @@ struct PasscodeWall: View {
     NavigationStack {
       AccountScreen(
         title: "Set a passcode first",
-        subtitle: "Set a passcode on your iPhone to use Hasala. It protects your data and lets this iPhone confirm it's you."
+        subtitle: "Set an iPhone passcode to use Hasala. It protects your data and confirms it's you."
       ) {
         NoteCard(systemImage: "gear", title: "Settings › Face ID & Passcode",
-                 text: "Turn on a passcode, then come back here. Hasala carries on where you left off.")
+                 text: "Turn on a passcode, then come back.")
       } footer: {
         EmptyView()
       }

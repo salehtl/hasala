@@ -65,8 +65,8 @@ struct LiveMailboxTests {
   /// Main's `noMailboxIsSaidInWords`: the no-mailbox halt and failure in plain words, and
   /// Outlook's copy names personal Microsoft accounts.
   @Test func noMailboxIsSaidInWords() {
-    let outlook = "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com."
-    let gmail = "This Google account has no Gmail. Sign in with the account your bank alerts go to."
+    let outlook = "This Microsoft account has no Outlook mailbox. Use the one your alerts go to, like you@outlook.com or you@hotmail.com."
+    let gmail = "This Google account has no Gmail. Use the one your alerts go to."
     #expect(LiveMailboxConnecting.message(.noMailbox, provider: .outlook) == outlook)
     #expect(LiveMailboxConnecting.message(.noMailbox, provider: .gmail) == gmail)
     #expect(LiveMailboxConnecting.stopped(.noMailbox, provider: .outlook) == outlook)
@@ -90,7 +90,7 @@ struct LiveMailboxTests {
       try LiveMailboxConnecting.linked(.failed(.permissionMissing), provider: .gmail)
     }
     #expect(MailConnectFailure.permissionMissing(.gmail).message(for: .gmail)
-      == "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it.")
+      == "\u{201C}View your email messages and settings\u{201D} wasn't ticked. Try again and tick it.")
     #expect(LiveMailboxConnecting.message(.permissionMissing, provider: .gmail)
       == MailConnectFailure.permissionMissingLine(.gmail))
     #expect(try LiveMailboxConnecting.linked(.connected(address: nil), provider: .outlook) == nil)
@@ -99,7 +99,7 @@ struct LiveMailboxTests {
       try LiveMailboxConnecting.linked(.connected(address: "maya.other@example.com", anotherAddress: true), provider: .outlook)
         == "maya.other@example.com")
     #expect(MailConnectFailure.noMailbox(.outlook).message(for: .outlook)
-      == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com.")
+      == "This Microsoft account has no Outlook mailbox. Use the one your alerts go to, like you@outlook.com or you@hotmail.com.")
   }
 
   @Test func theSwitchQuestionAndItsAnswerCrossTheLane() async throws {
@@ -149,7 +149,7 @@ struct LiveMailboxTests {
   @Test func aMailboxOnAnotherAccountIsSaidInWords() {
     let gmail = LiveMailboxConnecting.message(.mailboxInUse)
     #expect(gmail.contains("This Gmail address is connected to another Hasala account"))
-    #expect(gmail.contains("connect a different address"))
+    #expect(gmail.contains("use another address"))
     #expect(LiveMailboxConnecting.message(.mailboxInUse, provider: .outlook).hasPrefix("This Outlook address"))
     #expect(gmail != LiveMailboxConnecting.message(.serverRefused))
   }
@@ -223,7 +223,7 @@ struct LiveMailboxTests {
 
   /// One step-up for both lanes: its reason names neither Gmail nor Outlook.
   @Test func theStepUpNamesNoProvider() {
-    #expect(LiveStepUp.reason("mailbox.link") == "Confirm it's you to connect this mailbox to Hasala")
+    #expect(LiveStepUp.reason("mailbox.link") == "Confirm it's you to connect this mailbox")
     #expect(LiveStepUp.reason("mailbox.unlink") == "Confirm it's you to disconnect this mailbox")
   }
 
@@ -253,9 +253,9 @@ struct LiveMailboxTests {
     // The confirmation names the link's provider and says the other iPhone may be gone.
     #expect(MailCopy.takeoverTitle == "Read your email on this iPhone?")
     #expect(MailCopy.takeoverMessage(from: .gmail, to: .gmail)
-      == "Your Gmail is read on another iPhone, or was on one you no longer have. Hasala reads it on this iPhone instead, and the other iPhone stops. Past transactions stay.")
+      == "Another iPhone reads your Gmail, maybe one you no longer have. It stops. Past transactions stay.")
     #expect(MailCopy.takeoverMessage(from: .outlook, to: .gmail)
-      == "Your Outlook is read on another iPhone, or was on one you no longer have. Hasala reads your bank alerts from Gmail on this iPhone instead, and the other iPhone stops. Past transactions stay.")
+      == "Another iPhone reads your Outlook, maybe one you no longer have. It stops, and this iPhone reads Gmail. Past transactions stay.")
   }
 
   /// A connect after setup reads the banks from the bank step's sender trust.
@@ -323,7 +323,7 @@ struct LiveMailboxTests {
     ).first
     #expect(row?.lastChecked == "Wed 7 Oct, 09:14" && row?.meta == "Checked 1 min ago")
     let lane = LiveMailboxConnecting(runtime: { nil })
-    await #expect(throws: MailConnectFailure.failed("Hasala is still opening your account. Try again in a moment.")) {
+    await #expect(throws: MailConnectFailure.failed("Still opening your account. Try again in a moment.")) {
       try await lane.connect(.outlook)
     }
   }
@@ -401,7 +401,7 @@ struct LiveMailboxTests {
     let summary = MailboxesSummary(
       rows, health: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), offer: offer)
     #expect(summary.title == "Your email isn't connected" && summary.needsYou)
-    #expect(summary.detail == "Connect it so Hasala can read your bank alerts.")
+    #expect(summary.detail == "Connect it to read your bank alerts.")
     #expect(ProfileSheet.mailboxesValue(rows, known: true) == ("Not connected", nil))
     // No runtime: nothing is held elsewhere as far as this iPhone knows.
     #expect(LiveMailboxConnecting(runtime: { nil }).heldElsewhere == nil)

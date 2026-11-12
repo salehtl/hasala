@@ -20,12 +20,9 @@ final class BankTextsReviewUITests: XCTestCase {
 
     let dib = el(app, "unreadTexts.body.unread-text-dib")
     XCTAssertTrue(dib.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(
-      dib.label,
-      "Hasala couldn't read this bank text. Find the text from DIB at 09:58 in Messages, copy it and paste it here, or add the payment yourself.")
-    XCTAssertTrue(
-      el(app, "unreadTexts.body.unread-text-other").label.contains("Find the text at 19:12 on Thu 8 Oct in Messages"),
-      el(app, "unreadTexts.body.unread-text-other").label)
+    XCTAssertEqual(dib.label, "Copy it from Messages and paste it here, or add the payment yourself.")
+    let when = NSPredicate(format: "label CONTAINS 'Received Thu 8 Oct, 19:12'")
+    XCTAssertTrue(el(app, "unreadTexts.row.unread-text-other").descendants(matching: .any).matching(when).firstMatch.exists)
     let titled = NSPredicate(format: "label BEGINSWITH 'Text from DIB'")
     XCTAssertTrue(el(app, "unreadTexts.row.unread-text-dib").descendants(matching: .any).matching(titled).firstMatch.exists)
     attach(app, "Unread texts · List")

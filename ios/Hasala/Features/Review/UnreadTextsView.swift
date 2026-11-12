@@ -31,7 +31,7 @@ struct UnreadTextsView: View {
     }
   }
 
-  static let intro = "Hasala couldn't turn these texts into a payment. Paste each one again, add it yourself, or dismiss one you don't need."
+  static let intro = "Hasala couldn't read these. Paste each again, add it yourself, or dismiss it."
 
   private func card(_ m: UnreadText, today: LocalDate, canPaste: Bool) -> some View {
     VStack(alignment: .leading, spacing: 14) {

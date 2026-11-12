@@ -9,7 +9,7 @@ struct HomeMoneyFieldsTests {
     let closed = try #require(home.monthClosed)
     #expect(closed.month == YearMonth(2026, 10))
     #expect(closed.word.rendered(hidden: false).hasPrefix("October ended "))
-    #expect(closed.toSort == 6 && closed.toSortLine == "6 October payments still to sort, which can change this result")
+    #expect(closed.toSort == 6 && closed.toSortLine == "6 October payments to sort could change this")
     #expect(HomeEngine.snapshot(MayaLedger.state, now: LocalDateTime(2026, 11, 6, 9, 0)).monthClosed == nil)
   }
 

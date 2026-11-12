@@ -398,16 +398,16 @@ private struct EmptyListCard: View {
     switch kind {
     case .all:
       return (isThisMonth ? "Nothing yet this month" : "Nothing \(when)",
-              "Card payments show here, usually within a minute of your bank's email.")
-    case .toReview: return ("Nothing to sort", "New transactions Hasala can't sort on its own show up here.")
+              "Card payments usually show here a minute after your bank's email.")
+    case .toReview: return ("Nothing to sort", "Transactions Hasala can't sort show up here.")
     case .bills:
       return (isThisMonth ? "No bills paid this month yet" : "No bills paid \(when)",
-              "Payments to a bill you track show here.")
-    case .transfers: return ("No transfers \(when)", "Money moved between your own accounts shows here.")
+              "Payments to bills you track show here.")
+    case .transfers: return ("No transfers \(when)", "Money moved between your accounts shows here.")
     case .income:
       return (isThisMonth ? "No income this month yet" : "No income \(when)",
-              "Salary and other money in show here once they arrive.")
-    case .archived: return ("Nothing archived", "Transactions you archive leave your plan and wait here.")
+              "Salary and other money in shows here.")
+    case .archived: return ("Nothing archived", "Archived transactions wait here, outside your plan.")
     }
   }
 }

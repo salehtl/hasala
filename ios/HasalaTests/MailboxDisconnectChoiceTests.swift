@@ -40,9 +40,9 @@ struct MailboxDisconnectChoiceTests {
     #expect(MailCopy.removeTransactions(many) == "Remove the 42 transactions")
     #expect(MailCopy.removeTransactions(one) == "Remove the 1 transaction")
     #expect(MailCopy.removeDetail(many)
-      == "Takes them out of your lists and totals, with the 3 you changed. You can't bring them back here. An encrypted record stays until you delete your account.")
+      == "Takes them out of your lists and totals, with the 3 you changed. Can't be undone here. An encrypted record stays until you delete your account.")
     #expect(MailCopy.removeDetail(MailboxDisconnectImpact(transactions: 12, edited: 0))
-      == "Takes them out of your lists and totals. You can't bring them back here. An encrypted record stays until you delete your account.")
+      == "Takes them out of your lists and totals. Can't be undone here. An encrypted record stays until you delete your account.")
     #expect(MailCopy.removeDetail(one).hasPrefix("Takes it out of your lists and totals."))
     #expect(MailCopy.disconnectLead("maya@example.com")
       == "Hasala stops reading maya@example.com and deletes its sign-in from this iPhone.")
@@ -57,7 +57,7 @@ struct MailboxDisconnectChoiceTests {
     #expect(throws: MailConnectFailure.failed("Couldn't disconnect Gmail. Try again.")) {
       try LiveMailboxConnecting.disconnected(.failed, provider: .gmail)
     }
-    #expect(throws: MailConnectFailure.failed("Outlook is disconnected, but its transactions couldn't be removed. They stay for now.")) {
+    #expect(throws: MailConnectFailure.failed("Outlook is disconnected, but its transactions couldn't be removed.")) {
       try LiveMailboxConnecting.disconnected(.disconnectedRemoveFailed, provider: .outlook)
     }
     #expect(throws: MailConnectFailure.takenByOtherIPhone) {

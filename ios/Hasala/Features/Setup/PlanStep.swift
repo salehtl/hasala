@@ -12,7 +12,7 @@ struct PlanStep: View {
   static let resetTitle = "Reset to 50 / 30 / 20"
 
   static func subtitle(_ p: StartingPlan) -> String {
-    "\(p.needsPercent)% for needs, \(p.wantsPercent)% for wants, \(p.savingsPercent)% for savings. Change the split below. Hasala fills in your categories."
+    "\(p.needsPercent)% needs, \(p.wantsPercent)% wants, \(p.savingsPercent)% savings. Hasala fills in your categories."
   }
 
   var body: some View {

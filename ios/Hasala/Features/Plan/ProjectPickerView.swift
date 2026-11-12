@@ -33,7 +33,7 @@ struct ProjectPickerView: View {
             .accessibilityIdentifier("txnProject.\(p.id)")
           }
         }
-        Text("A project's spending stays out of your monthly budgets unless the project is counted in the plan.")
+        Text("Projects stay out of your monthly budgets unless counted in the plan.")
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .padding(.horizontal, 4)

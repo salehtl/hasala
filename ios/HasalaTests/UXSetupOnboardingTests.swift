@@ -29,9 +29,9 @@ struct UXSetupOnboardingTests: AccountSuite {
     #expect(PhraseShowView.createNote(canShowAgain: !m.wordsOnlyInSetup)
       == "After this, you can't see them again. Check every word.")
     #expect(PhraseIntroView.onlyYouHaveThem(wordsOnlyInSetup: true)
-      == "We never see them, so we can't reset or resend them. You'll only see these words during setup. If you lose these words and every device that can unlock Hasala, your data is gone for good.")
+      == "We can't reset or resend them. You'll see them only during setup. Lose them and every device that can unlock Hasala, and your data is gone for good.")
     #expect(PhraseIntroView.onlyYouHaveThem(wordsOnlyInSetup: false)
-      == "We never see them, so we can't reset or resend them. If you lose these words and every device that can unlock Hasala, your data is gone for good.")
+      == "We can't reset or resend them. Lose them and every device that can unlock Hasala, and your data is gone for good.")
   }
 
   @Test func aPasskeyWithoutPRFIsToldTheWordsShowOnlyInSetup() async {
@@ -44,7 +44,7 @@ struct UXSetupOnboardingTests: AccountSuite {
     #expect(m.passkeyWithoutPRF)
     #expect(m.wordsOnlyInSetup)
     #expect(AccountReadyView.subtitle(capabilities: .all, passkey: true, passkeyHoldsKeys: !m.passkeyWithoutPRF)
-      == "Keep the paper safe, away from this iPhone. Your words can't be shown again on this account.")
+      == "Keep the paper safe, away from this iPhone. Your words can't be shown again.")
   }
 
   @Test func aPasskeyWithPRFThatShowsTheWordsKeepsTheUsualNote() async {
@@ -58,14 +58,14 @@ struct UXSetupOnboardingTests: AccountSuite {
     #expect(!m.wordsOnlyInSetup)
     #expect(PhraseShowView.createNote(canShowAgain: true) == "They hide again when you leave this screen.")
     #expect(AccountReadyView.subtitle(capabilities: .all, passkey: true, passkeyHoldsKeys: !m.passkeyWithoutPRF)
-      == "Keep the paper safe, away from this iPhone. You can see the words again in Profile after Face ID.")
+      == "Keep the paper safe, away from this iPhone. See the words again in Profile, with Face ID.")
   }
 
   @Test func theMethodScreenNoLongerPromisesTheOtherWayLater() {
     for proven in [true, false] {
       #expect(!SignInMethodView.subtitle(emailProvenByLink: proven).contains("later"))
     }
-    #expect(SignInMethodView.subtitle(emailProvenByLink: false) == "Email verified. Now pick how you'll get back in.")
+    #expect(SignInMethodView.subtitle(emailProvenByLink: false) == "Your email is verified.")
     #expect(SignInMethodView.passwordDetail.contains("your 12 words can't be shown again"))
   }
 
@@ -91,11 +91,11 @@ struct UXSetupOnboardingTests: AccountSuite {
 
   @Test func anInviteNotFoundFromALinkSaysTheLinkDidNotWork() {
     #expect(InviteCodeView.notFoundMessage(fromLink: true)
-      == "This invite link didn't work. It may have been used, or it's past its date.")
+      == "This invite link didn't work. It may have been used or expired.")
     #expect(InviteCodeView.notFoundMessage(fromLink: false)
       == "We couldn't find that invite. Check each character against your email.")
     #expect(InviteCodeView.alreadyUsedDetail
-      == "Each invite works once. If you made an account, you don't need another.")
+      == "Each invite works once. Made an account? You don't need another.")
   }
 
   @Test func aPastedLinkThatIsNotAnInviteSaysSo() {
@@ -104,7 +104,7 @@ struct UXSetupOnboardingTests: AccountSuite {
     #expect(m.path == [.invite])
     #expect(m.pastedLinkRefused)
     #expect(InviteCodeView.notAnInviteLink
-      == "That link isn't a Hasala invite. Check your invite email, or enter the code.")
+      == "Not a Hasala invite link. Enter the code from your invite email.")
     m.inviteText = "A"
     #expect(!m.pastedLinkRefused)
     m.usePastedInvite(Self.code)
@@ -126,14 +126,14 @@ struct UXSetupOnboardingTests: AccountSuite {
     #expect(WhoCanSeeSheet.serverSees(outlook: false).last?.hasPrefix("Your Gmail address") == true)
     #expect(WhoCanSeeSheet.serverSees(outlook: true).last?.hasPrefix("Your mailbox address") == true)
     #expect(WhoCanSeeSheet.serverCantSee.contains("texts"))
-    #expect(WhoCanSeeSheet.cloudflare.contains("If you turn on Cloud suggestions"))
+    #expect(WhoCanSeeSheet.cloudflare.contains("With Cloud suggestions on"))
     #expect(WhoCanSeeSheet.bankTextsTitle == "Bank texts, if you use them")
     #expect(WhoCanSeeSheet.bankTexts == "Read on your iPhone and sent to no one.")
     #expect(WhoCanSeeSheet.bankTextsHue == .mint)
     #expect(WhoCanSeeSheet.serverSees(outlook: true)[1] == "Your passkey's public key, or a scrambled form of your password")
     #expect(WhoCanSeeSheet.serverSees(outlook: true).last
-      == "Your mailbox address for a moment when you connect, and with each Gmail notice, then only a code made with a secret key. Also when your mailbox changes, so it can wake your iPhone")
-    #expect(WhoCanSeeSheet.apple.hasPrefix("Your email address, for the TestFlight invitation, and that you installed Hasala."))
+      == "Your mailbox address for a moment when you connect and with each Gmail notice, then only a code made with a secret key")
+    #expect(WhoCanSeeSheet.apple.hasPrefix("Your email for the TestFlight invite, and that you installed Hasala."))
   }
 
   @Test func inviteReadyOffersTheWordsNowOrFromHome() {
@@ -147,7 +147,7 @@ struct UXSetupOnboardingTests: AccountSuite {
   }
 
   @Test func incomeAsksAfterAnyDeductions() {
-    #expect(IncomeStep.subtitle == "After any deductions. You can change it any time.")
+    #expect(IncomeStep.subtitle == "After deductions. Change it any time.")
   }
 
   @Test func eachSplitHandleNamesTheBucketItTradesWith() {
@@ -182,6 +182,6 @@ struct UXSetupOnboardingTests: AccountSuite {
     #expect(StartingPlan(needsPercent: 55, wantsPercent: 25, savingsPercent: 20).changed)
     #expect(PlanStep.resetTitle == "Reset to 50 / 30 / 20")
     #expect(PlanStep.subtitle(StartingPlan(needsPercent: 55, wantsPercent: 25, savingsPercent: 20))
-      == "55% for needs, 25% for wants, 20% for savings. Change the split below. Hasala fills in your categories.")
+      == "55% needs, 25% wants, 20% savings. Hasala fills in your categories.")
   }
 }

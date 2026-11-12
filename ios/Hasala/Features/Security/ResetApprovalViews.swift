@@ -171,7 +171,7 @@ struct ResetApprovalSheet: View {
           .accessibilityLabel("The code on your new iPhone")
           .accessibilityIdentifier("approval.code")
         if model.codeHasStrayCharacters {
-          FieldErrorLine(text: "Codes use only letters and the digits 2-7", warning: true)
+          FieldErrorLine(text: "Only letters and the digits 2-7", warning: true)
             .accessibilityIdentifier("approval.codeHint")
         }
       }
@@ -202,7 +202,7 @@ struct ResetApprovalSheet: View {
           .hType(.section)
           .foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
-        Text("Your other iPhone can set a new password now. Your data stays sealed there until it's unlocked.")
+        Text("Your other iPhone can set a new password now. Your data stays sealed there.")
           .hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
       }

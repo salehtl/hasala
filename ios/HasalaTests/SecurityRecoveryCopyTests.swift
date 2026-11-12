@@ -17,11 +17,11 @@ struct SecurityRecoveryCopyTests {
     #expect(FrozenWall.subtitle(FreezeInfo(by: .operator, when: nil)).hasPrefix("We froze your account"))
     #expect(SecurityView.frozenBody(needsUs, canUnfreeze: true) == "Only we can lift this freeze. Talk to us to unfreeze it.")
     #expect(SecurityView.frozenBody(FreezeInfo(by: .holder, when: nil), canUnfreeze: true)
-      == "Your account is frozen. Confirm it's you to unfreeze it.")
+      == "Confirm it's you to unfreeze it.")
   }
 
   @Test func theWallTellsAPersonUnderAttackToSecureTheirEmailFirst() {
-    #expect(FrozenWall.notYouNote.contains("Change your email's password first. Then unfreeze"))
+    #expect(FrozenWall.notYouNote.contains("Change your email password, then unfreeze"))
     #expect(!FrozenWall.holderBody(FreezeInfo(by: .holder, when: nil)).contains("Nobody can sign in"))
   }
 
@@ -83,13 +83,13 @@ struct SecurityRecoveryCopyTests {
 
   @Test func aWrongPasswordNamesTheWayBack() {
     let beta: AccountCapabilities = [.signInPassword, .recoverAccess]
-    #expect(SignInView.wrongPasswordLine(beta) == "That email and password don't match. Try again, or use your 12 words if you forgot it.")
-    #expect(SignInView.wrongPasswordLine([.signInPassword]) == "That email and password don't match. Try again.")
+    #expect(SignInView.wrongPasswordLine(beta) == "Wrong email or password. Try again or use your 12 words.")
+    #expect(SignInView.wrongPasswordLine([.signInPassword]) == "Wrong email or password. Try again.")
   }
 
   @Test func youAreBackInPromisesNoNewWordsWithoutThatControl() {
     #expect(!BackInView.phraseDetail(rotates: false).contains("make new ones"))
-    #expect(BackInView.phraseDetail(rotates: false).contains("talk to us"))
+    #expect(BackInView.phraseDetail(rotates: false).contains("Talk to us"))
     #expect(BackInView.phraseDetail(rotates: true).contains("make new ones"))
   }
 

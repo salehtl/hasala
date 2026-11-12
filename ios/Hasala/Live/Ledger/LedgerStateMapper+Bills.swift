@@ -241,7 +241,7 @@ nonisolated extension LedgerStateMapper {
         guard let s = forkSummary(loser: loser, current: current) else { continue }
         summary = s
       } else {
-        summary = "A change made on your other iPhone was replaced"
+        summary = "Your other iPhone's change was replaced"
       }
       out[f.entityID, default: []].append(BillNotice(id: "fork.\(f.loserOp)", kind: .changedOnTwoDevices(summary: summary)))
     }

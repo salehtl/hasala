@@ -25,7 +25,7 @@ public struct HomeAmount: Sendable, Hashable, Codable {
 
   public var estimateLine: String? {
     guard estimate, let rateMicro, let original else { return nil }
-    return "Estimate at \(ExchangeRates.format(rateMicro)) \(Money.home) per \(original.currency). Your bank's charge can be a little higher."
+    return "Estimate at \(ExchangeRates.format(rateMicro)) \(Money.home) per \(original.currency); your bank may charge more."
   }
 }
 

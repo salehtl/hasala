@@ -137,9 +137,9 @@ struct AskSearchTests {
     let coffee = try #require(m.answer(for: "coffee this month"))
     #expect(m.inferredMerchants(coffee, "coffee this month") == ["Starbucks", "Common Grounds"])
     #expect(AskSearch.matchedNote("coffee this month", merchants: 2)
-      == "Hasala matched “\u{2068}coffee this month\u{2069}” to 2 merchants. It may have missed some.")
+      == "Matched “\u{2068}coffee this month\u{2069}” to 2 merchants. It may have missed some.")
     #expect(AskSearch.matchedNote("coffee", merchants: 1)
-      == "Hasala matched “\u{2068}coffee\u{2069}” to 1 merchant. It may have missed some.")
+      == "Matched “\u{2068}coffee\u{2069}” to 1 merchant. It may have missed some.")
 
     let choices = AskSearch.merchantChoices(s, excluding: coffee.filter.merchants)
     #expect(!choices.contains { $0.name == "Starbucks" || $0.name == "Common Grounds" })

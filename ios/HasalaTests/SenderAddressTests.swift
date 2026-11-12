@@ -18,6 +18,6 @@ struct SenderAddressTests {
 
   @Test func theSheetSaysWhyTheAddressIsNeeded() {
     #expect(AddSenderAddressSheet.note("newbank.example").contains("exact address"))
-    #expect(BankAlertsPage.unlistedDetail == "Not read on Outlook. Add the address it sends from.")
+    #expect(BankAlertsPage.unlistedDetail == "Add the address it sends from.")
   }
 }

@@ -290,10 +290,10 @@ final class JoinUITests: XCTestCase {
     try audit(app)
     tap(app, "about.continue")
 
-    // A wrong code first: "That code isn't right. … 4 tries left."
+    // A wrong code first: "Wrong code. … 4 tries left."
     type(app, "code.field", "000000")
     XCTAssertTrue(
-      app.staticTexts["That code isn't right. Check the newest email from us, or get a new code. 4 tries left."]
+      app.staticTexts["Wrong code. Check our newest email or get a new one. 4 tries left."]
         .waitForExistence(timeout: uiWait))
     attach(app, "Verify email · wrong code")
     try audit(app)
@@ -375,7 +375,7 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Too short. 8 of 12 characters."].waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "password.create").isEnabled)
     replaceText(app, "password.new", "password2026!")
-    XCTAssertTrue(app.staticTexts["That password is too common. Try a longer phrase or let iPhone suggest one."]
+    XCTAssertTrue(app.staticTexts["Too common. Try a longer phrase or let iPhone suggest one."]
       .waitForExistence(timeout: uiWait))
     attach(app, "Password · too common")
     XCTAssertFalse(el(app, "password.create").isEnabled)
@@ -412,7 +412,7 @@ final class JoinUITests: XCTestCase {
   @MainActor
   func testRelaunchAfterAnInterruptedSignupMakesNewWords() throws {
     let app = launch(scenario: "relaunchInterrupted")
-    XCTAssertTrue(app.staticTexts["This is a new recovery phrase. Throw away any words you wrote down before."]
+    XCTAssertTrue(app.staticTexts["New recovery phrase. Throw away any words you wrote before."]
       .waitForExistence(timeout: 15))
     attach(app, "Interrupted setup · new phrase")
     try audit(app)

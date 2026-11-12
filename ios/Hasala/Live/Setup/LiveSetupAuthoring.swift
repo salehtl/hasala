@@ -24,7 +24,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
   }
 
   private func open() throws(SetupFailure) -> AccountRuntime {
-    guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
+    guard let rt = runtime() else { throw .failed("Still opening your account. Try again in a moment.") }
     return rt
   }
 
@@ -113,7 +113,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
     } catch {
       if case .transport = error { throw .offline }
       if error.is(400, "bad_bank") { throw .failed(BankName.hint) }
-      throw .failed("Couldn't send that just now. Try again later.")
+      throw .failed("Couldn't send that. Try again later.")
     }
   }
 
@@ -124,7 +124,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
       try await rt.env.client.bankRequest(bank: slug, senderDomain: senderDomain, bearer: token)
     } catch {
       if case .transport = error { throw .offline }
-      throw .failed("Couldn't send that just now. Try again later.")
+      throw .failed("Couldn't send that. Try again later.")
     }
   }
 
@@ -136,7 +136,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
       list = try await rt.env.client.bankRequests(bearer: token)
     } catch {
       if case .transport = error { throw .offline }
-      throw .failed("Couldn't check your bank requests just now.")
+      throw .failed("Couldn't check your bank requests. Try again.")
     }
     return BankRequestsSnapshot(list)
   }

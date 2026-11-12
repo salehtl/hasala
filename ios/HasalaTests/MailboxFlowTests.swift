@@ -107,8 +107,8 @@ struct MailboxFlowTests: AccountSuite {
     let same = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
     await same.connect(.outlook)
     #expect(same.nowReading == nil && same.question == nil && lane.questions.isEmpty)
-    #expect(same.signedInAgainLine == "Outlook connected again. Catching up from the last check.")
-    #expect(MailCopy.signedInAgain(.gmail) == "Gmail connected again. Catching up from the last check.")
+    #expect(same.signedInAgainLine == "Outlook connected again. Catching up.")
+    #expect(MailCopy.signedInAgain(.gmail) == "Gmail connected again. Catching up.")
   }
 
   @Test func anotherAddressAsksFirstAndKeepSaysWhatItReads() async {
@@ -139,7 +139,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(await answering(f, .remove) { await f.connect(.outlook) } != nil)
     #expect(f.outcome == .connected(mailboxID: "outlook-1"))
     #expect(f.signedInAgainLine
-      == "Now reading maya.other@example.com. The transactions from maya.k@example.com couldn't be removed. They stay.")
+      == "Now reading maya.other@example.com. Transactions from maya.k@example.com couldn't be removed.")
     #expect(failing.removed.isEmpty && failing.mailboxes.first?.state == .connected)
   }
 
@@ -256,7 +256,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailCopy.keepOnSwitch("Use Outlook", MailboxDisconnectImpact(transactions: 1, edited: 0))
       == "Use Outlook, keep the 1 transaction")
     #expect(MailCopy.switchMessage(from: .gmail, to: .outlook, impact: impact)
-      == "This replaces your Gmail connection. Hasala reads your bank alerts from Outlook instead. It brought in 12 transactions. Keep them, or remove them from your totals. Removing also takes the 2 you changed.")
+      == "Hasala reads your bank alerts from Outlook instead of Gmail. It brought in 12 transactions. Keep them, or remove them from your totals. Removing also takes the 2 you changed.")
     #expect(MailCopy.switchMessage(from: .gmail, to: .outlook).hasSuffix("Past transactions stay."))
     #expect(MailCopy.added(.outlook, removal: .removed(1)) == "Outlook connected. Checking for alerts. 1 transaction removed.")
     #expect(MailCopy.disconnected(.gmail, removed: 42) == "Gmail disconnected. 42 transactions removed.")
@@ -422,12 +422,12 @@ struct MailboxFlowTests: AccountSuite {
   @Test func theNoMailboxScreenSaysWhatToDo() {
     let copy = MailConnectErrorView.copy(.noMailbox(.outlook), .outlook)
     #expect(copy.title == "Outlook isn't connected.")
-    #expect(copy.subtitle == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com. Nothing was connected and nothing was read.")
+    #expect(copy.subtitle == "This Microsoft account has no Outlook mailbox. Use the one your alerts go to, like you@outlook.com or you@hotmail.com. Nothing was read.")
     #expect(copy.reasons == nil)
     #expect(MailConnectErrorView.otherAccountTitle(.outlook) == "Use another Microsoft account")
     let google = MailConnectErrorView.copy(.noMailbox(.gmail), .gmail)
     #expect(google.title == "Gmail isn't connected.")
-    #expect(google.subtitle == "This Google account has no Gmail. Sign in with the account your bank alerts go to. Nothing was connected and nothing was read.")
+    #expect(google.subtitle == "This Google account has no Gmail. Use the one your alerts go to. Nothing was read.")
     #expect(MailConnectErrorView.otherAccountTitle(.gmail) == "Use another Google account")
   }
 
@@ -453,7 +453,7 @@ struct MailboxFlowTests: AccountSuite {
   @Test func theErrorScreensSayWhatHappened() {
     let cancelled = MailConnectErrorView.copy(.cancelled, .outlook)
     #expect(cancelled.title == "Outlook isn't connected.")
-    #expect(cancelled.subtitle == "Microsoft sign-in was cancelled or didn't finish. Nothing was connected and nothing was read.")
+    #expect(cancelled.subtitle == "Microsoft sign-in was cancelled or didn't finish. Nothing was read.")
     #expect(cancelled.reasons?.items.map(\.title) == ["Cancel or Back on Microsoft's screen", "Permissions not accepted"])
     #expect(cancelled.reasons?.numbered == false)
     let google = MailConnectErrorView.copy(.permissionMissing(.gmail), .gmail)
@@ -485,7 +485,7 @@ struct MailboxFlowTests: AccountSuite {
   /// The chooser's copy with one link held promises no second mailbox (Release, live); the
   /// Debug copy offers one; "Use another email" says its pick replaces the mailbox read now.
   @Test func theChooserPromisesOneMailboxWhereOneIsHeld() {
-    #expect(ChooseEmailTitle.setup.footnote(oneLink: true) == "You can change it later in Profile › Bank alerts.")
+    #expect(ChooseEmailTitle.setup.footnote(oneLink: true) == "Change it later in Profile › Bank alerts.")
     #expect(ChooseEmailTitle.setup.footnote(oneLink: false).contains("add another mailbox"))
     #expect(ChooseEmailTitle.addMailbox.subtitle(oneLink: true) == ChooseEmailTitle.setup.subtitle(oneLink: true))
     #expect(!ChooseEmailTitle.addMailbox.subtitle(oneLink: true).contains("also"))
@@ -495,7 +495,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailProviderKind.outlook.chooserSubtitle == "Outlook.com, Hotmail or Live")
     for title in [ChooseEmailTitle.setup, .addMailbox, .change] {
       for oneLink in [true, false] {
-        #expect(title.subtitle(oneLink: oneLink).contains("different from the email you sign in to Hasala with"))
+        #expect(title.subtitle(oneLink: oneLink).contains("differ from your Hasala sign-in email"))
       }
     }
   }
@@ -510,7 +510,7 @@ struct MailboxFlowTests: AccountSuite {
     let offer = lane.offer
     #expect(offer == .signInAgain(mailboxID: "outlook-1", provider: .outlook))
     #expect(ChooseEmailSheet.subtitle(.outlook, mailboxes: lane.mailboxes, offer: offer)
-      == "maya.k@example.com needs a new sign-in. Sign in to Outlook again.")
+      == "Sign in to maya.k@example.com again.")
     #expect(ConnectMailPage.context(.outlook, offer: offer) == .signInAgain(mailboxID: "outlook-1"))
     #expect(ChooseEmailSheet.subtitle(.gmail, mailboxes: lane.mailboxes, offer: offer)
       == "maya@example.com is connected. Add another Google account.")
@@ -579,7 +579,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(stopped.kind == .needsYou && stopped.stoppedID == "outlook-1")
     #expect(stopped.detail == "Hasala stopped reading maya.k@example.com. Your Gmail still works.")
     let none = hero([], .notConnected, offer: .connect)
-    #expect(none.kind == .notConnected && none.detail == "Add a mailbox so Hasala can read your bank alerts.")
+    #expect(none.kind == .notConnected && none.detail == "Add a mailbox for your bank alerts.")
   }
 
   /// Before the mailbox state is read, the hero, the Profile card and the Settings row say
@@ -644,7 +644,7 @@ struct MailboxFlowTests: AccountSuite {
     let fresh = mailbox([syncing])
     #expect(fresh.lastEmail(.dib) == nil && fresh.readThisMonth == nil)
     #expect(MailboxDetailPage.signInBody(MockMailbox.needingSignIn(MockMailbox.outlook))
-      == "This happens after a password change, a long time signed out, or a work policy. No new Outlook alerts since Wed 7 Oct. Sign in again and the iPhone catches up. Nothing else changes.")
+      == "No new Outlook alerts since Wed 7 Oct. Sign in again to catch up.")
     // Live's no-mailbox halt: a sign-in the provider didn't end, said in the row's words.
     var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
     noMailbox.note = MailConnectFailure.noMailboxLine(.outlook)
@@ -653,9 +653,9 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailboxDetailPage.signInHeading(MockMailbox.needingSignIn(MockMailbox.outlook))
       == "Microsoft ended Hasala's access")
     #expect(MailCopy.disconnectPlainMessage
-      == "Hasala stops reading this mailbox and deletes its sign-in from this iPhone.")
+      == "Hasala stops reading it and deletes its sign-in from this iPhone.")
     #expect(MailboxDetailPage.readElsewhereFootnote(.gmail)
-      == "Your other iPhone reads this mailbox and holds its sign-in. Disconnect it there, or remove Hasala at myaccount.google.com/permissions.")
+      == "Your other iPhone reads this mailbox. Disconnect it there, or remove Hasala at myaccount.google.com/permissions.")
     #expect(MailCopy.banks([.enbd, .dib]) == "Emirates NBD and DIB")
   }
 
@@ -722,7 +722,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(c.replaced(by: .outlook)?.id == "gmail-1")
     #expect(c.replaced(by: .gmail) == nil)
     #expect(MailCopy.switchMessage(from: .gmail, to: .outlook)
-      .hasPrefix("This replaces your Gmail connection. Hasala reads your bank alerts from Outlook instead."))
+      .hasPrefix("Hasala reads your bank alerts from Outlook instead of Gmail."))
     await c.connect(.outlook)
     #expect(c.outcome == .failed(.failed("Disconnect Gmail first, then connect Outlook.")))
     #expect(lane.mailboxes.map(\.id) == ["gmail-1"] && lane.linkedProvider == .gmail)

@@ -111,7 +111,7 @@ struct ActivityReviewModelTests {
     #expect(deck.sorted.map(\.merchant) == ["Corner Shop"])
     app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
     #expect(app.reviewCount == 6)
-    #expect(ReviewTabView.emptyLine == "New transactions Hasala can't sort on its own show up here.")
+    #expect(ReviewTabView.emptyLine == "Transactions Hasala can't sort show up here.")
     #expect(ReviewOrder.newestFirst.title == "Newest first")
     #expect(ReviewOrder.oldestFirst.title == "Oldest first")
     #expect(ReviewTabView.orderSpoken(.oldestFirst) == "Order, Oldest first")

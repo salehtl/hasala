@@ -88,9 +88,9 @@ extension SortedForYouItem {
 
 extension SortedForYouSnapshot {
   public static let footnote =
-    "Payments Hasala's merchant list sorts are not listed here. You can still change any of them in Activity."
-  public static let intro = "What Hasala filed on its own this week. Tap a category to fix one."
-  public static let emptyLine = "Nothing sorted for you in the last 7 days."
+    "Payments sorted by Hasala's merchant list aren't listed. Change them in Activity."
+  public static let intro = "What Hasala filed by itself. Tap a category to fix one."
+  public static let emptyLine = "Nothing sorted for you this week."
 
   public var homeSpoken: String? {
     guard payments > 0 else { return nil }

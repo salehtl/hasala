@@ -88,7 +88,7 @@ nonisolated struct LiveStepUp: MailboxStepUp {
   /// this step-up, so it names neither.
   static func reason(_ kind: String) -> String {
     kind == "mailbox.link"
-      ? "Confirm it's you to connect this mailbox to Hasala" : "Confirm it's you to disconnect this mailbox"
+      ? "Confirm it's you to connect this mailbox" : "Confirm it's you to disconnect this mailbox"
   }
 }
 

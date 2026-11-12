@@ -116,7 +116,7 @@ public enum HomeEngine {
     let h = endedHero(s, month: prev, plan: plan)
     let toSort = ReviewEngine.queue(s).filter { $0.postedAt.date.yearMonth == prev }.count
     let line = toSort == 0
-      ? nil : "\(toSort) \(prev.name) payment\(toSort == 1 ? "" : "s") still to sort, which can change this result"
+      ? nil : "\(toSort) \(prev.name) payment\(toSort == 1 ? "" : "s") to sort could change this"
     return HomeSnapshot.MonthClosed(
       month: prev, word: MoneyPhrase([.text("\(prev.name) ")] + lowered(h.word.parts)), over: h.verdict == .overBudget,
       toSort: toSort, toSortLine: line)

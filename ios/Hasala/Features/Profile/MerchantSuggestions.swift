@@ -76,7 +76,7 @@ nonisolated enum CloudSendBack {
   }
 
   static let message =
-    "They keep Cloudflare's suggestion, and you confirm each one. Payments you've changed since stay as they are."
+    "Each keeps Cloudflare's suggestion for you to confirm. Ones you've since changed stay put."
 
   static func done(_ n: Int) -> String {
     n == 0 ? "Nothing to send back" : "Sent \(MoneyFormat.count(n)) \(n == 1 ? "payment" : "payments") back to Review"
@@ -113,7 +113,7 @@ struct CloudSuggestionsSection: View {
           .accessibilityIdentifier("profile.cloudSendBack")
         }
       }
-      Text("When your rules and Hasala's merchant list can't sort a payment, and you haven't picked a category for that merchant's payments yourself, Cloudflare's AI can suggest one. Off unless you turn it on.")
+      Text("Cloudflare's AI suggests a category when Hasala can't. Off unless you turn it on.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -153,31 +153,31 @@ struct CloudConsentContent {
   let points: [(icon: HIcon, title: String, text: String)]
 
   static let cloudflareSees =
-    "Your IP address, as with any internet request. The service doesn't record it, and doesn't store or log what you send. Cloudflare's terms say it doesn't keep what you send or use it to train models. Like any website it runs, Cloudflare keeps basic request records, such as the time and the country."
+    "Your IP address. The service doesn't record it or keep what you send, and Cloudflare's terms say its AI doesn't keep it or train on it. Cloudflare keeps basic records, like time and country."
 
   static let suggestions = CloudConsentContent(
     id: "merchantSuggestions",
     title: "Merchant suggestions",
-    lead: "When Hasala can't sort a payment with your rules or its merchant list, and you haven't picked a category for that merchant's payments yourself, it asks Cloudflare's AI service to suggest one. Apple's on-device model is used when Cloudflare can't help.",
+    lead: "When your rules, last picks and Hasala's merchant list can't sort a payment, Hasala asks Cloudflare's AI for a category. Apple's on-device model steps in when Cloudflare can't.",
     points: [
       (.tag, "What's sent",
-       "The merchant name from the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), Hasala's built-in categories and the app's version."),
+       "The merchant name, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), built-in categories and app version."),
       (.eyeSlash, "What's not sent",
-       "The amount, date, card or bank, your own category names, or anything about your account."),
+       "The amount, date, card, bank, your own category names or anything about your account."),
       (.cloud, "What Cloudflare sees", cloudflareSees),
       (.check, "You stay in charge",
-       "Suggestions are marked, and each payment waits in Review until you confirm or change it. You can turn this off at any time."),
+       "Suggestions are marked and wait in Review for you. Turn this off any time."),
     ])
 
   static let autoSort = CloudConsentContent(
     id: "merchantAutoSort",
     title: "Sort automatically",
-    lead: "Cloudflare AI will sort a payment by itself only when it is very sure.",
+    lead: "Cloudflare's AI files a payment by itself only when it's very sure.",
     points: [
       (.done, "Counted right away",
-       "Those payments count in your totals right away and are marked \u{201C}Sorted by Cloudflare AI\u{201D}. You can change any of them."),
+       "Marked \u{201C}Sorted by Cloudflare AI\u{201D}, and yours to change."),
       (.check, "Everything else",
-       "Stays a suggestion for you to confirm. You can turn this off at any time."),
+       "Stays a suggestion for you to confirm. Turn this off any time."),
     ])
 }
 

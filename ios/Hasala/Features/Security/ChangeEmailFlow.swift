@@ -109,17 +109,17 @@ private struct NewAddressStep: View {
   var body: some View {
     AccountScreen(
       title: "Change your email",
-      subtitle: "You've confirmed it's you. Where should sign-in codes and security emails go now?",
+      subtitle: "Where should codes and security emails go?",
       steps: (1, 2), back: .action(onCancel)
     ) {
       VStack(alignment: .leading, spacing: 16) {
         ReadOnlyField(label: "Current email", value: model.ticket.currentEmail)
-        AccountField("New email", help: "Codes and security alerts go here once you confirm it.",
+        AccountField("New email", help: "Takes effect once you confirm it.",
                      error: model.failedOnCodes ? nil : model.failure?.message) {
           EmailInput(text: $model.newEmail, identifier: "changeEmail.new")
         }
         CardNote(icon: .envelope,
-                 text: "We'll send a code to both addresses, so the old one knows and the new one is really yours. Your passkeys, password and 12 words don't change.")
+                 text: "A code goes to both addresses. Your passkeys, password and 12 words don't change.")
       }
     } footer: {
       BusyButton(title: "Send both codes", busy: model.busy, enabled: model.newEmailReady,
@@ -143,7 +143,7 @@ private struct CodesStep: View {
   var body: some View {
     AccountScreen(
       title: "Enter both codes",
-      subtitle: "One went to each address. They work for 10 minutes; 5 tries, then a pause.",
+      subtitle: "One went to each address. They last 10 minutes; 5 tries, then a pause.",
       steps: (2, 2), back: .system
     ) {
       VStack(alignment: .leading, spacing: 22) {
@@ -157,7 +157,7 @@ private struct CodesStep: View {
           FieldErrorLine(text: message, warning: model.failure == .codeExpired)
         }
         CardNote(icon: .shieldCheck,
-                 text: "Nothing changes until both codes match. Your passkeys, password and 12 words stay as they are.")
+                 text: "Nothing changes until both codes match.")
       }
       .onChange(of: model.currentCode) { _, new in
         model.codesEdited()

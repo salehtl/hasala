@@ -24,7 +24,7 @@ struct IncomeStep: View {
   }
 
   private static let figureID = "income.figure"
-  static let subtitle = "After any deductions. You can change it any time."
+  static let subtitle = "After deductions. Change it any time."
 
   private var screen: some View {
     SetupScreen(

@@ -261,7 +261,7 @@ enum PasswordRules {
                                 message: "Use 128 characters or fewer.")
     case .tooCommon:
       return PasswordAssessment(strength: .weak, longEnough: true, notPersonal: notPersonal, notCommon: false,
-                                message: "That password is too common. Try a longer phrase or let iPhone suggest one.")
+                                message: "Too common. Try a longer phrase or let iPhone suggest one.")
     case nil:
       break
     }
@@ -281,11 +281,11 @@ enum PasswordRules {
     let strong = scalars.count >= 16 || (classes >= 3 && distinct >= 8)
     if distinct < 5 {
       return PasswordAssessment(strength: .weak, longEnough: true, notPersonal: true, notCommon: true,
-                                message: "Too many repeats. Try a short phrase instead.")
+                                message: "Too many repeats. Try a short phrase.")
     }
     return PasswordAssessment(
       strength: strong ? .strong : .fair, longEnough: true, notPersonal: true, notCommon: true,
-      message: strong ? "Strong. Hard to guess, easy for you to type." : "Good. Longer is even better.")
+      message: strong ? "Strong. Hard to guess, easy to type." : "Good. Longer is even better.")
   }
 }
 
@@ -322,7 +322,7 @@ enum PhraseRules {
     switch error {
     case .length(let n): "A recovery phrase has 12 words. This has \(n)."
     case .unknownWord(let i, let w): "Word \(i + 1), \u{201C}\(w)\u{201D}, isn't a recovery-phrase word."
-    case .checksum: "Every word is real, but together they aren't a Hasala phrase. Two words may be swapped."
+    case .checksum: "These aren't a Hasala phrase. Two words may be swapped."
     case .entropyLength: "A recovery phrase has 12 words."
     }
   }

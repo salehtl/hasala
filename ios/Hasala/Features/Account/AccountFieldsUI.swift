@@ -407,7 +407,7 @@ struct NewPasswordBlock: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Your password signs you in. It can't unlock your data: on a new iPhone you'll also need your recovery phrase or a passkey.")
+      Text("A password signs you in. On a new iPhone, only your 12 words or a passkey unlock your data.")
         .hType(.subheadline)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -429,10 +429,13 @@ struct NewPasswordBlock: View {
         }
       }
       .padding(.top, 4)
-      NoteRow(icon: .lock, text: "Your password is scrambled on this iPhone before it's sent. Our server never sees your password, only the scrambled form, which is slow to guess from.")
+      NoteRow(icon: .lock, text: "Your password is scrambled on this iPhone first, so our server never sees it.")
+        .infoTip(Self.scrambledTip, about: "how your password is sent")
     }
     .hAnimation(.rise, value: password.isEmpty)
   }
+
+  static let scrambledTip = "Our server sees only the scrambled form, which is slow to guess from."
 }
 
 // MARK: - Code cells

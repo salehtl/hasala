@@ -115,9 +115,9 @@ final class SetupUITests: XCTestCase {
 
     item.tap()
     XCTAssertTrue(app.staticTexts["No bank alerts yet."].waitForExistence(timeout: uiWait), "the sheet did not open")
-    let window = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Hasala looked back 90 days in Gmail for Emirates NBD, DIB' AND label ENDSWITH 'ADIB. Your bank may send alerts only by SMS.'"))
+    let window = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Searched 90 days of Gmail for Emirates NBD, DIB' AND label ENDSWITH 'ADIB. Your bank may send only SMS alerts.'"))
     XCTAssertEqual(window.count, 1, "the 90-day line is missing")
-    XCTAssertTrue(app.staticTexts["Check for new alerts reads what reached Gmail since Hasala looked. Alerts go to another address? Use that mailbox instead."].exists)
+    XCTAssertTrue(app.staticTexts["Alerts go to another address? Use that mailbox."].exists)
     XCTAssertEqual(el(app, "noAlerts.checkAgain").label, "Check for new alerts")
     attach(app, "No bank alerts yet (sheet)")
     try audit(app, overSheet: true)

@@ -103,7 +103,7 @@ struct CategoryManagementTests {
     #expect(!impact.blockedByGoal)
     #expect(impact.transactions > 0)
     #expect(impact.lines(hidden: false).last == "AED 1,600.00 assigned this month goes to Ready to assign.")
-    #expect(impact.lines(hidden: true).last == "The money assigned this month goes to Ready to assign.")
+    #expect(impact.lines(hidden: true).last == "This month's assigned money goes to Ready to assign.")
     try ledger.apply(.archiveCategory("dining", moveTo: nil))
     #expect(PlanEngine.snapshot(ledger.state, now: ledger.now).readyToAssign == .aed(2_600_00))
     #expect(ledger.state.category("dining")?.archived == true)

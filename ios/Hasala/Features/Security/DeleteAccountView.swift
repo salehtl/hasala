@@ -159,7 +159,7 @@ struct DeleteAccountView: View {
     VStack(alignment: .leading, spacing: 14) {
       VStack(alignment: .leading, spacing: 4) {
         Text("Keep a copy first").hType(.headline).foregroundStyle(HColor.textPrimary)
-        Text("Download everything as a CSV file. The file isn't encrypted.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        Text("The CSV file isn't encrypted.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
       }
       ShareLink(item: file, preview: SharePreview(file.name)) {
         Text("Export your data (CSV)")

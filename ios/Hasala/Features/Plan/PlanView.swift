@@ -144,7 +144,7 @@ private struct ReadyToAssignCard: View {
       layout {
         // Each pill takes the height its label needs (two lines at the largest sizes).
         if overPlanned {
-          Text("Lower a budget below to bring the plan back within your income.")
+          Text("Lower a budget below to fit your income.")
             .hType(.footnote).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,9 +221,9 @@ private struct NothingPlannedCard: View {
       return "Give each category a budget, or start from \(snap.month.previous.name)'s plan."
     }
     if snap.readyToAssign.minor > 0 {
-      return "Assign your income to your categories, or tap a category to set its budget."
+      return "Assign your income, or tap a category to set its budget."
     }
-    return "Tap a category to set its budget, and Hasala keeps track of your month against it."
+    return "Tap a category to set its budget."
   }
 }
 
@@ -530,7 +530,7 @@ private struct ProjectsSection: View {
         .accessibilityIdentifier("plan.project.\(p.id)")
       }
       if model.snapshot.projects.isEmpty {
-        Text("Set money aside for one thing, like a trip or a move. It stays out of your monthly plan.")
+        Text("Set money aside for one thing, like a trip, outside your monthly plan.")
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }

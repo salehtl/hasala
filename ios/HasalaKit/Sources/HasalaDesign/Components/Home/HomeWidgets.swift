@@ -142,7 +142,7 @@ public struct BudgetPaceWidgetView: View {
   private var empty: some View {
     VStack(alignment: .leading, spacing: 12) {
       header
-      Text("Nothing planned yet. Set a budget in Plan to see your pace here.")
+      Text("Nothing planned yet. Set a budget in Plan.")
         .hType(.subheadline).foregroundStyle(secondary)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("budgetPace.empty")

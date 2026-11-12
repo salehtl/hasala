@@ -43,7 +43,7 @@ struct ProjectDetailView: View {
     } else {
       PlanDetailScreen(app: app, title: "Project", wash: .hue(.peach)) {
         EmptyStateCard(icon: .project, tone: .neutral, title: "This project is gone",
-                       message: "It was removed. Projects shows the ones you have now.")
+                       message: "It was removed.")
           .padding(.horizontal, HSpacing.insetPage)
       }
     }
@@ -98,7 +98,7 @@ struct ProjectDetailView: View {
     VStack(alignment: .leading, spacing: 12) {
       CountedTitle(title: "Transactions", count: d.transactions.count)
       if d.transactions.isEmpty {
-        Text("Nothing in this project yet. Add the transactions that belong to it.")
+        Text("Nothing in this project yet. Add its transactions.")
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       } else {

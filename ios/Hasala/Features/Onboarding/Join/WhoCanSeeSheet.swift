@@ -59,25 +59,25 @@ struct WhoCanSeeSheet: View {
 
   static func serverSees(outlook: Bool) -> [String] {
     [
-      "Your email address and name, and that your account exists",
+      "Your name and email, and that your account exists",
       "Your passkey's public key, or a scrambled form of your password",
       "When you sync, and how much sealed data you store",
-      "Your devices' push tokens",
-      "Your \(outlook ? "mailbox" : "Gmail") address for a moment when you connect, and with each Gmail notice, then only a code made with a secret key. Also when your mailbox changes, so it can wake your iPhone",
+      "Your devices' push tokens, and when your mailbox changes, to wake them",
+      "Your \(outlook ? "mailbox" : "Gmail") address for a moment when you connect and with each Gmail notice, then only a code made with a secret key",
     ]
   }
 
   static let serverCantSee = "Your emails, texts, amounts, merchants, categories, budget or plan"
 
   static let cloudflare =
-    "Our network provider, which also sends our emails. Sees request details, like IP addresses and times, the emails we send you, and the sealed data passing through. It can't open it. If you turn on Cloud suggestions, its AI service sees the merchant names Hasala asks about, without your name or account."
+    "Our network provider. Sees request details like IP addresses, our emails to you, and sealed data it can't open. With Cloud suggestions on, its AI sees merchant names, not your name or account."
 
   static let bankTextsHue = Hue.mint
   static let bankTextsTitle = "Bank texts, if you use them"
   static let bankTexts = "Read on your iPhone and sent to no one."
 
   static let apple =
-    "Your email address, for the TestFlight invitation, and that you installed Hasala. Your passkey syncs in iCloud Keychain, end-to-end encrypted by Apple."
+    "Your email for the TestFlight invite, and that you installed Hasala. Your passkey syncs end-to-end encrypted in iCloud Keychain."
 
   private var parties: some View {
     VStack(spacing: 0) {
@@ -100,9 +100,7 @@ struct WhoCanSeeSheet: View {
       }
       divider
       PartyRow(tile: tile(.sky, .envelope), title: outlook ? "Google or Microsoft" : "Google") {
-        line(outlook
-          ? "Sees your mail, as it already does, and that you gave Hasala read-only access. Nothing Hasala works out goes back to them."
-          : "Sees your mail, as it already does, and that you gave Hasala read-only access. Nothing Hasala works out goes back to Google.")
+        line("Sees your mail and that Hasala has read-only access, not what Hasala works out.")
       }
       divider
       PartyRow(tile: tile(Self.bankTextsHue, .chat), title: Self.bankTextsTitle) {
@@ -110,7 +108,7 @@ struct WhoCanSeeSheet: View {
       }
       divider
       PartyRow(tile: tile(.other, .globe), title: "Gravatar") {
-        line("Your iPhone asks it for your picture with a code made from your email address. It sees that request and your IP address. No picture means your initials. You can turn it off in Profile.")
+        line("Your iPhone asks it for your picture, sending a code made from your email. It sees your IP address too. Turn it off in Profile.")
       }
       divider
       PartyRow(tile: tile(.lilac, .phone), title: "Apple") {
@@ -177,7 +175,7 @@ struct WhoCanSeeSheet: View {
         Text("Only you can unlock it")
           .hType(.rowTitle)
           .foregroundStyle(HColor.amber950)
-        Text("Your passkey and 12-word recovery phrase are the only ways in on a new iPhone. We can't reset them.")
+        Text("Your passkey or 12-word recovery phrase unlocks it on a new iPhone. We can't reset them.")
           .hType(HType(size: 14, leading: 20, weight: .regular, textStyle: .subheadline))
           .foregroundStyle(HColor.amber950)
           .fixedSize(horizontal: false, vertical: true)

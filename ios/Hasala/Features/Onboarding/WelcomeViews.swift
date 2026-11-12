@@ -25,16 +25,16 @@ enum Stories {
   static let all: [Story] = [
     Story(id: 0, kicker: "Welcome to Hasala", headline: ["Know what's left.", "Keep it to yourself."],
           accentSecondLine: true,
-          body: "A budget from your bank alert emails, worked out on your iPhone. Rent counts on the day it's due, so paying it doesn't put you behind.",
+          body: "Your budget, worked out on your iPhone. Rent counts when due, not when paid.",
           whoSees: false),
     Story(id: 1, kicker: "On your iPhone", headline: ["Your bank emails do the typing."], accentSecondLine: false,
-          body: "Hasala reads the alerts your bank already sends, right here on your iPhone, and turns them into a live budget. No bank logins.",
+          body: "Hasala reads the alerts your bank already sends. No bank logins.",
           whoSees: false),
     Story(id: 2, kicker: "Private by design", headline: ["Your phone", "holds the key."], accentSecondLine: false,
-          body: "Your money data is end-to-end encrypted before it leaves your iPhone. Our server keeps a sealed copy it can't open.",
+          body: "Your data is end-to-end encrypted before it leaves your iPhone. Our server can't open it.",
           whoSees: true),
     Story(id: 3, kicker: "Review", headline: ["Sort a week in a minute."], accentSecondLine: false,
-          body: "Swipe new transactions into Needs, Wants or Savings. Hasala learns each merchant on your iPhone and sorts it for you next time.",
+          body: "Swipe transactions into Needs, Wants or Savings. Next time, Hasala suggests your pick.",
           whoSees: false),
   ]
 }
@@ -638,7 +638,7 @@ struct CopiedInviteCard: View {
         Text(Self.title)
           .hType(.subheadline.weight(.semibold))
           .foregroundStyle(HColor.textPrimary)
-        Text("Paste it here. There's no code to type.")
+        Text("Paste it here. No code to type.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
       }

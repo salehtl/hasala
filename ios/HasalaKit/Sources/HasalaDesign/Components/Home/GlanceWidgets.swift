@@ -309,7 +309,7 @@ public struct WaitingWidgetView: View {
   let sentence: String
   @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
-  public init(title: String, sentence: String = "Your first bank alert will fill this in.") {
+  public init(title: String, sentence: String = "Your first bank alert fills this in.") {
     self.title = title
     self.sentence = sentence
   }

@@ -5,13 +5,13 @@ import SwiftUI
 import WidgetKit
 
 enum WaitingCopy {
-  static let firstAlert = "Your first bank alert will fill this in."
-  static let stale = "Open Hasala to bring this up to date."
+  static let firstAlert = "Your first bank alert fills this in."
+  static let stale = "Open Hasala to update this."
   static let bill = "Bills Hasala finds will show here."
-  static let netWorth = "Your first account check-in will fill this in."
-  static let project = "Start a project in Projects to see it here."
-  static let goal = "Add a savings goal in Plan to see it here."
-  static let category = "Set a budget in Plan to watch a category."
+  static let netWorth = "Your first account check-in fills this in."
+  static let project = "Start a project in Projects."
+  static let goal = "Add a savings goal in Plan."
+  static let category = "Set a category budget in Plan."
   static let projectGone = "Touch and hold to choose a project."
   static let goalGone = "Touch and hold to choose a goal."
 }
@@ -77,7 +77,7 @@ struct SpentSoFarHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "SpentSoFar", provider: GlanceProvider()) { SpentSoFarEntryView(entry: $0) }
       .configurationDisplayName("Spent so far")
-      .description("See what you've spent this month against your plan.")
+      .description("Your month's spending against your plan.")
       .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
       .contentMarginsDisabled()
   }
@@ -99,7 +99,7 @@ struct BudgetPaceHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "BudgetPace", provider: GlanceProvider()) { BudgetPaceEntryView(entry: $0) }
       .configurationDisplayName("Budget pace")
-      .description("Track Needs, Wants and Savings against your plan.")
+      .description("Needs, Wants and Savings against your plan.")
       .supportedFamilies([.systemMedium])
       .contentMarginsDisabled()
   }
@@ -124,7 +124,7 @@ struct CategoryWatchHomeWidget: Widget {
       CategoryWatchEntryView(entry: $0)
     }
     .configurationDisplayName("Category watch")
-    .description("Watch what's left in a category you pick.")
+    .description("What's left in a category you pick.")
     .supportedFamilies([.systemSmall])
     .contentMarginsDisabled()
   }
@@ -147,7 +147,7 @@ struct NextBillHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "NextBill", provider: GlanceProvider()) { NextBillEntryView(entry: $0) }
       .configurationDisplayName("Next bill")
-      .description("See your next recurring payment and when it's due.")
+      .description("Your next recurring payment and when it's due.")
       .supportedFamilies([.systemSmall])
       .contentMarginsDisabled()
   }
@@ -192,7 +192,7 @@ struct ComingUpHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "ComingUp", provider: GlanceProvider()) { ComingUpEntryView(entry: $0) }
       .configurationDisplayName("Coming up")
-      .description("See recurring payments and salary for the next 14 days.")
+      .description("Recurring payments and salary, next 14 days.")
       .supportedFamilies([.systemMedium])
       .contentMarginsDisabled()
   }

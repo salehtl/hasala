@@ -169,7 +169,7 @@ struct InsightsCountingTests {
     let s = F.ledger([F.txn("1", 5000), F.txn("1", 3000, F.july)])
     let snap = InsightsEngine.snapshot(s, months: F.june...F.july, now: F.afterJune)
     #expect(snap.title == "July 2026")
-    #expect(snap.rangeNote == "Insights shows one month at a time. Home and Activity show Jun – Jul 2026.")
+    #expect(snap.rangeNote == "Insights shows one month. Home and Activity show Jun – Jul 2026.")
   }
 
   @Test func refundsNetAgainstTheirCategoryAndAreNotIncome() {
@@ -508,7 +508,7 @@ struct InsightsMayaTests {
     #expect(sum.notCounted?.amount == .aed(4_860_00))
     #expect(sum.notCounted?.line.rendered(hidden: false) == "Not counted: AED 4,860.00 on Japan trip")
     #expect(sum.legend.last?.title == "Left over, before projects")
-    #expect(snap.flow.note.rendered(hidden: false).hasPrefix("Out leaves out projects you keep outside your plan"))
+    #expect(snap.flow.note.rendered(hidden: false).hasPrefix("Out leaves out projects outside your plan"))
     #expect(sum.figure == .aed(6_587_40))
     #expect(sum.kept == "26%")
     #expect(sum.income == .aed(25_000_00))
@@ -567,9 +567,9 @@ struct InsightsMayaTests {
     #expect(fresh.categories.map(\.sharePercent) == [70, 15, 15])
     #expect(fresh.changesNotice?.title == "Nothing to compare yet")
     #expect(fresh.changesNotice?.message
-      == "Your first scan went back to 2 October. Changes show here once a month has a month before it.")
+      == "Your first scan went back to 2 October. Changes show from your second month.")
     #expect(fresh.flowEmpty
-      == "Your first full month shows here on 1 November. Each month after that adds a bar, up to six.")
+      == "Your first full month shows on 1 November.")
     #expect(fresh.reports.map(\.caption)
       == ["Needs a check-in", "Once income lands", "Needs more history", "Builds with history"])
     #expect(fresh.reports.allSatisfy { $0.value == .missing })

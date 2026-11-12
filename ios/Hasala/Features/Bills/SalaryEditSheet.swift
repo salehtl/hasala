@@ -35,7 +35,7 @@ struct SalaryEditSheet: View {
 
   var body: some View {
     RecurringForm(title: terms?.name ?? "Salary", closeID: "bills.salary.close", isDirty: fields != opened) {
-      RecurringField("Amount", footer: "Past months keep the income you received. This applies from this month on.") {
+      RecurringField("Amount", footer: "Applies from this month on. Past months keep their income.") {
         RecurringTextField(placeholder: "0.00", text: $fields.amountText, label: "Amount, in dirhams",
                            id: "bills.salary.amount", amount: true)
       }

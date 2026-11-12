@@ -625,7 +625,7 @@ struct AddPastPaymentsPage: View {
     let suggestions = model.suggestions
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        Text("These payments look like \(model.name.trimmedSpaces). Tick the ones that paid it, and they count as its past payments.")
+        Text("These look like \(model.name.trimmedSpaces). Tick the ones that paid it.")
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .padding(.horizontal, 4)
@@ -665,7 +665,7 @@ struct RecentPaymentsPage: View {
         if payments.isEmpty {
           EmptyNote(systemImage: "receipt", message: "No recent payments to start from.")
         } else {
-          Text("Choose a payment, and its name, amount and day fill in.")
+          Text("Tap one to fill in the name, amount and day.")
             .hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
@@ -858,7 +858,7 @@ struct PauseBillSheet: View {
     let tomorrow = ProjectDates.date(app.store.now.date.adding(days: 1))
     RecurringForm(title: "Pause \(app.store.state.bill(bill)?.name ?? "")", closeID: "bills.pause.close",
                   isDirty: fields != opened, fitted: true) {
-      RecurringField("Pause", footer: "While it's paused, nothing is expected and nothing is late.") {
+      RecurringField("Pause", footer: "Nothing is expected or late while it's paused.") {
         RecurringCard {
           RecurringChoiceRow(title: "Until I resume", selected: !untilDate, id: "bills.pause.untilResume") {
             withAnimation(.easeInOut(duration: 0.2)) { fields.untilDate = false }
@@ -947,7 +947,7 @@ struct LinkPaymentsSheet: View {
         EmptyNote(systemImage: "link", message: "No other payments look like \(b?.name ?? "this one").")
           .accessibilityIdentifier("bills.link.empty")
       } else {
-        Text("Tick the payments that paid \(b?.name ?? "it"). Nothing is linked until you do.")
+        Text("Tick the payments that paid \(b?.name ?? "it").")
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .padding(.horizontal, 4)

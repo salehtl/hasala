@@ -200,9 +200,9 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
 
   public var detail: String {
     switch self {
-    case .probableCopy: "It matches one you already have. Merge it, or keep both."
-    case .samePurchase: "It may be the AED charge for a purchase you already have. Count it once, or keep both."
-    case .mayRepeat: "It may be the same payment as a bank text. Keep both, or archive this one."
+    case .probableCopy: "It matches one you have. Merge it, or keep both."
+    case .samePurchase: "Could be the AED charge of an earlier purchase. Count it once, or keep both."
+    case .mayRepeat: "Could be the same payment as a bank text. Keep both, or archive this one."
     }
   }
 }
@@ -644,7 +644,7 @@ public struct ProjectDraft: Sendable, Hashable, Codable {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { return "Give the project a name" }
     if trimmed.unicodeScalars.count > Self.maxName { return "Use \(Self.maxName) characters or fewer for the name" }
-    if let b = budget, b.minor <= 0 { return "The money set aside must be more than 0" }
+    if let b = budget, b.minor <= 0 { return "The budget must be more than 0" }
     if let s = starts, let e = ends, e < s { return "The end date is before the start date" }
     return nil
   }

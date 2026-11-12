@@ -51,7 +51,7 @@ struct WidgetCanvas: View {
     VStack(alignment: .leading, spacing: 12) {
       header
       if editing {
-        Text("Drag a widget to move it. Tap − to take it off Home.")
+        Text("Drag to move. Tap − to remove.")
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .padding(.top, -4)
           .padding(.bottom, 18)
@@ -104,7 +104,7 @@ struct WidgetCanvas: View {
   private var emptyNote: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text("Home is just the month for now").hType(.headline).foregroundStyle(HColor.textPrimary)
-      Text("Add a widget to keep a bill, a goal or a category in view. Anything you add stays on this iPhone.")
+      Text("Add a widget for a bill, goal or category. Widgets stay on this iPhone.")
         .hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }

@@ -49,7 +49,7 @@ struct SyncHaltTests {
     var codes = Set<String>()
     for halt in Self.shown {
       let reason = SyncHaltWall.reason(halt)
-      #expect(reason.contains("stopped"), "\(halt)")
+      #expect(!reason.isEmpty && SyncHaltWall.title.contains("stopped"), "\(halt)")
       #expect(!reason.localizedCaseInsensitiveContains("erase") && !reason.localizedCaseInsensitiveContains("reset"))
       let next = SyncHaltWall.next(halt)
       #expect(next.contains("support@hasala.app"), "\(halt)")

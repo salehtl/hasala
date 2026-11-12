@@ -92,7 +92,7 @@ struct RecoverCodeView: View {
     let signIn = store.signIn
     CodeStepScreen(
       title: "Check your email",
-      subtitle: "We sent a code to \(signIn.recovery?.emailHint ?? "your account's address"). Email alone won't get you in; with your 12 words, it does.",
+      subtitle: "We sent a code to \(signIn.recovery?.emailHint ?? "your account's address"). With your 12 words, it gets you in.",
       steps: (2, 3), code: Bindable(signIn).recoverCode, busy: signIn.busy,
       failure: signIn.failure(on: .recoverCode), sentAt: signIn.recoverCodeSentAt,
       trailing: (title: "Change words", identifier: "code.changeWords", action: { store.signup.back() }),

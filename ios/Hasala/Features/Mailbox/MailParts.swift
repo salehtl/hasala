@@ -10,8 +10,8 @@ import SwiftUI
 // MARK: - Copy
 
 enum MailCopy {
-  static let sampleDataRefusal = "This account shows sample data, so it can't read your email."
-  static let reviewAccountRefusal = "This is an App Review account, so it can't read your email."
+  static let sampleDataRefusal = "This account shows sample data and can't read email."
+  static let reviewAccountRefusal = "This App Review account can't read your email."
 
   /// "Emirates NBD and DIB": the banks as the read-only card and the scan name them.
   static func banks(_ banks: [SupportedBank]) -> String {
@@ -24,8 +24,8 @@ enum MailCopy {
   /// says how new alerts are really caught (no promise the beta doesn't keep).
   static var readNote: String {
     BuildSurface.showsUnfinished
-      ? "To catch new alerts quickly, our server is told when new mail arrives, never what it says."
-      : "This iPhone checks for new alerts when you open Hasala, and from time to time in the background."
+      ? "Our server is told when new mail arrives, never what it says."
+      : "New alerts are checked when you open Hasala, and sometimes in the background."
   }
 
   static let confirmNote = "You'll confirm it's you before it connects."
@@ -35,25 +35,27 @@ enum MailCopy {
   static func pastWindow(days: Int) -> String { days >= 365 ? "the last year" : "the last \(days) days" }
 
   static func pastMailMessage(days: Int) -> String {
-    "Hasala can read \(pastWindow(days: days)) of bank alerts on this iPhone. You can also do this later in Bank alerts."
+    "Hasala can read \(pastWindow(days: days)) of bank alerts, now or later in Bank alerts."
   }
 
   static func pastMailSkippedDetail(days: Int) -> String {
-    "Hasala reads only new alerts here. Import reads your bank alerts from the \(days >= 365 ? "year" : "\(days) days") before you connected, on this iPhone."
+    "Import reads the \(days >= 365 ? "year" : "\(days) days") before you connected."
   }
 
   static func pastImported(_ count: Int) -> String {
     count == 1 ? "1 past transaction added." : "\(MoneyFormat.count(count)) past transactions added."
   }
 
-  static let pastImportLater = "Hasala is reading your past email. It goes on in the background."
+  static let pastImportLater = "Reading your past email in the background."
 
   /// Under the Mailboxes card (Paper 1NS8). The server's part of a new-mail wake is
   /// Debug's: a Release build relays none.
-  static var mailboxesFootnote: String {
+  static let mailboxesFootnote = "Read-only, on this iPhone."
+
+  static var mailboxesFootnoteDetail: String {
     BuildSurface.showsUnfinished
-      ? "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server keeps only a code for each mailbox, made with a secret key, and sees when new mail arrives. It never sees the mail."
-      : "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server keeps only a code for each mailbox, made with a secret key, and never sees the mail."
+      ? "Our server keeps only a code for each mailbox, made with a secret key. It sees when mail arrives, never the mail."
+      : "Our server keeps only a code for each mailbox, made with a secret key. It never sees your mail."
   }
 
   /// The toast after a new sign-in to a mailbox whose provider ended access (Paper flow:
@@ -61,7 +63,7 @@ enum MailCopy {
   static func signedInAgain(
     _ provider: MailProviderKind, nowReading address: String? = nil, removal: MailSwitchRemoval? = nil
   ) -> String {
-    guard let address else { return "\(provider.appName) connected again. Catching up from the last check." }
+    guard let address else { return "\(provider.appName) connected again. Catching up." }
     return with("Now reading \(address).", removal)
   }
 
@@ -75,7 +77,7 @@ enum MailCopy {
     case nil: line
     case .removed(let n?)?: "\(line) \(removed(n))"
     case .removed(nil)?: "\(line) The old transactions were removed."
-    case .failed(let old)?: "\(line) The transactions from \(old) couldn't be removed. They stay."
+    case .failed(let old)?: "\(line) Transactions from \(old) couldn't be removed."
     }
   }
 
@@ -136,12 +138,11 @@ enum MailCopy {
   /// your email?"; Paper has no board for it, so it is the disconnect alert's kind).
   static let switchTitle = "Change your email?"
 
-  /// Its message: "This replaces your Gmail connection. Hasala reads your bank alerts from
-  /// Outlook instead."
+  /// Its message: "Hasala reads your bank alerts from Outlook instead of Gmail."
   static func switchMessage(
     from old: MailProviderKind, to new: MailProviderKind, impact: MailboxDisconnectImpact? = nil
   ) -> String {
-    let lead = "This replaces your \(old.appName) connection. Hasala reads your bank alerts from \(new.appName) instead."
+    let lead = "Hasala reads your bank alerts from \(new.appName) instead of \(old.appName)."
     guard let impact else { return "\(lead) Past transactions stay." }
     return ([lead] + impactLines(impact)).joined(separator: " ")
   }
@@ -154,17 +155,15 @@ enum MailCopy {
   /// Its message. The other iPhone may be one the person no longer has: the server can't
   /// tell, so the copy says both.
   static func takeoverMessage(from held: MailProviderKind, to new: MailProviderKind) -> String {
-    let reads = held == new
-      ? "Hasala reads it on this iPhone instead"
-      : "Hasala reads your bank alerts from \(new.appName) on this iPhone instead"
-    return "Your \(held.appName) is read on another iPhone, or was on one you no longer have. \(reads), and the other iPhone stops. Past transactions stay."
+    let reads = held == new ? "" : ", and this iPhone reads \(new.appName)"
+    return "Another iPhone reads your \(held.appName), maybe one you no longer have. It stops\(reads). Past transactions stay."
   }
 
   static func disconnectLead(_ address: String) -> String {
     "Hasala stops reading \(address) and deletes its sign-in from this iPhone."
   }
 
-  static let disconnectPlainMessage = "Hasala stops reading this mailbox and deletes its sign-in from this iPhone."
+  static let disconnectPlainMessage = "Hasala stops reading it and deletes its sign-in from this iPhone."
 
   static func keepTransactions(_ impact: MailboxDisconnectImpact) -> String {
     impact.transactions == 1 ? "Keep the 1 transaction" : "Keep the \(MoneyFormat.count(impact.transactions)) transactions"
@@ -176,9 +175,9 @@ enum MailCopy {
   }
 
   static func removeDetail(_ impact: MailboxDisconnectImpact) -> String {
-    let after = "You can't bring them back here. An encrypted record stays until you delete your account."
+    let after = "Can't be undone here. An encrypted record stays until you delete your account."
     if impact.transactions == 1 {
-      return "Takes it out of your lists and totals. You can't bring it back here. An encrypted record stays until you delete your account."
+      return "Takes it out of your lists and totals. \(after)"
     }
     guard impact.edited > 0 else { return "Takes them out of your lists and totals. \(after)" }
     return "Takes them out of your lists and totals, with the \(MoneyFormat.count(impact.edited)) you changed. \(after)"
@@ -405,7 +404,7 @@ struct ReadsNeverCard: View {
       VStack(alignment: .leading, spacing: 8) {
         Text("Never").hType(.overline).foregroundStyle(HColor.textSecondary)
           .accessibilityAddTraits(.isHeader)
-        item("The rest of your inbox. It's never downloaded.", reads: false)
+        item("Downloading the rest of your inbox", reads: false)
         item("Sending, deleting or changing your email", reads: false)
         item("Passing your emails to our server or an AI service", reads: false)
       }

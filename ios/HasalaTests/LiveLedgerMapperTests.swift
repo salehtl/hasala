@@ -133,7 +133,7 @@ struct LiveLedgerMapperTests {
     #expect(ids.count == 2)
     let usd = try #require(live.txns.first { $0.id == ids.first })
     #expect(usd.homeMinor == 91_81 && usd.homeSource == .rate && usd.homeRateMicro == 3_672_500)
-    #expect(usd.homeAmount.estimateLine == "Estimate at 3.6725 AED per USD. Your bank's charge can be a little higher.")
+    #expect(usd.homeAmount.estimateLine == "Estimate at 3.6725 AED per USD; your bank may charge more.")
     let eur = try #require(live.txns.first { $0.id == ids.last })
     #expect(eur.homeMinor == nil && eur.homeSource == nil && eur.isNotCounted)
     #expect(live.txns.filter { $0.amount.currency == "AED" }.allSatisfy { $0.homeSource == .identity })
