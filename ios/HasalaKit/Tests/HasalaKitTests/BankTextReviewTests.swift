@@ -45,7 +45,7 @@ struct BankTextReviewTests {
     #expect(ReviewEngine.unreadTextDetail(texts[1], today: today) == "Received Thu 8 Oct, 19:12")
     #expect(
       ReviewEngine.unreadTextBody(texts[1], today: today, canPaste: true)
-        == "Hasala couldn't read this bank text. Find the text at 19:12 on Thu 8 Oct in Messages, copy it and paste it here, or add the payment yourself.")
+        == "Copy it from Messages and paste it here, or add the payment yourself.")
     #expect(s.unreadMail.isEmpty && ReviewEngine.unreadCount(s) == 0)
   }
 

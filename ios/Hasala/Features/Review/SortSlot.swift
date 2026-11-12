@@ -28,12 +28,12 @@ enum SortSlot: Equatable {
 
   static func importingLine(_ mail: MailImport, queued: Bool = true) -> String {
     switch mail.state {
-    case .offline: "Paused. No internet connection. It continues when you're back online."
-    case .paused: "Paused for now. Hasala tries again soon."
+    case .offline: "No internet. Reading resumes once you're online."
+    case .paused: "Paused. Trying again soon."
     case .reading, .stopped:
       queued
-        ? "You can start on the ones here now. More arrive as Hasala reads."
-        : "Hasala is reading your bank alerts. Transactions to sort show up here."
+        ? "Start sorting. More arrive as Hasala reads."
+        : "Transactions to sort show up here."
     }
   }
 

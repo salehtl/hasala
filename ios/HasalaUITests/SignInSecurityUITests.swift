@@ -27,7 +27,7 @@ final class SignInSecurityUITests: XCTestCase {
     type(app, "signIn.password", "not my password")
     tap(app, "signIn.withPassword")
     // Paper FWD: the password box rings, one line under it, the email isn't marked.
-    XCTAssertTrue(app.staticTexts["That email and password don't match. Try again, or reset your password."]
+    XCTAssertTrue(app.staticTexts["Wrong email or password. Try again or reset your password."]
       .waitForExistence(timeout: 10))
     XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait))
     attach(app, "Sign in · wrong password")
@@ -353,10 +353,10 @@ final class SignInSecurityUITests: XCTestCase {
     tap(app, "security.removePasskey.pk-2")
     let alert = app.alerts["Remove the Work iPad passkey?"]
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(alert.staticTexts["It won't be able to sign in to Hasala. You'll confirm with Face ID next."].exists)
+    XCTAssertTrue(alert.staticTexts["It can't sign in after this. You'll confirm with Face ID next."].exists)
     alert.buttons["Remove"].tap()
     XCTAssertTrue(app.staticTexts["Remove the Work iPad passkey"].waitForExistence(timeout: uiWait))
-    XCTAssertTrue(app.staticTexts["Face ID confirms it's really you, using your passkey."].exists)
+    XCTAssertTrue(app.staticTexts["Face ID confirms it's you, with your passkey."].exists)
     attach(app, "Confirm it's you · Face ID")
     try auditOverThePage(app)
     tap(app, "confirm.cancel")
@@ -501,7 +501,7 @@ final class SignInSecurityUITests: XCTestCase {
   func testRelaunchAfterASignInGoesToUnlock() throws {
     let app = launch(scenario: "relaunchSignedIn")
     XCTAssertTrue(el(app, "unlock.passkey").waitForExistence(timeout: 15))
-    XCTAssertFalse(app.staticTexts["This is a new recovery phrase. Throw away any words you wrote down before."].exists)
+    XCTAssertFalse(app.staticTexts["New recovery phrase. Throw away any words you wrote before."].exists)
   }
 
   @MainActor

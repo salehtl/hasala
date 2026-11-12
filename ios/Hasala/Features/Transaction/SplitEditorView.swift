@@ -52,7 +52,7 @@ struct SplitEditorView: View {
               .accessibilityIdentifier("split.rest")
           }
         }
-        Text("Each line counts against its own budget. The bank email stays attached.")
+        Text("Each line counts toward its own budget.")
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .padding(.horizontal, 4)
         if !(model.detail?.splits.isEmpty ?? true) {

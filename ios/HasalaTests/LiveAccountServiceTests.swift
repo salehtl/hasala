@@ -100,7 +100,7 @@ struct LiveAccountServiceTests {
     await #expect(throws: AuthFailure.noAccountForPhrase) {
       _ = try await a.beginRecovery(words: MockAccountService.phraseWords)
     }
-    await #expect(throws: AuthFailure.badPhrase("Every word is real, but together they aren't a Hasala phrase. Two words may be swapped.")) {
+    await #expect(throws: AuthFailure.badPhrase("These aren't a Hasala phrase. Two words may be swapped.")) {
       _ = try await a.beginRecovery(words: Array(repeating: "abandon", count: 12))
     }
     let ticket = RecoveryTicket(id: "not-mine", emailHint: "")

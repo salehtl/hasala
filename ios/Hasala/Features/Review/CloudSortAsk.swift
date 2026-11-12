@@ -6,17 +6,17 @@ extension CloudConsentContent {
   static let sortTheRest = CloudConsentContent(
     id: "sort",
     title: "Sort the rest with Cloudflare AI?",
-    lead: "Hasala's merchant list sorts the transactions it knows, and a merchant you sorted yourself gets your last pick. For the rest, Hasala can ask Cloudflare's AI service, one merchant name per request. It stays off unless you turn it on.",
+    lead: "Hasala's merchant list and your last picks sort what they can. For the rest, Hasala can ask Cloudflare's AI, one merchant name per request. Off unless you turn it on.",
     points: [
       (.tag, "Only the merchant name",
-       "From the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), with Hasala's built-in categories and the app's version. Each name is asked about once, not once per transaction."),
+       "From the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), with Hasala's built-in categories and the app version. Each name is asked about once."),
       (.eyeSlash, "What's not sent",
-       "The amount, date, card or bank, your own category names, your name, or anything about your account."),
+       "The amount, date, card, bank, your own category names, your name or your account."),
       (.cloud, "What Cloudflare sees", CloudConsentContent.cloudflareSees),
       (.done, "Filed only when it's very sure",
-       "Those transactions count in your totals right away and are marked \u{201C}Sorted by Cloudflare AI\u{201D}. The rest wait in Review, as they would anyway, some with a suggestion."),
+       "Marked \u{201C}Sorted by Cloudflare AI\u{201D} and counted at once. The rest wait in Review."),
       (.check, "Yours to change",
-       "This turns on Merchant suggestions and Sort automatically on this iPhone. Turn either off at any time in Profile \u{203A} Cloud suggestions."),
+       "Turns on Merchant suggestions and Sort automatically on this iPhone. Turn either off in Profile \u{203A} Cloud suggestions."),
     ])
 }
 
@@ -28,9 +28,9 @@ struct CloudSortAskCard: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private static let lines: [(icon: HIcon, text: String)] = [
-    (.tag, "Sent: the merchant name, like \u{201C}CAFE EXAMPLE JBR\u{201D}, with Hasala's built-in categories and the app's version."),
+    (.tag, "Sent: the merchant name, like \u{201C}CAFE EXAMPLE JBR\u{201D}, plus built-in categories and app version."),
     (.eyeSlash, "Not sent: the amount, date, card, bank, your name or your account."),
-    (.done, "Filed only when it's very sure. Off any time in Profile \u{203A} Cloud suggestions."),
+    (.done, "Filed only when it's very sure. Turn off in Profile \u{203A} Cloud suggestions."),
   ]
 
   var body: some View {
@@ -41,7 +41,7 @@ struct CloudSortAskCard: View {
           .foregroundStyle(HColor.textPrimary)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityAddTraits(.isHeader)
-        Text("Hasala can ask Cloudflare's AI about the merchants it doesn't know and you haven't sorted, one name per request. Off unless you turn it on.")
+        Text("Cloudflare's AI can sort merchants Hasala doesn't know. Off unless you turn it on.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)

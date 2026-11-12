@@ -310,7 +310,7 @@ struct CategoryEditorPage: View {
           Button { model.setHidden(!model.isHidden) } label: {
             HListRow(
               leading: .icon22(model.isHidden ? .eye : .eyeSlash, color: HColor.listRowAction), title: model.hideRowTitle,
-              supporting: .wrapping("Hidden categories leave the lists you pick from. Their transactions keep them."),
+              supporting: .wrapping("Hidden categories leave your pick lists. Their transactions keep them."),
               titleColor: HColor.listRowAction)
           }
           .buttonStyle(HRowPressStyle())

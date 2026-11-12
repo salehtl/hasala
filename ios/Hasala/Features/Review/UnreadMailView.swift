@@ -35,7 +35,7 @@ struct UnreadMailView: View {
     }
   }
 
-  static let intro = "Hasala couldn't turn these into a transaction. Add the amount yourself, or dismiss one you don't need."
+  static let intro = "Hasala couldn't read these. Add each amount yourself, or dismiss it."
 
   private func card(_ m: UnreadMail, today: LocalDate) -> some View {
     VStack(alignment: .leading, spacing: 14) {

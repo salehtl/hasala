@@ -194,8 +194,8 @@ struct SignInView: View {
   static func wrongPasswordLine(_ capabilities: AccountCapabilities) -> String? {
     if capabilities.contains(.resetPassword) { return AuthFailure.wrongCredentials.message }
     return capabilities.contains(.recoverAccess)
-      ? "That email and password don't match. Try again, or use your 12 words if you forgot it."
-      : "That email and password don't match. Try again."
+      ? "Wrong email or password. Try again or use your 12 words."
+      : "Wrong email or password. Try again."
   }
 }
 
@@ -210,17 +210,17 @@ struct ForgotEmailView: View {
 
   var body: some View {
     AccountScreen(
-      title: "Reset your password", subtitle: "We'll email a 6-digit code to your account's address.",
+      title: "Reset your password", subtitle: "We'll email you a 6-digit code.",
       steps: (1, 4), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        AccountField("Email", help: "If there's an account for this email, the code arrives within a minute.",
+        AccountField("Email", help: "If this email has an account, the code arrives within a minute.",
                      error: model.failure(on: .forgotEmail)?.message) {
           EmailInput(text: $model.resetEmail, identifier: "forgot.email")
         }
         .padding(.bottom, 8)
         CardNote(icon: .shieldCheck,
-                 text: "A code alone can't reset it. Next we'll ask for your 12 words, or a yes from an iPhone where you're still signed in.")
+                 text: "You'll also need your 12 words, or a yes from a signed-in iPhone.")
       }
     } footer: {
       BusyButton(title: "Send code", busy: model.busy, enabled: AccountFields.email(model.resetEmail) != nil,
@@ -243,28 +243,30 @@ struct ForgotCheckView: View {
   var body: some View {
     AccountScreen(
       title: "One more check",
-      subtitle: "The code worked. To change your password we also need one of these.",
+      subtitle: "The code worked. We also need one of these.",
       steps: (3, 4), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         if model.canApproveOnOtherPhone {
           OptionCard(icon: .phone, hue: .sky, title: "Approve on your other iPhone",
-                     detail: "Your other iPhone is still signed in. Say yes there with Face ID.",
+                     detail: "Say yes there with Face ID.",
                      buttonTitle: "Send a request", buttonKind: .primary, identifier: "forgot.approve",
                      action: onApprove)
         }
         OptionCard(icon: .paper, hue: .sand, title: "Enter your recovery phrase",
-                   detail: "From your paper. They unlock your data on this iPhone too.", buttonTitle: "Enter words",
+                   detail: "From your paper. They also unlock your data here.", buttonTitle: "Enter words",
                    buttonKind: model.canApproveOnOtherPhone ? .secondary : .primary, identifier: "forgot.words",
                    action: onWords)
-        NoteRow(icon: .shield,
-                text: "Why not just the code? The company that delivers our email also carries our web traffic, so a code alone can't be the proof.")
+        NoteRow(icon: .shield, text: "A code alone can't prove it's you.")
+          .infoTip(Self.codeTip, about: "why a code isn't enough")
       }
       .accountContentTop(20)
     } footer: {
       SecondaryLink(title: "I have neither", identifier: "forgot.neither", action: onNeither)
     }
   }
+
+  static let codeTip = "The company that delivers our email also carries our web traffic."
 }
 
 /// Forgot password · 4 of 4 · "Choose a new password" (Paper GS6). The service binds the
@@ -284,7 +286,7 @@ struct ForgotNewPasswordView: View {
         NewPasswordFields(password: $model.newPassword, confirm: $model.confirmPassword,
                           assessment: model.newPasswordAssessment)
         NoteRow(icon: .lock,
-                text: "Saving signs out other sessions that used the old password, and we email you that it changed.")
+                text: "Saving signs out sessions using the old password, and we'll email you.")
         FailureBanner(failure: model.failure(on: .forgotNewPassword))
       }
     } footer: {
@@ -341,14 +343,14 @@ struct ForgotWaitingView: View {
   var body: some View {
     AccountScreen(
       title: "Check your other iPhone",
-      subtitle: "Open Hasala on your other iPhone, type this code there, then confirm with Face ID.",
+      subtitle: "Type this code in Hasala on your other iPhone, then confirm with Face ID.",
       steps: (4, 4), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         matchCard
         HStack(alignment: .top, spacing: 12) {
           HIconView(.phone, size: 20, color: HColor.iconSecondary)
-          Text("Nothing showing there? Open Hasala on that iPhone; the request waits at the top. It only says yes, and never sends your password or your data.")
+          Text("Nothing there? Check the top of Hasala. Approving sends only a yes, never your password or data.")
             .hType(HType(size: 14, leading: 20, weight: .regular, textStyle: .subheadline))
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -448,25 +450,25 @@ struct RecoverIntroView: View {
   var body: some View {
     AccountScreen(
       title: "Recover your account",
-      subtitle: "For when you've lost your passkey or forgotten your password. You'll need both of these.",
+      subtitle: "Lost your passkey or forgot your password? You'll need both of these.",
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         NeedsCard {
           NeedRow(icon: .envelope, hue: .sky, title: "Your email inbox",
-                  detail: "For a 6-digit code. On its own, it's not enough.")
+                  detail: "For a 6-digit code. Not enough on its own.")
           NeedRow(icon: .paper, hue: .sand, title: "Your 12-word recovery phrase",
-                  detail: "It proves the account is yours and unlocks your data.")
+                  detail: "Proves the account is yours and unlocks your data.")
         }
         Text(setsPasskey
-          ? "You'll set up a passkey, and your old sign-in stops working."
-          : "You'll set up a new way to sign in, and your old sign-in stops working.")
+          ? "You'll set up a passkey; your old sign-in stops working."
+          : "You'll set up a new sign-in; the old one stops working.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .padding(.horizontal, 4)
           .accessibilityIdentifier("recover.afterNote")
-        NoteRow(icon: .shield, text: "No one at Hasala can reset your words or open your data for you. That's what keeps it private.")
+        NoteRow(icon: .shield, text: "We can't reset your words or open your data. That keeps it private.")
       }
     } footer: {
       Button("Enter my 12 words", action: onStart)
@@ -489,7 +491,7 @@ struct RecoverWordsView: View {
     let state = PhraseEntryState(model.phraseText)
     AccountScreen(
       title: "Enter your recovery phrase",
-      subtitle: "They prove the account is yours and unlock your data. \(state.finished) of 12 so far.",
+      subtitle: "In the order on your paper. \(state.finished) of 12 so far.",
       steps: (1, 3), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
@@ -551,7 +553,7 @@ struct RecoverMethodView: View {
           }
           if model.capabilities.contains(.recoverWithPassword) {
             SelectionCard(icon: .password, hue: .other, title: "Use a password",
-                          detail: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.",
+                          detail: "Signs you in anywhere. On a new iPhone, your 12 words unlock your data.",
                           selected: choice == .password, identifier: "recover.choosePassword") { choice = .password }
           }
           FailureBanner(failure: model.failure(on: .recoverMethod))
@@ -575,7 +577,7 @@ struct RecoverMethodView: View {
   }
 
   static let passkeyDetail =
-    "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone."
+    "Nothing to remember. Kept in iCloud Keychain, it unlocks your data on new iPhones."
 }
 
 /// Recover account · a new password (H43 with "Use a password"), then "You're back in".
@@ -611,8 +613,8 @@ struct BackInView: View {
 
   static func phraseDetail(rotates: Bool) -> String {
     rotates
-      ? "If someone else may have seen them, make new ones in Sign-in & security."
-      : "They also need a code from your email to get in. If someone may have seen them, talk to us."
+      ? "If someone may have seen them, make new ones in Sign-in & security."
+      : "They work only with your email code. Worried someone saw them? Talk to us."
   }
 
   var body: some View {
@@ -622,8 +624,8 @@ struct BackInView: View {
       badge: .check,
       title: name.isEmpty ? "You're back in." : "You're back in, \(name).",
       subtitle: email.isEmpty
-        ? "Your data is unlocked on this iPhone. We've emailed you that your words were used."
-        : "Your data is unlocked on this iPhone. We've emailed this address that your words were used:",
+        ? "Your data is unlocked here. We've emailed you that your words were used."
+        : "Your data is unlocked here. We've emailed this address that your words were used:",
       email: email.isEmpty ? nil : EmailAside(address: email)
     ) {
       StatusListCard(rows: [
@@ -676,7 +678,7 @@ struct HonestEndScreen: View {
   var body: some View {
     AccountScreen(
       title: "Without your recovery phrase, we can't open your data",
-      subtitle: "It was sealed with a key we never had. Without your words or a passkey, no one can open it, us included.",
+      subtitle: "We never had its key. Only your words or a passkey can open it.",
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
@@ -684,10 +686,10 @@ struct HonestEndScreen: View {
           NeedRow(icon: .iPad, hue: .sky, title: "Another device still signed in?",
                   detail: Self.otherDevice(addsPasskeys: addsPasskeys, method: session?.account.profile?.method))
           NeedRow(icon: .paper, hue: .sand, title: "Look again",
-                  detail: "Check where you keep important papers. Any copy works, as long as the order is right.")
+                  detail: "Check where you keep important papers. Any copy works if the order is right.")
         }
         if startsFresh {
-          WarningNote(text: "Starting fresh deletes the sealed copy of your old data after 7 days. Plans, rules and edits can't come back.")
+          WarningNote(text: "Starting fresh deletes your old sealed data after 7 days. Plans, rules and edits can't come back.")
         }
         FailureBanner(failure: failure)
       }
@@ -725,13 +727,13 @@ struct HonestEndScreen: View {
   static func otherDevice(addsPasskeys: Bool, method: SignInMethod?) -> String {
     switch method {
     case .password:
-      return "Your data still opens there, but it can't show your words. Keep it signed in."
+      return "Your data opens there, but it can't show your words. Keep it signed in."
     case .passkey where addsPasskeys:
-      return "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
+      return "It can add a passkey or show your words, after Face ID."
     case .passkey:
-      return "An iPhone with Hasala open can show your words in Sign-in & security, after Face ID."
+      return "It can show your words in Sign-in & security, after Face ID."
     case nil:
-      return "An iPhone where your passkey works can show your words in Sign-in & security, after Face ID."
+      return "If your passkey works there, it can show your words in Sign-in & security."
     }
   }
 }

@@ -308,7 +308,7 @@ final class AppModel {
   }
 
   func writeFailed() {
-    show(Toast(disc: .note(.info), title: "That change didn't save", subtitle: "Try it again"))
+    show(Toast(disc: .note(.info), title: "That change didn't save", subtitle: "Try again"))
   }
 
   /// Shows a one-line confirmation without an action: the accent check, or `icon` on the

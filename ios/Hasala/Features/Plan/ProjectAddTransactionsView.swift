@@ -88,7 +88,7 @@ struct ProjectAddTransactionsView: View {
             .fixedSize(horizontal: false, vertical: true)
         } else {
           if matches.count > rows.count {
-            Text("Showing \(MoneyFormat.count(rows.count)) of \(MoneyFormat.count(matches.count)). Narrow the search to see the rest.")
+            Text("Showing \(MoneyFormat.count(rows.count)) of \(MoneyFormat.count(matches.count)). Narrow the search for the rest.")
               .hType(.subheadline).foregroundStyle(HColor.textSecondary)
               .fixedSize(horizontal: false, vertical: true)
               .accessibilityIdentifier("projectAdd.showing")
@@ -118,7 +118,7 @@ struct ProjectAddTransactionsView: View {
         .buttonStyle(.pill(.primary, fill: true))
         .disabled(chosen.isEmpty)
         .accessibilityIdentifier("projectAdd.add")
-        Text("Their spending counts against \(model.name), not your monthly budgets, unless the project is counted in the plan.")
+        Text("They count toward \(model.name) only, unless Count in monthly plan is on.")
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }

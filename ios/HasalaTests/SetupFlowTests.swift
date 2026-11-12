@@ -209,7 +209,7 @@ struct SetupFlowTests: AccountSuite {
     #expect(await m.saveBanks())
     await m.connectMail(.outlook, replacing: true, removingOld: true)
     #expect(m.failure == .failed(
-      "Outlook connected. Checking for alerts. The transactions from maya@example.com couldn't be removed. They stay."))
+      "Outlook connected. Checking for alerts. Transactions from maya@example.com couldn't be removed."))
     #expect(!finished && m.mailConnected)
     #expect(m.coordinator(.outlook).takeRemovalFailure() == nil)
     await m.continueWithBanks()
@@ -269,7 +269,7 @@ struct SetupFlowTests: AccountSuite {
     let m = model(s)
     await m.continueWithBanks()
     #expect(m.connectFailure(.gmail) == .permissionMissing(.gmail))
-    #expect(m.failure?.message == "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it.")
+    #expect(m.failure?.message == "\u{201C}View your email messages and settings\u{201D} wasn't ticked. Try again and tick it.")
     #expect(m.path == [.connectError(.gmail)] && m.facts.mailbox == .unlinked)
     await m.continueWithBanks()
     #expect(m.failure == nil && m.step == .finished)

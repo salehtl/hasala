@@ -5,7 +5,7 @@ import Foundation
 struct AddBankTextIntent: AppIntent {
   static let title: LocalizedStringResource = "Add bank text"
   static let description = IntentDescription(
-    "Hands a text to Hasala. Hasala keeps only texts that look like bank payments and drops every other text at once, without saving it.")
+    "Hands Hasala a text. Only payment details are kept; other texts are dropped.")
   static let openAppWhenRun = false
   static let isDiscoverable = true
 

@@ -94,7 +94,7 @@ struct MailConnectErrorView: View {
     case .permissionMissing(let account):
       return Copy(
         title: "\(account.appName) isn't connected.",
-        subtitle: "Hasala can't see your alerts without read access. Nothing was connected and nothing was read.",
+        subtitle: "Hasala needs read access to see your alerts. Nothing was read.",
         reasons: Copy.Reasons(
           title: "What to do",
           items: [
@@ -104,20 +104,20 @@ struct MailConnectErrorView: View {
     case .cancelled:
       return Copy(
         title: "\(provider.appName) isn't connected.",
-        subtitle: "\(provider.company) sign-in was cancelled or didn't finish. Nothing was connected and nothing was read.",
+        subtitle: "\(provider.company) sign-in was cancelled or didn't finish. Nothing was read.",
         reasons: Copy.Reasons(
           title: "Common reasons",
           items: [
             MailReasonsCard.Item(title: "Cancel or Back on \(provider.company)'s screen", detail: "Fine. Try again when you're ready."),
             MailReasonsCard.Item(
               title: "Permissions not accepted",
-              detail: "Hasala needs read-only mail access to see your bank alerts. Without it, it can't connect."),
+              detail: "Hasala needs read-only access to see your alerts."),
           ],
           numbered: false))
     case .noMailbox(let account):
       return Copy(
         title: "\(account.appName) isn't connected.",
-        subtitle: MailConnectFailure.noMailboxLine(account) + " Nothing was connected and nothing was read.",
+        subtitle: MailConnectFailure.noMailboxLine(account) + " Nothing was read.",
         reasons: nil)
     default:
       return Copy(

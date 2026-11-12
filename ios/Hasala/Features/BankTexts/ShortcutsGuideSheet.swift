@@ -58,7 +58,7 @@ struct ShortcutsGuideSheet: View {
             .accessibilityIdentifier("textsGuide.step\(step.id)")
           }
           TextsNote(text: "\(BankTextsGuide.actionMissing.title) \(BankTextsGuide.actionMissing.detail)")
-          TextsNote(icon: .chat, text: "Then send yourself \u{201C}\(BankTexts.testPhrase)\u{201D}, full stop included, to check that it runs.")
+          TextsNote(icon: .chat, text: "Then send yourself \u{201C}\(BankTexts.testPhrase)\u{201D}, full stop included, to check it runs.")
           Button { openURL(BankTexts.shortcutsURL) } label: {
             Text("Open Shortcuts").fixedSize(horizontal: false, vertical: true)
           }

@@ -177,7 +177,7 @@ payment cannot arrive through two channels, and no merge is needed.
   number only, on the device, for the last 30 days. With no sender, a person's text with a
   payment word and a number can be counted too, so the copy says "texts that look like
   payments", not "bank payment texts". Profile › Bank alerts shows it ("3 texts that look
-  like payments were ignored in the last 30 days because this account reads bank email")
+  like payments were ignored in the last 30 days.")
   with two ways out: delete the automation in Shortcuts, or switch the account to texts.
   Thus a bank that texts some payments and mails none of them does not lose them with no
   trace. While the copy says linked, the action counts from its own reading alone: it does
@@ -225,8 +225,8 @@ payment cannot arrive through two channels, and no merge is needed.
 - A disconnect that leaves the account with no mailbox link (Profile › Bank alerts has this
   today) puts the account on texts, as the source of truth says. When this device has a
   last-run time or an ignored count from the last 30 days, and no other mailbox stays, the
-  disconnect alert says so: "Your Shortcuts automation is still there. Hasala will add bank
-  texts from now on." That disconnect also sets the texts-chosen flag on this iPhone, so
+  disconnect alert says so: "Your Shortcuts automation stays, so bank texts come in from
+  now on." That disconnect also sets the texts-chosen flag on this iPhone, so
   Bank alerts shows the texts page. A device that never saw the automation run and never
   finished the texts path shows no source until the person picks one.
 - **Every mailbox connect on an account that has text rows** runs the overlap check (D10),
@@ -472,8 +472,8 @@ texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts onl
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
 and texts with no payment shape. The app makes no claim about a specific bank and has no
-bank list for texts: it says "Hasala reads payment texts from any bank and adds the ones it
-reads with confidence. Any other payment waits in Review for you to check." A text that looks
+bank list for texts: it says "Texts from any bank work. A payment Hasala isn't sure of waits in
+Review." A text that looks
 like a payment, from any sender, is added when a template reads it or the two readers agree
 on it (see [Filing with no review](#filing-with-no-review)), else it waits in Review.
 
@@ -566,9 +566,8 @@ On the device, outside the synced data, and never sent:
   [What a drop leaves](#reading-happens-inside-hasala-on-the-phone)), for the last 30 days
   only; an older day's count is deleted. Profile › Bank alerts shows them in a "Set aside"
   section, one row for each bank sender ("11 texts set aside in the last 30 days" and a list
-  by kind), with the footnote "Texts from bank senders that aren't payments. Hasala drops them
-  at once and keeps only these counts, on this iPhone. If a payment is counted here, paste
-  it.";
+  by kind), with the footnote "Bank texts that weren't payments. If a payment shows here, paste it."
+  and an info tip: "They're dropped at once; only these counts are kept, on this iPhone.";
 - the copy of the server's last answer about the account's mailbox link, linked or not, and
   when it was learned (see [One source for each person](#one-source-for-each-person));
 - while the account reads bank email, a count for each day of texts that look like
@@ -958,7 +957,7 @@ need:
 | D3 | One channel, or merge mail and texts? | **Decided (2026-10-26):** one source for each person, for the whole account (see [One source for each person](#one-source-for-each-person)). No merge. |
 | D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' payment texts go to Review. More banks follow as real texts reach `hasala-fixtures`. **Amended (2026-10-29):** ENBD follows, from the owner's ENBD export, with its private corpus pending (see [Reading happens inside Hasala, on the phone](#reading-happens-inside-hasala-on-the-phone)). |
 | D5 | Before or after the template-free readers ship in the app? | **Decided:** with them. Texts use templates first and the readers for Review. |
-| D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 4 of the reading order (the drop patterns, the templates and the payment shape), which need only bundled data. Only for a text that would be kept and that may be a bank's (a template hit, or a payment shape from a bank sender or with no sender), it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. Every text that the reading keeps then fails with "Hasala can't save bank texts until you unlock your iPhone. Paste this text later.", a payment-shaped text from a person's number too (it adds no marker, but the failure lets the person paste it), so that no payment is lost without a sign. A text that the reading order drops leaves no marker and succeeds silently. When the app next becomes active after the unlock, it reads the mailbox link copy. When it says not linked or unknown, the app shows a system alert, "Bank texts while locked", with "N texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages." and the buttons **Paste a text** (Review's paste sheet) and **OK**; the marker is removed when the alert is answered. (Paper's C5 Home pill shows the cut inbox design.) When the copy says linked, the app shows no notice, adds N to the ignored count of the day of the marker's latest arrival minute (see [One source for each person](#one-source-for-each-person)), so an email account is never told to paste, and removes the marker. When the app opens signed out, it removes the marker and keeps the device facts (an expired session is not a sign-out by the person). Signed out, the action stores nothing: a kept text fails with "Sign in to Hasala to add bank texts." and a dropped text succeeds silently. An install whose fresh-install check has not completed counts as signed out; a Keychain that is locked before the first unlock counts as locked. When the account cannot open for a kept text, the action fails with "Hasala couldn't add this text. Open Hasala, then paste the text from Messages." The privacy policy and the support page use the same words: the marker counts texts that look like payments, which, with no sender, can include a person's text. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
+| D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 4 of the reading order (the drop patterns, the templates and the payment shape), which need only bundled data. Only for a text that would be kept and that may be a bank's (a template hit, or a payment shape from a bank sender or with no sender), it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. Every text that the reading keeps then fails with "Hasala can't save texts until you unlock your iPhone. Paste this one later.", a payment-shaped text from a person's number too (it adds no marker, but the failure lets the person paste it), so that no payment is lost without a sign. A text that the reading order drops leaves no marker and succeeds silently. When the app next becomes active after the unlock, it reads the mailbox link copy. When it says not linked or unknown, the app shows a system alert, "Bank texts while locked", with "N texts that look like payments arrived after a restart. Paste them from Messages." and the buttons **Paste a text** (Review's paste sheet) and **OK**; the marker is removed when the alert is answered. (Paper's C5 Home pill shows the cut inbox design.) When the copy says linked, the app shows no notice, adds N to the ignored count of the day of the marker's latest arrival minute (see [One source for each person](#one-source-for-each-person)), so an email account is never told to paste, and removes the marker. When the app opens signed out, it removes the marker and keeps the device facts (an expired session is not a sign-out by the person). Signed out, the action stores nothing: a kept text fails with "Sign in to Hasala to add bank texts." and a dropped text succeeds silently. An install whose fresh-install check has not completed counts as signed out; a Keychain that is locked before the first unlock counts as locked. When the account cannot open for a kept text, the action fails with "Hasala couldn't add this text. Open Hasala and paste it from Messages." The privacy policy and the support page use the same words: the marker counts texts that look like payments, which, with no sender, can include a person's text. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
 | D7 | Build the Wallet transaction trigger (Apple Pay) too? | **Decided:** not in v1. |
 | D8 | Add to the 2026-10-11 decisions in CLAUDE.md? | **Decided:** yes. The "Transactions come from Gmail" line gains bank texts through the Shortcuts automation, read on the phone. |
 | D9 | Which filter words catch every bank text? | **Decided (revised 2026-10-27):** a single full stop. Shortcuts needs a sender or a phrase, only about 5% of DIB payment texts contain "AED", and every DIB payment text in the owner's export contains "." in its amount. |
@@ -1015,8 +1014,8 @@ CLAUDE.md line change nothing on hasala.app.
 
 The automation has no sender, so anyone can send texts that reach the intake. An iPhone
 authors at most 200 automation texts per local day (`BankTextsFactsData.dailyTextLimit`).
-A kept text over the limit writes nothing and fails with "Hasala has saved many texts
-today. Paste this text later if it's a payment.", so a payment is not lost without a sign.
+A kept text over the limit writes nothing and fails with "Hasala saved many texts today.
+If this is a payment, paste it later.", so a payment is not lost without a sign.
 Only the day's count is stored, in the device facts. A paste has no limit. A flood can
 therefore make genuine texts of that day need a paste. How Shortcuts handles a burst was
 not measured.

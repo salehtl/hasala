@@ -32,7 +32,7 @@ struct RulesPage: View {
         }
         if unfinished && segment == .rules {
           // TODO(spec 04 §16.2 P6): "Add a rule".
-          Button { app.say("Adding a rule comes in a later build", icon: .rule) } label: {
+          Button { app.say("Coming in a later build", icon: .rule) } label: {
             HStack(spacing: 6) {
               HIconView(.add, size: HSpacing.iconInline, color: HColor.textLink, strokeWidth: 2.4)
               Text("Add a rule").hType(.button).foregroundStyle(HColor.textLink)
@@ -56,7 +56,7 @@ struct RulesPage: View {
 
   private var rules: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("Hasala writes a rule when you sort with Always use it on. Pause one to send its transactions back to review.")
+      Text("Pausing a rule sends its transactions back to Review.")
         .hType(.subheadline)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)

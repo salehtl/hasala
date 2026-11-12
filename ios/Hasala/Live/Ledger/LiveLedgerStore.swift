@@ -20,7 +20,7 @@ import Observation
 @MainActor
 @Observable
 final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
-  static let pairedTransfer = "This is one side of a matched transfer."
+  static let pairedTransfer = "It's one side of a matched transfer."
   private(set) var state: LedgerState
   private(set) var now: LocalDateTime
   private(set) var revision = 0

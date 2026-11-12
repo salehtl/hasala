@@ -12,7 +12,6 @@ import UIKit
 /// called out; nothing can be copied; the grid is `.privacySensitive()`. Closing the cover
 /// drops the words from memory (`SecurityModel.closePhrase`).
 struct PhraseViewer: View {
-  @Environment(\.hBiometry) private var biometry
   @Bindable var model: SecurityModel
 
   @Environment(\.scenePhase) private var scenePhase
@@ -29,8 +28,8 @@ struct PhraseViewer: View {
               .foregroundStyle(HColor.textPrimary)
               .accessibilityAddTraits(.isHeader)
             Text(model.phraseFirstView
-              ? "On paper, numbered, in this order. Check each word twice, then close."
-              : "\(biometry.name.map { "Shown after \($0)." } ?? "Shown after you confirmed with your passkey.") Check them against your paper, then close.")
+              ? "On paper, numbered. Check each word twice."
+              : "Check them against your paper, then close.")
               .hType(.body)
               .foregroundStyle(HColor.textOnWashSecondary)
           }
@@ -39,10 +38,10 @@ struct PhraseViewer: View {
           VStack(alignment: .leading, spacing: 10) {
             PhraseGrid(words: model.viewedPhrase ?? [], revealed: $model.phraseRevealed, masked: captured)
             if screenshotWarning {
-              FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
+              FailureBanner(failure: .badPhrase("That screenshot shows your recovery phrase. Delete it from Photos and Recently Deleted."))
             }
             WarningCallout(icon: .cameraSlash,
-                           text: "No screenshots or copying. Photos sync to the cloud, and other apps can read your clipboard.")
+                           text: "No screenshots or copying. Photos sync, and apps can read your clipboard.")
           }
           .padding(.top, 12)
         }

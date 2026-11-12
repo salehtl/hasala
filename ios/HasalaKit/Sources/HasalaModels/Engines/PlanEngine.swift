@@ -90,7 +90,7 @@ public struct PlanSnapshot: Sendable, Hashable {
   public var outsidePlan: OutsidePlan? = nil
   public var incomeKnown = true
   public var income: IncomeState = .unknown
-  public var carryNote = "What you don't assign doesn't carry to next month."
+  public var carryNote = "Unassigned money doesn't carry to next month."
   public var expiredMoves: [CategoryID: Money] = [:]
   public var phase: Phase = .current
   public var selectableMonths: [YearMonth] = []
@@ -840,8 +840,8 @@ public extension PlanEngine {
       explainer = MoneyPhrase(stringLiteral: "\(kind) spending counts in \(monthName)'s budgets.")
     } else if let budget = p.budget {
       explainer = MoneyPhrase([
-        .text("\(kind) spending stays out of \(monthName)'s budgets. Hasala doesn't hold this money, so keep the "),
-        .amount(budget, .compact, hidden: 3), .text(" somewhere safe."),
+        .text("\(kind) spending stays out of \(monthName)'s budgets. Keep the "),
+        .amount(budget, .compact, hidden: 3), .text(" aside yourself."),
       ])
     } else {
       explainer = MoneyPhrase(stringLiteral: "\(kind) spending stays out of \(monthName)'s budgets.")

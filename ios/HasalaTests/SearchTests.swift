@@ -73,9 +73,9 @@ struct SearchTests {
     let ar = "\u{0643}\u{0627}\u{0631}\u{0641}\u{0648}\u{0631}"
     let plain = SearchView.nothingFoundCopy(ar, reason: nil)
     #expect(plain.title == "No matches for “\u{2068}\(ar)\u{2069}”")
-    #expect(plain.body == "Try a merchant name or a category. Bank alerts usually spell merchant names in English.")
+    #expect(plain.body == "Try a merchant name or a category. Alerts usually spell merchant names in English.")
     let off = SearchView.nothingFoundCopy("coffee last month", reason: .unavailable(.notEligible))
-    #expect(off.body == "Questions need Apple Intelligence on this iPhone. Try a merchant name or a category.")
+    #expect(off.body == "Questions need Apple Intelligence. Try a merchant name or a category.")
     #expect(SearchView.nothingFoundCopy("x y", reason: .nothingUnderstood).body == plain.body)
   }
 

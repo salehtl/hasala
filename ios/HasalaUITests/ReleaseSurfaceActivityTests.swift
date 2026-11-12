@@ -104,7 +104,7 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     carrefour.tap()
     let note = el(app, "txn.sample")
     XCTAssertTrue(note.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(note.label, "This is sample data. There's no email behind it.")
+    XCTAssertEqual(note.label, "Sample data. No bank email behind it.")
     assertAbsent(app, ["txn.rawMerchant"], "Sample transaction")
     attach(app, "Release · Transaction · Sample data")
     try audit(app)

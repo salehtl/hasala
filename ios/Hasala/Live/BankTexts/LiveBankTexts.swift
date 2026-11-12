@@ -26,7 +26,7 @@ final class LiveBankTexts: BankTextsConnecting {
 
   static let saveFailed = "Hasala couldn't save this on your iPhone. Try again."
   static let notAPayment = "This isn't a bank payment text."
-  static let notOpen = "Hasala is still opening your account. Try again in a moment."
+  static let notOpen = "Still opening your account. Try again in a moment."
   static let unavailable = "This build of Hasala can't add bank texts yet."
 
   init(

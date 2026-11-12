@@ -19,7 +19,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
   }
 
   /// No mailbox: Bank alerts says so, and Add a mailbox offers Gmail and Outlook, one
-  /// mailbox (no "also", no second one promised). Gmail's read-only screen says how new
+  /// mailbox (no "another email", no second one promised). Gmail's read-only screen says how new
   /// alerts are really caught. Connecting lands back on Bank alerts with the mailbox, and
   /// no second one is offered.
   @MainActor
@@ -35,10 +35,10 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     tap(app, "bankAlerts.addMailbox")
     XCTAssertTrue(el(app, "mail.choose").waitForExistence(timeout: uiWait), "Add a mailbox did not open")
     assertPresent(app, ["mail.choose.gmail", "mail.choose.outlook"], "Add a mailbox")
-    assertText(app, "Pick where your bank sends its alerts.", "Add a mailbox")
-    assertText(app, "different from the email you sign in to Hasala with", "Add a mailbox")
+    assertText(app, "Pick where your bank sends alerts.", "Add a mailbox")
+    assertText(app, "can differ from your Hasala sign-in email", "Add a mailbox")
     assertText(app, "You can disconnect it at any time.", "Add a mailbox")
-    assertNoText(app, ["also sends", "on its own"], "Add a mailbox")
+    assertNoText(app, ["Pick another email", "each one separately"], "Add a mailbox")
     assertNoPlaceholders(app, "Add a mailbox")
     assertPersonalAccountsOnly(app, "Add a mailbox")
     attach(app, "Release · Add a mailbox")
@@ -47,7 +47,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     let connect = el(app, "mail.connect.gmail")
     XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Google")
-    assertText(app, "checks for new alerts when you open Hasala", "Connect your email")
+    assertText(app, "New alerts are checked when you open Hasala", "Connect your email")
     assertNoText(app, ["Step 2 of 4", "our server is told"], "Connect your email")
     assertNoPlaceholders(app, "Connect your email")
     assertPersonalAccountsOnly(app, "Connect your email")
@@ -104,7 +104,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Bank alerts · Sign in again")
     try audit(app)
     button.tap()
-    assertText(app, "Gmail connected again. Catching up from the last check.", "Bank alerts")
+    assertText(app, "Gmail connected again. Catching up.", "Bank alerts")
     XCTAssertTrue(el(app, "bankAlerts.status").waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
     assertNoPlaceholders(app, "Bank alerts")
   }
@@ -183,8 +183,9 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
   }
 
   /// Reading Gmail, Bank alerts offers "Use another email": Outlook's sign-in asks first
-  /// ("Change your email?", main's "This replaces your Gmail connection."). Cancel keeps
-  /// Gmail; "Use Outlook, keep the 42 transactions" leaves one mailbox, Outlook's.
+  /// ("Change your email?", main's "Hasala reads your bank alerts from Outlook instead of
+  /// Gmail."). Cancel keeps Gmail; "Use Outlook, keep the 42 transactions" leaves one
+  /// mailbox, Outlook's.
   @MainActor
   func testSwitchFromGmailToOutlook() throws {
     let app = bankAlerts("gmailLinked")
@@ -192,7 +193,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
     tap(app, "bankAlerts.changeMailbox")
     XCTAssertTrue(el(app, "mail.choose").waitForExistence(timeout: uiWait), "Use another email did not open")
-    assertText(app, "Hasala reads one mailbox at a time.", "Use another email")
+    assertText(app, "Your pick replaces the current mailbox.", "Use another email")
     assertText(app, "maya@example.com is connected.", "Use another email")
     assertNoText(app, ["Add another Google account"], "Use another email")
     assertPersonalAccountsOnly(app, "Use another email")
@@ -207,7 +208,8 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     let alert = app.alerts["Change your email?"]
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait), "the switch was not confirmed first")
     XCTAssertTrue(alert.descendants(matching: .any)
-      .matching(NSPredicate(format: "label BEGINSWITH %@", "This replaces your Gmail connection.")).firstMatch.exists)
+      .matching(NSPredicate(format: "label BEGINSWITH %@", "Hasala reads your bank alerts from Outlook instead of Gmail."))
+      .firstMatch.exists)
     attach(app, "Release · Change your email?")
     alert.buttons["Cancel"].firstMatch.tap()
     XCTAssertTrue(alert.waitForNonExistence(timeout: uiWait))
@@ -242,7 +244,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Bank alerts · Outlook sign in again")
     try audit(app)
     button.tap()
-    assertText(app, "Outlook connected again. Catching up from the last check.", "Bank alerts")
+    assertText(app, "Outlook connected again. Catching up.", "Bank alerts")
     XCTAssertTrue(status.waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
     try audit(app)
   }
@@ -259,7 +261,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Your banks")
     try audit(app)
     tap(app, "bank.dib")
-    assertText(app, "Hasala stops reading alerts from DIB.", "Your banks")
+    assertText(app, "Alerts from DIB stop.", "Your banks")
     tap(app, "bank.enbd")
     tap(app, "bank.adib")
     XCTAssertFalse(save.isEnabled, "Save is on with no bank")
@@ -282,7 +284,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     tap(app, "bankAlerts.requestBank")
     let look = el(app, "requestBank.look")
     XCTAssertTrue(look.waitForExistence(timeout: uiWait), "My bank isn't listed did not open")
-    assertText(app, "nothing is sent unless you tap Ask", "Ask for your bank")
+    assertText(app, "Nothing's sent until you tap Ask", "Ask for your bank")
     attach(app, "Release · Ask for your bank")
     try audit(app)
     look.tap()

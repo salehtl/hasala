@@ -159,7 +159,7 @@ struct PlanDetailParityTests {
     #expect(p.range == "14–28 Dec" && p.when == "65 days to go")
     #expect(!p.countInPlan)
     #expect(p.explainer.rendered(hidden: false)
-      == "Trip spending stays out of October's budgets. Hasala doesn't hold this money, so keep the 12,000 somewhere safe.")
+      == "Trip spending stays out of October's budgets. Keep the 12,000 aside yourself.")
     let outside = try #require(PlanEngine.snapshot(s, now: now).outsidePlan)
     #expect(outside.line.rendered(hidden: false) == "Outside this plan: Japan trip, 7,140 left")
     #expect(outside.projectID == "japan" && outside.projects == 1)
@@ -179,10 +179,10 @@ struct PlanDetailParityTests {
     state.projects[i].glyph = .flag
     let other = try #require(PlanEngine.project("japan", state, now: now))
     #expect(other.explainer.rendered(hidden: false)
-      == "Project spending stays out of October's budgets. Hasala doesn't hold this money, so keep the 12,000 somewhere safe.")
+      == "Project spending stays out of October's budgets. Keep the 12,000 aside yourself.")
     let dots = MoneyFormat.hidden(count: 3)
     #expect(other.explainer.rendered(hidden: true)
-      == "Project spending stays out of October's budgets. Hasala doesn't hold this money, so keep the \(dots) somewhere safe.")
+      == "Project spending stays out of October's budgets. Keep the \(dots) aside yourself.")
     state.projects[i].countInPlan = true
     let counted = try #require(PlanEngine.project("japan", state, now: now))
     #expect(counted.explainer.rendered(hidden: false) == "Project spending counts in October's budgets.")

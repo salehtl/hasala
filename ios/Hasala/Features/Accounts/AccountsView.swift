@@ -36,7 +36,7 @@ struct AccountsView: View {
           .padding(.horizontal, HSpacing.insetPage)
       }
       if !snap.tracking.isEmpty {
-        section("Tracking", subtitle: "Counts in net worth, not in your plan", total: nil, rows: snap.tracking)
+        section("Tracking", subtitle: "Counts in net worth, not your plan", total: nil, rows: snap.tracking)
           .padding(.horizontal, HSpacing.insetPage)
       }
       if unfinished {

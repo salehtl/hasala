@@ -29,7 +29,7 @@ struct HomeSourceDisplayTests {
     #expect(h.shown == .aed(91_81))
     #expect(h.estimate && !h.notCounted)
     #expect(h.original == Money(minor: 25_00, currency: "USD"))
-    #expect(h.estimateLine == "Estimate at 3.6725 AED per USD. Your bank's charge can be a little higher.")
+    #expect(h.estimateLine == "Estimate at 3.6725 AED per USD; your bank may charge more.")
   }
 
   @Test func aStatedAmountHasNoMark() {

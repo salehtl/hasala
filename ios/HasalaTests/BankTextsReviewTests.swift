@@ -266,10 +266,10 @@ struct BankTextsReviewTests {
     let today = MayaLedger.now.date
     #expect(
       ReviewEngine.unreadTextBody(text, today: today, canPaste: true)
-        == "Hasala couldn't read this bank text. Find the text from DIB at 12:00 on Fri 5 Jun in Messages, copy it and paste it here, or add the payment yourself.")
+        == "Copy it from Messages and paste it here, or add the payment yourself.")
     #expect(
       ReviewEngine.unreadTextBody(text, today: today, canPaste: false)
-        == "Hasala couldn't read this bank text. Find the text from DIB at 12:00 on Fri 5 Jun in Messages and add the payment yourself.")
+        == "Find it in Messages and add the payment yourself.")
     #expect(ReviewEngine.unreadTextTitle(text) == "Text from DIB")
     #expect(ReviewEngine.unreadTextLine(1) == "1 bank text we couldn't read" && ReviewEngine.unreadTextLine(2) == "2 bank texts we couldn't read")
     let token = try #require(try l.store.apply(.archive(row.txnID, true)))

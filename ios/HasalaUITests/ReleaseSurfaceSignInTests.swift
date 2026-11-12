@@ -23,7 +23,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     type(app, "signIn.email", "maya@example.com")
     type(app, "signIn.password", "not my password")
     tap(app, "signIn.withPassword")
-    XCTAssertTrue(app.staticTexts["That email and password don't match. Try again, or use your 12 words if you forgot it."]
+    XCTAssertTrue(app.staticTexts["Wrong email or password. Try again or use your 12 words."]
       .waitForExistence(timeout: 10))
     assertNoText(app, ["reset your password"], "Sign in · wrong password")
     tap(app, "signIn.forgot")
@@ -116,7 +116,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     let signOut = app.alerts["Sign out of this iPhone?"]
     XCTAssertTrue(signOut.waitForExistence(timeout: uiWait))
     XCTAssertTrue(signOut.staticTexts[
-      "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."
+      "Your data stays here, locked. Sign in again to open it."
     ].exists)
     attach(app, "Release · Sign out of this iPhone?")
     signOut.buttons["Cancel"].tap()
@@ -125,7 +125,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     let everywhere = app.alerts["Sign out everywhere?"]
     XCTAssertTrue(everywhere.waitForExistence(timeout: uiWait))
     XCTAssertTrue(everywhere.staticTexts[
-      "Every device signs out, this one too. Your data stays on each, and your sealed backup stays, ready for your next sign-in."
+      "Every device signs out, this one too. Your data and sealed backup stay."
     ].exists)
     assertNoText(app, ["erase"], "Sign out everywhere?")
     everywhere.buttons["Cancel"].tap()
@@ -164,7 +164,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
 
     let app = launchRelease("frozen", waitForHome: false, screen: "security.frozen")
     XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: 15))
-    XCTAssertTrue(app.staticTexts["Your account is frozen. Confirm it's you to unfreeze it."].exists)
+    XCTAssertTrue(app.staticTexts["Confirm it's you to unfreeze it."].exists)
     attach(app, "Release · Sign-in & security · frozen")
     assertPresent(app, ["security.unfreeze"], "Sign-in & security · frozen")
     assertAbsent(app, ["security.frozenTalk", "security.freeze"], "Sign-in & security · frozen")

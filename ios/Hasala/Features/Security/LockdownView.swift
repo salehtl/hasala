@@ -22,15 +22,15 @@ struct LockdownView: View {
     AccountScreen(
       title: "Let's lock it down",
       subtitle: context == .afterApproval
-        ? "You told us the password reset wasn't you. Do these now, in order."
-        : "If something on your account doesn't look right, do these now, in order.",
+        ? "The reset wasn't you. Do these now, in order."
+        : "Something wrong? Do these now, in order.",
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         checklist
         HStack(alignment: .top, spacing: 10) {
           HIconView(.lock, size: 18, color: Hue.sky.ink)
-          Text("A password sign-in can't open your data without your passkey or your 12 words.")
+          Text("A password can't open your data without your passkey or 12 words.")
             .hType(.footnote.weight(.medium))
             .foregroundStyle(Hue.sky.ink)
             .fixedSize(horizontal: false, vertical: true)
@@ -58,18 +58,18 @@ struct LockdownView: View {
   }
 
   static let signOutEverywhereMessage =
-    "Every device signs out, this one too. Your data stays on each, and your sealed backup stays, ready for your next sign-in."
+    "Every device signs out, this one too. Your data and sealed backup stay."
 
   /// Paper "NumberedChecklist": the first step is the one to do now.
   private var checklist: some View {
     HListCard {
-      step(1, "Sign out everywhere", "Ends every session, including the one you don't know.")
+      step(1, "Sign out everywhere", "Ends every session, even unknown ones.")
       HDivider(inset: .none).padding(.leading, 54)
       step(2, "Remove what you don't recognise", "Unknown passkeys and devices, in Sign-in & security.")
       HDivider(inset: .none).padding(.leading, 54)
-      step(3, "Change your password", "If you have one. Also change it on your email account.")
+      step(3, "Change your password", "If you have one. Your email password too.")
       HDivider(inset: .none).padding(.leading, 54)
-      step(4, "Make a new recovery phrase", "Only if someone may have seen your paper.")
+      step(4, "Make a new recovery phrase", "If someone may have seen your paper.")
     }
   }
 

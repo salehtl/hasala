@@ -126,7 +126,7 @@ struct ReviewTabView: View {
   private func turnOnCloudSort() {
     session?.services.cloudSort?.turnOn()
     cloudSortAnswered = true
-    app.say("Cloudflare AI is on. It sorts a few names at a time, mostly while Hasala is open.", icon: .cloud)
+    app.say("Cloudflare AI is on. It sorts while Hasala is open.", icon: .cloud)
   }
 
   private func cloudSortNotNow() {
@@ -152,7 +152,7 @@ struct ReviewTabView: View {
     return hours == 1 ? "about an hour" : "about \(MoneyFormat.count(hours)) hours"
   }
 
-  static let emptyLine = "New transactions Hasala can't sort on its own show up here."
+  static let emptyLine = "Transactions Hasala can't sort show up here."
 
   static func skippedCount(_ s: LedgerState, in window: ReviewWindow) -> Int {
     s.txns.filter { $0.inReview && window.contains($0.postedAt.date) && s.skippedReview.contains($0.id) }.count
@@ -332,7 +332,7 @@ struct ReviewTabView: View {
     .menuStyle(.button)
     .buttonStyle(.plain)
     .accessibilityLabel(Self.orderSpoken(app.reviewOrder))
-    .accessibilityHint("Changes the order of the list and the deck")
+    .accessibilityHint("Orders the list and the deck")
     .accessibilityIdentifier("review.sort")
   }
 
@@ -434,7 +434,7 @@ struct ReviewTabView: View {
 
   static let unreadableDetail = "Add it yourself from your bank app"
 
-  static let unreadTextsDetail = "Paste each one again, or add it yourself"
+  static let unreadTextsDetail = "Paste each again, or add it yourself"
 
   private func unreadTexts(_ n: Int) -> some View {
     Button {

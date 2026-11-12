@@ -64,50 +64,50 @@ enum AuthFailure: Error, Equatable, Sendable {
     switch self {
     case .cancelled: nil
     case .unsupported:
-      "This iPhone can't make a passkey right now. Check that it has a passcode and iCloud Keychain is on, or use a password instead."
+      "Couldn't make a passkey. Turn on a passcode and iCloud Keychain, or use a password."
     case .noCredential: "No Hasala passkey on this iPhone."
     case .notInvited: "We couldn't find that invite. Check each character against your email."
     case .badName: "Use 1 to 64 letters. Spaces, hyphens, apostrophes and periods are fine."
-    case .badEmail: "Hasala can't use this address yet. Try another one."
+    case .badEmail: "Can't use this address yet. Try another."
     case .orphanedPasskey:
-      "Hasala couldn't find an account for this passkey. If the beta was reset, join again with your invite. Then delete the older Hasala passkey in the Passwords app, so iPhone stops offering it."
-    case .wrongCredentials: "That email and password don't match. Try again, or reset your password."
+      "No account matches this passkey. If the beta was reset, join again with your invite, then delete the old passkey in the Passwords app."
+    case .wrongCredentials: "Wrong email or password. Try again or reset your password."
     case .refused: "That didn't go through. Start again."
-    case .emailInUse: "This address already has a Hasala account. Sign in instead."
+    case .emailInUse: "This address already has an account. Sign in instead."
     case .codeWrong(let n):
-      "That code isn't right. Check the newest email from us, or get a new code. \(n) \(n == 1 ? "try" : "tries") left."
-    case .codeExpired: "That code expired. Codes last 10 minutes, so we'll send you a fresh one."
+      "Wrong code. Check our newest email or get a new one. \(n) \(n == 1 ? "try" : "tries") left."
+    case .codeExpired: "That code expired. Codes last 10 minutes; get a new one."
     case .rateLimited: "Too many tries. Try again in 15 minutes."
-    case .lastAuthenticator: "This is your only way to sign in. Add a passkey or a password first."
+    case .lastAuthenticator: "It's your only way to sign in. Add a passkey or password first."
     case .frozen: "Your account is frozen. Confirm it's you to unfreeze it."
     case .frozenByOperator: "We froze your account to protect it. Talk to us to unfreeze it."
     case .sessionEnded: "You're signed out. Sign in again."
     case .stepUpFailed: "That didn't confirm. Try again."
-    case .passkeyCantShowPhrase: "This passkey can't show your 12 words. Use the copy you wrote down."
+    case .passkeyCantShowPhrase: "This passkey can't show your 12 words. Use your written copy."
     case .passkeyCantShowUnseenPhrase:
-      "This passkey can't show your 12 words. Your data still opens on this iPhone, so keep it, and talk to us at hasala.app/support."
+      "This passkey can't show your 12 words. Stay signed in here, where your data opens, and talk to us at hasala.app/support."
     case .wordsBeforeRemovingPasskey:
-      "Write down your 12 words first. Until then, this passkey is the only way to show them."
+      "Write down your 12 words first. Until then, only this passkey can show them."
     case .wordsInSignup: "Write down your 12 words to finish."
     case .noDeviceKey:
-      "This iPhone can't confirm yet. Changes need your password plus the key of an iPhone where your data is open."
+      "This iPhone can't confirm yet. Use one where your data is open."
     case .offline: "Try again in a moment."
-    case .phraseMismatch: "These words are a valid recovery phrase, but not for this Hasala account."
+    case .phraseMismatch: "These words are for another account."
     case .noAccountForPhrase:
-      "These words don't open an active Hasala account. If your account may be frozen, unfreeze it from a signed-in iPhone, or contact us."
+      "No active account matches these words. Frozen? Unfreeze it on a signed-in iPhone, or contact us."
     case .badPhrase(let text): text
-    case .signupExpired: "That took a while, so we started again. Your invite still works."
+    case .signupExpired: "Time ran out, so we started again. Your invite still works."
     case .signupExpiredPhrase:
-      "That took a while, so we started again. Your invite still works, and you'll get 12 new words. Cross out the ones you wrote down."
+      "Time ran out, so we started again with 12 new words. Cross out the old ones."
     case .approvalExpired: "No answer from your other iPhone. Try again, or use your 12 words."
     case .codeMismatch: "That code doesn't match a request. Nothing was approved."
-    case .notInThisBuild: "This isn't in this beta build yet. If you need it now, talk to us at hasala.app/support."
+    case .notInThisBuild: "Not in the beta yet. Need it? Talk to us at hasala.app/support."
     case .integrity:
-      "Something didn't match what this iPhone expected, so Hasala stopped to keep your data safe. Nothing was changed. Talk to us at hasala.app/support."
+      "Something didn't match, so nothing was changed. Talk to us at hasala.app/support."
     case .updateRequired:
-      "This version of Hasala is too old. Install the newest build from TestFlight, then try again."
+      "This version is too old. Update Hasala in TestFlight, then try again."
     case .noPasscode:
-      "Set a passcode on your iPhone to use Hasala. It protects your data and lets this iPhone confirm it's you."
+      "Set an iPhone passcode to use Hasala. It protects your data and confirms it's you."
     }
   }
 }

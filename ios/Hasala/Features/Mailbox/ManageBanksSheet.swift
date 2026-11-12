@@ -26,7 +26,7 @@ struct ManageBanksSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
-          Text("Pick the banks Hasala reads. It reads only their transaction alerts, nothing else in your mail.")
+          Text("Hasala reads only transaction alerts from the banks you pick.")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -69,9 +69,9 @@ struct ManageBanksSheet: View {
   private var note: String {
     if chosen.isEmpty { return "Pick at least one bank." }
     if !removed.isEmpty {
-      return "Hasala stops reading alerts from \(MailCopy.banks(removed)). Past transactions stay."
+      return "Alerts from \(MailCopy.banks(removed)) stop. Past transactions stay."
     }
-    return "Only alerts from the banks you pick are downloaded, straight to this iPhone."
+    return "Alerts are downloaded straight to this iPhone."
   }
 
   private func save() async {

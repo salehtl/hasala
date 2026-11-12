@@ -12,22 +12,21 @@ enum SourceSwitch {
     mailbox?.mailboxes.filter { $0.state != .disconnected } ?? []
   }
 
-  static let checking = "Hasala is still checking your mailbox. Try again in a moment."
+  static let checking = "Still checking your mailbox. Try again in a moment."
 
   static let readElsewhereLink =
-    "This account still reads bank email on another iPhone. Disconnect the mailbox there first, then switch to bank texts here."
+    "Another iPhone reads this account's bank email. Disconnect the mailbox there, then switch here."
 
-  static let linkRemains =
-    "Hasala disconnected your mailbox, but this account still shows a mailbox link. Try again in a moment to finish the switch."
+  static let linkRemains = "Your mailbox disconnected, but the switch didn't finish. Try again in a moment."
 
   static func textsBlocker(_ mailbox: (any MailboxConnecting)?, texts: (any BankTextsConnecting)?) -> String? {
     if mailbox?.mailboxesKnown == false { return checking }
     let reading = reading(mailbox)
     if let elsewhere = reading.first(where: \.readElsewhere) {
-      return "Your other iPhone reads \(elsewhere.address) and holds its sign-in. Disconnect it there first, or remove Hasala at \(MailCopy.consentPage(elsewhere.provider)). Then switch to bank texts here."
+      return "Your other iPhone reads \(elsewhere.address). Disconnect it there, or remove Hasala at \(MailCopy.consentPage(elsewhere.provider)), then switch here."
     }
     if !reading.isEmpty, mailbox?.capabilities.contains(.disconnect) != true {
-      return "Hasala can't disconnect your mailbox from this iPhone, so it can't switch to bank texts here."
+      return "This iPhone can't disconnect your mailbox, so it can't switch."
     }
     if reading.isEmpty, texts?.readsEmail == true { return readElsewhereLink }
     return nil
@@ -56,8 +55,8 @@ enum SourceSwitch {
   }
 
   static func partialFailure(disconnected: [MailboxSnapshot], failed: MailboxSnapshot) -> String {
-    guard !disconnected.isEmpty else { return "Hasala couldn't disconnect \(failed.address). Nothing changed. Try again." }
+    guard !disconnected.isEmpty else { return "Couldn't disconnect \(failed.address). Nothing changed. Try again." }
     let done = disconnected.map(\.address).formatted(.list(type: .and))
-    return "Hasala disconnected \(done), but couldn't disconnect \(failed.address). It still reads bank email until \(failed.address) disconnects. Try again to finish the switch."
+    return "Disconnected \(done) but not \(failed.address). Try again to finish the switch."
   }
 }

@@ -113,7 +113,7 @@ struct CategoryPickerView: View {
   }
 
   static func alwaysUseFootnote(merchant: String) -> String {
-    "Also re-files \(Bidi.isolate(merchant))\u{2019}s other transactions, except ones you sorted. Undo puts them back."
+    "Also re-files \(Bidi.isolate(merchant))\u{2019}s other transactions you haven't sorted. Undo puts them back."
   }
 
   static func initial(_ detail: TransactionDetail?) -> CategoryID? {
@@ -225,7 +225,7 @@ struct NoteEditorView: View {
         .padding(16)
         .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
         .accessibilityIdentifier("note.field")
-      TextLimitLine("Notes stay with the transaction and are encrypted like everything else.",
+      TextLimitLine("Notes are encrypted like everything else.",
                     limit: .note, text: note, id: "note.count")
       Spacer()
       Button("Save note") { save(note) }

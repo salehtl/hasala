@@ -282,10 +282,10 @@ final class SecurityModel {
 
   static func notice(for action: SecurityAction) -> String? {
     switch action {
-    case .removePasskey: "Removed from your Hasala account. To remove it from this iPhone too, delete it in the Passwords app."
+    case .removePasskey: "Removed from your account. Delete it in the Passwords app too."
     case .addPasskey: "Passkey added."
-    case .setPassword: "Password set. It signs you in; it never unlocks your data."
-    case .changePassword: "Password changed. Your other devices were signed out."
+    case .setPassword: "Password set. It never unlocks your data."
+    case .changePassword: "Password changed. Other devices were signed out."
     case .removePassword: "Password removed."
     case .removeDevice: "Device removed."
     default: nil
@@ -315,18 +315,18 @@ final class SecurityModel {
         }
         return ("Remove the \(name) passkey", ["The \(name) passkey can't sign in any more", weEmail])
       case .setPassword:
-        return ("Set a password", ["It signs you in; it never unlocks your data", weEmail])
+        return ("Set a password", ["Signs you in, never unlocks your data", weEmail])
       case .changePassword:
         return ("Change your password", ["Other devices are signed out", weEmail])
       case .removePassword:
         return ("Remove your password", ["You'll sign in with your passkey only", weEmail])
       case .removeDevice(let id):
         let name = state?.devices.first { $0.id == id }?.title ?? "this device"
-        return ("Remove \(name)", ["It's signed out now", "Its copy of your data is erased the next time it opens Hasala"])
+        return ("Remove \(name)", ["It's signed out now", "Its copy of your data is erased when it next opens Hasala"])
       case .signOutEverywhere:
         return ("Sign out everywhere", ["Every device signs out, this one too", "Your sealed backup stays"])
       case .freeze:
-        return ("Freeze your account", ["Everyone is signed out", "Sign-in and key changes stop until you unfreeze it"])
+        return ("Freeze your account", ["Everyone is signed out", "Sign-in and key changes stop until unfrozen"])
       case .unfreeze:
         return ("Unfreeze your account", ["Sign-in and key changes work again"])
       case .deleteAccount:
