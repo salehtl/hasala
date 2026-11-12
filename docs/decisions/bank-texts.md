@@ -185,8 +185,8 @@ payment cannot arrive through two channels, and no merge is needed.
   path never touches the network.
 - While the account has a mailbox link (the link copy says linked), the app offers no
   **Paste a bank text**: Review and Profile › Bank alerts hide it, and the paste sheet,
-  reached any other way, refuses with "This account reads bank email. Switch to bank texts
-  in Profile › Bank alerts to paste a text." Paste is offered when the copy says not linked
+  reached any other way, refuses with "This account reads bank email. Switch to texts in
+  Profile › Bank alerts to paste." Paste is offered when the copy says not linked
   or unknown (a pasted row always waits in Review).
 - "Add bank text" checks the account's mailbox link before it authors a row. The link state
   is not in the op log, and the app holds the server's answer only in memory
@@ -660,8 +660,8 @@ A pasted text has no sender and no arrival time, so its key uses the empty sende
 paste minute (its `received_at` is the paste minute too), and cannot match the automation's
 key. The app tells a pasted text with no date from a dated one by reading it a second time
 with a later paste time: when the posted time moves with it, the text carries no date, and
-the sheet says "This text has no date, so Hasala dates it when you paste it. Change the date
-in Review if the payment was earlier." Instead, before it adds a pasted text,
+the sheet says "The text has no date, so it's dated when you paste it. Change it in Review
+if it was earlier." Instead, before it adds a pasted text,
 the paste sheet looks for a live row, from a text or from mail, with the same bank (or no
 bank on either side), amount, currency and direction, the same card or no card on either
 side, and a `posted_at` within
@@ -681,14 +681,11 @@ person can still find the payment, it keeps what the decoder allows and what the
 `posted_at` with `posted_precision: time` (the date and time in the text when the text
 gives a time, else the arrival minute), `received_at`, `channel: "sms"`, `gates.template:
 none` and `gates.sender: untrusted` (since 2026-10-29 no `gates.card`; older builds wrote
-`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Hasala couldn't read
-this bank text. Find the text from \<bank\> at \<time\> in Messages, copy it and paste it
-here, or add the payment yourself." \<time\> is the text's `received_at`, because Messages
-lists texts by arrival, with the date added when it is not today ("at 12:00 on Fri 5 Jun");
-with no bank it says "Find the text at …"; while the account reads email (no paste), it
-drops "copy it and paste it here". Review lists these rows in a "Bank texts" page
-("Hasala couldn't turn these texts into a payment. Paste each one again, add it yourself,
-or dismiss one you don't need."), and Home's bell has an item "N bank texts we couldn't
+`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Copy it from Messages
+and paste it here, or add the payment yourself."; while the account reads email (no
+paste), it says "Find it in Messages and add the payment yourself." Review lists these
+rows in a "Bank texts" page ("Hasala couldn't read these. Paste each again, add it
+yourself, or dismiss it."), and Home's bell has an item "N bank texts we couldn't
 read" with the neutral line "Add each one by hand or dismiss it". The cards and the
 transaction sheet show only the parsed fields and this copy, never a text body (Paper's B3
 and B4 show one; the record forbids keeping it); the source title is "Bank text from DIB",
