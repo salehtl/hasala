@@ -447,6 +447,7 @@ extension State {
         return
       }
       txns[id]!.duplicateDisposition = disposition
+      txns[id]!.possibleDuplicateMovedFrom = []
     case .copyResolution(let other, let decision):
       resolveCopy(id, other: other, decision: decision, e)
     default:
@@ -528,6 +529,7 @@ extension State {
     if let dup = p.possibleDuplicateOf {
       txns[id]!.possibleDuplicateOf = dup
       txns[id]!.duplicateDisposition = nil
+      txns[id]!.possibleDuplicateMovedFrom = []
     }
     let t = txns[id]!
     let after = fingerprint(t)
@@ -535,6 +537,7 @@ extension State {
       unindexFingerprint(before, id)
       txns[id]!.possibleDuplicateOf = nil
       txns[id]!.duplicateDisposition = nil
+      txns[id]!.possibleDuplicateMovedFrom = []
       indexFingerprint(id, seq: seq)
     }
   }

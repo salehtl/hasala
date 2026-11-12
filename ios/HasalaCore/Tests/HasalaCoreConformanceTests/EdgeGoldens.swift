@@ -70,17 +70,32 @@ enum EdgeGoldens {
     #","changes":[{"from":"2026-11-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200}],"pauses":[{"from":"2026-08-01","until":null}]"#
   static let detected = "bd_netflix.debit.aed"
 
+  static func foreignCopy(_ n: Int, grant: String, verified: Bool) -> String {
+    let p =
+      #"{"amount_minor":"2500","currency":"USD","direction":"debit","posted_at":"2026-10-09T15:12:00.000Z","posted_precision":"time","merchant_raw":"AMAZON","last4":"4412","needs_review":false,"tier":"template","category":"shopping","category_source":{"kind":"user"},"entry_method":"mailbox","bank":"enbd","provenance":{"provider":"gmail","grant_id":"\#(grant)","message_id":"msg-\#(n)"},"gates":\#(verified ? D.pass : D.fail),"dedupe":{"message_id":"\#(D.mid)"}}"#
+    return G.op("txn_ingested", p, id: "op-ingest-\(n)", entity: ("txn", G.ulid(n)), ingest: G.ingestID(n))
+  }
+
+  static let decline = [
+    edit(2, parent: 1, #"{"possible_duplicate_of":"\#(G.ulid(1))"}"#, id: "op-decline-2"),
+    G.op(
+      "txn_duplicate_disposition", #"{"other_txn_id":"\#(G.ulid(1))","disposition":"different"}"#, id: "op-different-2",
+      entity: ("txn", G.ulid(2)), parent: 2),
+  ]
+
   static let pairs: [String: [String]] = [
     "pairing-skips-archived-and-held-rows": [],
     "pairing-takes-the-kept-copy": [G.ulid(1) + ">" + G.ulid(3)],
     "pairing-after-unarchive": [G.ulid(1) + ">" + G.ulid(2)],
     "same-purchase-and-its-undo": [G.ulid(1) + ">" + G.ulid(2)],
+    "declined-pair-stays-declined-across-a-merge": [],
+    "declined-pair-stays-declined-after-a-remove": [],
   ]
 
   static let set = FoldGoldenSet(
     file: "fold-v4-edges.json",
     note:
-      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists: on a create, absent, null and [] are the same record; on an edit, an absent key keeps the head's list and a present one replaces it, and the merged record must pass the grammar. A refused list consumes no version, created_at stays the create's, and a second create of a bill is a fork (or nothing, when it is the same record). Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
+      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, a declined same-purchase pair across a merge and a remove, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists: on a create, absent, null and [] are the same record; on an edit, an absent key keeps the head's list and a present one replaces it, and the merged record must pass the grammar. A refused list consumes no version, created_at stays the create's, and a second create of a bill is a fork (or nothing, when it is the same record). Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
     cases: [
       FoldGoldenCase(
         name: "held-copy-at-the-int64-ceiling",
@@ -193,6 +208,30 @@ enum EdgeGoldens {
         name: "pairing-after-unarchive",
         note: "Unarchiving the posting offers it as the pair again; the held copy is still held.",
         blobs: pairingBase + [(4, G.w2, [annotate(2, #"{"archived":null}"#, id: "op-unarchive-2")])]),
+      FoldGoldenCase(
+        name: "declined-pair-stays-declined-across-a-merge",
+        note: "The person said the AED posting is not the USD purchase (possible_duplicate_of with the answer different). The purchase's verified copy then arrives from mailbox B and the earlier alert merges into it: the posting's notice and its answer move to the copy that stays, and the pair is not offered again.",
+        blobs: [
+          (1, G.w1, [home, rate("USD", "3672500", id: "op-rate-usd")]),
+          (2, G.w1, [foreignCopy(1, grant: R.a, verified: false), row(2, "AED", "9300", at: "2026-10-11T08:00:00.000Z", merchant: "AMAZON MKTPLACE")]),
+          (3, G.w2, decline),
+          (4, G.w1, [foreignCopy(3, grant: R.b, verified: true)]),
+        ]),
+      FoldGoldenCase(
+        name: "declined-pair-stays-declined-after-a-remove",
+        note: "The same answer, then mailbox A is removed: the copy from mailbox B comes back as the purchase's row, the posting's notice and its answer move to it, and the pair is not offered again.",
+        blobs: [
+          (1, G.w1, [home, rate("USD", "3672500", id: "op-rate-usd")]),
+          (
+            2, G.w1,
+            [
+              foreignCopy(1, grant: R.a, verified: false), foreignCopy(3, grant: R.b, verified: false),
+              row(2, "AED", "9300", at: "2026-10-11T08:00:00.000Z", merchant: "AMAZON MKTPLACE", grant: R.b),
+            ]
+          ),
+          (3, G.w2, decline),
+          (4, G.w1, [R.retire(R.a, legacy: false, id: "op-retire-a")]),
+        ]),
       FoldGoldenCase(
         name: "conversion-overflow-is-recorded",
         note: "A USD row at 2^63-1 at 2.000000 does not fit Int64 in AED: the fold records money_overflow and the row waits with no home amount; a later rate of 1.000000 backfills it to 2^63-1.",

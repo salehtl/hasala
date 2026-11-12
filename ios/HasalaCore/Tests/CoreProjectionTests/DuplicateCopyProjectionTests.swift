@@ -64,6 +64,30 @@ struct DuplicateCopyProjectionTests {
     #expect(try Self.spent(r2) == 5400)
   }
 
+  static let cash = #"{"v":4,"type":"txn_ingested","op_id":"op-3","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(3))"},"parent_version":null,"ingest_id":"\#(M.ingestID(3))","payload":{"amount_minor":"2700","currency":"AED","direction":"debit","posted_at":"2026-10-03T08:00:00.000Z","merchant_raw":"STARBUCKS DIFC","last4":"4412","needs_review":false,"category":"dining","category_source":{"kind":"user"},"entry_method":"manual"}}"#
+  static let retireA = #"{"v":4,"type":"mailbox_retired","op_id":"op-retire","authored_at":"2026-10-01T08:00:00.000Z","parent_version":null,"payload":{"grant_id":"\#(M.a)","provider":"gmail","legacy":false}}"#
+
+  static func confirmed(_ r: LedgerReader) throws -> [String: Bool] {
+    let d = CivilDate(wire: "2026-10-03")!
+    return Dictionary(try r.moneyLines(from: d, to: d).map { ($0.txnID, $0.confirmed) }, uniquingKeysWith: { $0 && $1 })
+  }
+
+  @Test("a remove that brings a merged copy back flags the row that named the removed one against it, so one purchase is not confirmed twice")
+  func promotedCopyFlagged() throws {
+    let log = [Self.home, Self.alert(1, grant: M.a, at: "08:00:00", mid: Self.mid), Self.alert(2, grant: M.b, at: "08:00:00", mid: Self.mid), Self.cash]
+    #expect(try Self.confirmed(M.reader(try M.fold(log))) == [M.ulid(1): true, M.ulid(3): false])
+    let r = try M.reader(try M.fold(log + [Self.retireA]))
+    #expect(try Self.confirmed(r) == [M.ulid(2): true, M.ulid(3): false])
+    #expect(try r.txn(M.ulid(3))?.possibleDuplicateOf == M.ulid(2) && r.txn(M.ulid(3))?.reviewLane == "duplicate")
+  }
+
+  @Test("a remove that leaves nothing of the row a notice names clears the notice, and the row that named it counts")
+  func nothingSurvives() throws {
+    let r = try M.reader(try M.fold([Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.cash, Self.retireA]))
+    #expect(try Self.confirmed(r) == [M.ulid(3): true])
+    #expect(try r.txn(M.ulid(3))?.possibleDuplicateOf == nil)
+  }
+
   @Test("a merged copy leaves the rows and stays known by its message and ingest id")
   func mergedIsAnAlias() throws {
     let s = try M.fold([Self.home, Self.alert(1, grant: M.a, at: "08:00:00", mid: Self.mid), Self.alert(2, grant: M.b, at: "08:00:00", mid: Self.mid)])

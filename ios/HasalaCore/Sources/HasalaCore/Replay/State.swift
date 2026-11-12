@@ -158,6 +158,7 @@ public struct Txn: Sendable, Equatable, Codable {
   public var aliases: [TxnAlias] = []
   public var copyOf: String?
   public var copyDecision: String?
+  public var possibleDuplicateMovedFrom: [String] = []
   public var channel: String? = nil
   public var receivedAt: String? = nil
   /// field → keyed value (03c §3.5); every value is a string or a clear.

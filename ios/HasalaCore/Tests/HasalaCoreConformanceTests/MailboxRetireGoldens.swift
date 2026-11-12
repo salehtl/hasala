@@ -41,7 +41,7 @@ enum MailboxRetireGoldens {
   static let set = FoldGoldenSet(
     file: "fold-v4-mailbox-retire.json",
     note:
-      "mailbox_retired (v4, parent-free): {grant_id, provider, legacy}. Every v4 txn row projects source_mailbox (provenance.grant_id) and source_provider. The op retires the live rows that one mailbox imported before its position: rows whose source_provider equals provider and whose source_mailbox equals grant_id, or, when legacy is true, equals the account part of grant_id (before \"/mbx-\"). A retired row keeps every field, gets retired_by, and leaves liveByIngestID, byFingerprint and pendingByCurrency, so the same message imported again is a new row. Keep authors no op. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
+      "mailbox_retired (v4, parent-free): {grant_id, provider, legacy}. Every v4 txn row projects source_mailbox (provenance.grant_id) and source_provider. The op retires the live rows that one mailbox imported before its position: rows whose source_provider equals provider and whose source_mailbox equals grant_id, or, when legacy is true, equals the account part of grant_id (before \"/mbx-\"). A retired row keeps every field, gets retired_by, and leaves liveByIngestID, byFingerprint and pendingByCurrency, so the same message imported again is a new row. A possible_duplicate_of that names a retired row moves, with its duplicate_disposition, to the live copy of that row that survives (the alias the retire brings back, or the row a retired alias was merged into); when nothing of it survives, an open notice or a same answer clears and a different answer stays. Retired rows leave every possible_duplicate_moved_from. Keep authors no op. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
     cases: [
       FoldGoldenCase(
         name: "project", note: "Rows from two mailboxes and a manual row; each v4 import carries its mailbox and provider.",
@@ -65,12 +65,25 @@ enum MailboxRetireGoldens {
       FoldGoldenCase(
         name: "notice-clears-after-remove",
         note:
-          "A cash row added by hand matches mailbox A's first row, so it names that row as a possible duplicate, and an older build answered same. The remove retires the row it names: the cash row's notice and its answer clear, and it stays live.",
+          "A cash row added by hand matches mailbox A's first row, so it names that row as a possible duplicate, and an older build answered same. The remove retires the row it names and nothing of that row survives: the cash row's notice and its answer clear, and it stays live.",
         blobs: base + [
           (5, G.w2, [
             ingest(5, merchant: "CARREFOUR MOE", grant: nil),
             G.op(
               "txn_duplicate_disposition", #"{"other_txn_id":"\#(G.ulid(1))","disposition":"same"}"#, id: "op-same-5",
+              entity: ("txn", G.ulid(5)), parent: 1),
+          ]),
+          (6, G.w1, [retire(a, legacy: false, id: "op-retire-a")]),
+        ]),
+      FoldGoldenCase(
+        name: "different-answer-stays-after-remove",
+        note:
+          "The same cash row, answered different. The remove retires the row it names and nothing of that row survives: the notice and its answer stay, so the pair is not asked again.",
+        blobs: base + [
+          (5, G.w2, [
+            ingest(5, merchant: "CARREFOUR MOE", grant: nil),
+            G.op(
+              "txn_duplicate_disposition", #"{"other_txn_id":"\#(G.ulid(1))","disposition":"different"}"#, id: "op-different-5",
               entity: ("txn", G.ulid(5)), parent: 1),
           ]),
           (6, G.w1, [retire(a, legacy: false, id: "op-retire-a")]),

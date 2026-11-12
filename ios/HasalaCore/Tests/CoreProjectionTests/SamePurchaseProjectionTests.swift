@@ -40,6 +40,37 @@ struct SamePurchaseProjectionTests {
     #expect(SamePurchase.pairs(held, home: "AED").isEmpty)
   }
 
+  static func alert(_ n: Int, grant: String, verified: Bool) -> String {
+    let trust = verified ? #""ar":"pass","sender":"trusted""# : #""ar":"fail","sender":"untrusted""#
+    return #"{"v":4,"type":"txn_ingested","op_id":"op-\#(n)","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(n))"},"parent_version":null,"ingest_id":"\#(M.ingestID(n))","payload":{"amount_minor":"2500","currency":"USD","direction":"debit","posted_at":"2026-10-03T10:00:00.000Z","posted_precision":"time","merchant_raw":"AMAZON","last4":"4412","needs_review":false,"category":"shopping","tier":"template","entry_method":"mailbox","bank":"enbd","provenance":{"provider":"gmail","grant_id":"\#(grant)","message_id":"m\#(n)"},"gates":{\#(trust),"template":"enbd-card@1","card":"known","forwarded":false},"dedupe":{"message_id":"0123456789abcdef0123456789abcdef"}}}"#
+  }
+
+  static let decline = [
+    #"{"v":4,"type":"txn_edited","op_id":"op-decline","authored_at":"2026-10-06T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(2))"},"parent_version":1,"payload":{"possible_duplicate_of":"\#(M.ulid(1))"}}"#,
+    #"{"v":4,"type":"txn_duplicate_disposition","op_id":"op-different","authored_at":"2026-10-06T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(2))"},"parent_version":2,"payload":{"other_txn_id":"\#(M.ulid(1))","disposition":"different"}}"#,
+  ].joined(separator: ",")
+
+  static func declinedStays(_ ops: [String], survivor: String) throws {
+    let r = try M.reader(try M.fold(ops))
+    let rows = try (r.activity() + r.archived())
+    #expect(SamePurchase.pairs(rows.map(\.samePurchaseRow), home: "AED").isEmpty)
+    let posting = try #require(rows.first { $0.id == M.ulid(2) })
+    #expect(posting.possibleDuplicateOf == survivor && posting.duplicateDisposition == "different")
+    #expect(!RuleReach.ruled(posting.reachRow, samePurchase: []))
+  }
+
+  @Test("a declined pair stays declined when the purchase it names merges into its verified copy or leaves with a removed mailbox")
+  func declinedAcrossMergeAndRemove() throws {
+    let posting = Self.txn(2, minor: 9_300, currency: "AED", day: "05")
+    try Self.declinedStays(
+      [D.home, Self.rate, Self.alert(1, grant: M.a, verified: false), posting, Self.decline, Self.alert(3, grant: M.b, verified: true)],
+      survivor: M.ulid(3))
+    let retire = #"{"v":4,"type":"mailbox_retired","op_id":"op-retire","authored_at":"2026-10-07T08:00:00.000Z","parent_version":null,"payload":{"grant_id":"\#(M.a)","provider":"gmail","legacy":false}}"#
+    try Self.declinedStays(
+      [D.home, Self.rate, Self.alert(1, grant: M.a, verified: false), Self.alert(3, grant: M.b, verified: false), posting, Self.decline, retire],
+      survivor: M.ulid(3))
+  }
+
   @Test("the settled note reaches the pairing, so a purchase already settled is not offered to a later posting")
   func settledNote() throws {
     let rows = try Self.rows([

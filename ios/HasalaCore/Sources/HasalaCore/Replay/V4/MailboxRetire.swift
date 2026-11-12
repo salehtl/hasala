@@ -57,8 +57,8 @@ extension State {
       unindexFingerprint(fingerprint(t), id)
       clearPending(t)
     }
-    releaseAfterRetire(retiredLive, seq: e.seq)
-    clearDuplicateNotices(naming: retired)
+    let promoted = releaseAfterRetire(retiredLive, seq: e.seq)
+    settleDuplicateNotices(retired: retired, promoted: promoted)
     mailboxRetirements.append(
       MailboxRetirement(
         opID: e.op.opID, grantID: grant, provider: provider, legacy: legacy, atSeq: e.seq, txnIDs: retired))

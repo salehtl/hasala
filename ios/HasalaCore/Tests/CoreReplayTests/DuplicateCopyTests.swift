@@ -99,8 +99,8 @@ struct DuplicateCopyTests {
     #expect(log.kinds == ["duplicate_disposition_mismatch"])
   }
 
-  @Test("a possible-duplicate notice that names a row merged away clears, with its answer, at a certain or a person's merge")
-  func noticeOnMergedRowClears() throws {
+  @Test("a possible-duplicate notice that names a row merged away moves to the row it merged into, with its answer, at a certain or a person's merge, and Keep both brings it back")
+  func noticeFollowsItsMergedRow() throws {
     var certain = Log()
     try certain.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid, gates: Copy.fail))
     try certain.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
@@ -111,7 +111,8 @@ struct DuplicateCopyTests {
     #expect(certain.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && certain.state.txns[Ids.t3]?.duplicateDisposition == "same")
     try certain.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-04T08:00:00.000Z", mid: Copy.mid, gates: Copy.pass))
     #expect(certain.state.txns[Ids.t1]?.mergedInto == Ids.t2)
-    #expect(certain.state.txns[Ids.t3]?.possibleDuplicateOf == nil && certain.state.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(certain.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2 && certain.state.txns[Ids.t3]?.duplicateDisposition == "same")
+    #expect(certain.state.txns[Ids.t3]?.possibleDuplicateMovedFrom == [Ids.t1])
     #expect(certain.state.txns[Ids.t2]?.possibleDuplicateOf == nil)
     #expect(certain.kinds == ["possible_duplicate"])
 
@@ -122,10 +123,96 @@ struct DuplicateCopyTests {
     #expect(person.state.txns[Ids.t2]?.copyOf == Ids.t1 && person.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
     try person.blob(Copy.resolve(Ids.t2, other: Ids.t1, "merge", parent: 1, op: 50))
     #expect(person.state.txns[Ids.t2]?.mergedInto == Ids.t1)
-    #expect(person.state.txns[Ids.t3]?.possibleDuplicateOf == nil && person.state.txns[Ids.t3]?.isLive == true)
+    #expect(person.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && person.state.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(person.state.txns[Ids.t3]?.isLive == true)
     try person.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 2, op: 51))
-    #expect(person.state.txns[Ids.t2]?.isLive == true && person.state.txns[Ids.t3]?.possibleDuplicateOf == nil)
+    #expect(person.state.txns[Ids.t2]?.isLive == true && person.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    #expect(person.state.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
     #expect(person.kinds == ["possible_duplicate"])
+  }
+
+  static func mergedNotice() throws -> Log {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, at: "2026-10-03T23:58:00.000Z"))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-04T00:03:00.000Z"))
+    try log.blob(Copy.alert(3, id: Ids.t3, grant: Mbx.a, at: "2026-10-04T08:00:00.000Z"))
+    try log.blob(
+      op("txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t2)","disposition":"same"}"#, id: 40, entity: ("txn", Ids.t3), parent: 1))
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, "merge", parent: 1, op: 50))
+    return log
+  }
+
+  @Test("Undo of a person's merge puts the notice back on the row that returns, with its answer")
+  func undoReturnsTheNotice() throws {
+    var log = try Self.mergedNotice()
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && log.state.txns[Ids.t3]?.duplicateDisposition == "same")
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, nil, parent: 2, op: 51))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.isHeldCopy == true)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2 && s.txns[Ids.t3]?.duplicateDisposition == "same")
+    #expect(s.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
+    #expect(log.kinds == ["possible_duplicate"])
+  }
+
+  @Test("a newer answer or notice written after the merge stays when the merge is undone")
+  func newerAnswerStays() throws {
+    var answered = try Self.mergedNotice()
+    try answered.blob(
+      op("txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t1)","disposition":"different"}"#, id: 60, entity: ("txn", Ids.t3), parent: 2))
+    #expect(answered.state.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
+    try answered.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 2, op: 61))
+    #expect(answered.state.txns[Ids.t2]?.isLive == true)
+    #expect(answered.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && answered.state.txns[Ids.t3]?.duplicateDisposition == "different")
+
+    var cleared = try Self.mergedNotice()
+    try cleared.blob(op("txn_edited", #"{"possible_duplicate_of":null}"#, id: 60, entity: ("txn", Ids.t3), parent: 2))
+    try cleared.blob(Copy.resolve(Ids.t2, other: Ids.t1, nil, parent: 2, op: 61))
+    #expect(cleared.state.txns[Ids.t2]?.isHeldCopy == true)
+    #expect(cleared.state.txns[Ids.t3]?.possibleDuplicateOf == nil && cleared.state.txns[Ids.t3]?.duplicateDisposition == nil)
+  }
+
+  @Test("a notice moved by two merges goes back to the row it named when that row returns, by Undo or by a removal")
+  func noticeAcrossTwoMerges() throws {
+    func twice() throws -> Log {
+      var log = Log()
+      try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, at: "2026-10-03T23:58:00.000Z", mid: Copy.mid))
+      try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-04T00:03:00.000Z"))
+      try log.blob(Copy.alert(3, id: Ids.t3, grant: Mbx.a, at: "2026-10-04T08:00:00.000Z"))
+      try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, "merge", parent: 1, op: 50))
+      try log.blob(Copy.alert(4, id: Ids.ulid(7), grant: Mbx.b, at: "2026-10-03T23:58:00.000Z", mid: Copy.mid, gates: Copy.pass))
+      return log
+    }
+    var log = try twice()
+    #expect(log.state.txns[Ids.t1]?.mergedInto == Ids.ulid(7) && log.state.txns[Ids.t2]?.mergedInto == Ids.ulid(7))
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.ulid(7))
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateMovedFrom == [Ids.t2, Ids.t1])
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, nil, parent: 2, op: 51))
+    #expect(log.state.txns[Ids.t2]?.isLive == true && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
+
+    var removed = try twice()
+    try removed.blob(Mbx.retire(Mbx.b, id: 60))
+    #expect(removed.state.txns[Ids.t1]?.isLive == true && removed.state.txns[Ids.t2]?.retiredBy == "op-60")
+    #expect(removed.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    #expect(removed.state.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
+  }
+
+  @Test("Keep apart of a transfer pair merged without the person puts the notice back on the alert")
+  func keepApartReturnsTheNotice() throws {
+    var log = Log()
+    try log.blob(Notice.alert(1, id: Ids.t1, at: "2026-10-03T10:00:00.000Z"))
+    try log.blob(
+      Notice.row(
+        3, id: Ids.t3, template: Notice.card, merchant: "MB FUND TRANSFER DEBIT", last4: "0606", at: "2026-10-03T15:00:00.000Z",
+        grant: Mbx.b))
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    try log.blob(Notice.row(2, id: Ids.t2, template: Notice.arabic, at: "2026-10-03T10:05:00.000Z"))
+    #expect(log.state.txns[Ids.t1]?.mergedInto == Ids.t2 && log.state.txns[Ids.t1]?.mergeKind == "transfer")
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    try log.blob(Copy.resolve(Ids.t1, other: Ids.t2, "keep_both", parent: 1, op: 50))
+    #expect(log.state.txns[Ids.t1]?.isLive == true)
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && log.state.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(log.kinds == ["possible_duplicate"])
   }
 
   @Test("removing the canonical's mailbox brings its copy back as the row")

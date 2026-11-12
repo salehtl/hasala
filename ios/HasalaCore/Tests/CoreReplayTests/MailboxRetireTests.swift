@@ -113,7 +113,7 @@ struct MailboxRetireTests {
     #expect(!s.byFingerprint.values.contains { $0.contains(Ids.t1) })
   }
 
-  @Test("a possible-duplicate notice that names a row the remove retired clears, with its answer")
+  @Test("when nothing of the row a notice names survives the remove, an open notice or a same answer clears and a different answer stays")
   func noticeOnRetiredRowClears() throws {
     var log = Log()
     try log.blob(ingest(1, id: Ids.t1, extra: Mbx.prov(Mbx.a, message: "m1")))
@@ -121,10 +121,16 @@ struct MailboxRetireTests {
     try log.blob(ingest(3, id: Ids.t3, extra: Mbx.prov(Mbx.b, message: "m3")))
     try log.blob(ingest(4, id: Ids.ulid(9), merchant: "ENOC", extra: Mbx.prov(Mbx.a, message: "m4")))
     try log.blob(ingest(5, id: Ids.ulid(10), merchant: "ENOC", extra: #","entry_method":"manual""#))
+    try log.blob(ingest(6, id: Ids.ulid(11), merchant: "IKEA", extra: Mbx.prov(Mbx.a, message: "m6")))
+    try log.blob(ingest(7, id: Ids.ulid(12), merchant: "IKEA", extra: #","entry_method":"manual""#))
     try log.blob(
       op(
         "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t1)","disposition":"same"}"#, id: 50, entity: ("txn", Ids.t2),
         parent: 1))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.ulid(11))","disposition":"different"}"#, id: 51,
+        entity: ("txn", Ids.ulid(12)), parent: 1))
     #expect(log.state.txns[Ids.t2]?.possibleDuplicateOf == Ids.t1 && log.state.txns[Ids.t2]?.duplicateDisposition == "same")
     #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
     #expect(log.state.txns[Ids.ulid(10)]?.possibleDuplicateOf == Ids.ulid(9))
@@ -135,8 +141,47 @@ struct MailboxRetireTests {
     #expect(s.txns[Ids.t2]?.possibleDuplicateOf == nil && s.txns[Ids.t2]?.duplicateDisposition == nil)
     #expect(s.txns[Ids.t3]?.possibleDuplicateOf == nil && s.txns[Ids.t3]?.retiredBy == "op-59")
     #expect(s.txns[Ids.ulid(10)]?.possibleDuplicateOf == nil)
+    #expect(s.txns[Ids.ulid(11)]?.retiredBy == "op-60")
+    #expect(s.txns[Ids.ulid(12)]?.possibleDuplicateOf == Ids.ulid(11) && s.txns[Ids.ulid(12)]?.duplicateDisposition == "different")
     #expect(s.txns[Ids.t2]?.version == 2 && s.txns[Ids.t2]?.isLive == true)
-    #expect(log.kinds == ["possible_duplicate", "possible_duplicate", "possible_duplicate"])
+    #expect(log.kinds == ["possible_duplicate", "possible_duplicate", "possible_duplicate", "possible_duplicate"])
+  }
+
+  @Test("when the remove promotes a merged copy of the row a notice names, the notice moves to that copy with its answer")
+  func noticeMovesToPromotedCopy() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, mid: Copy.mid))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.alert(4, id: Ids.ulid(7), grant: Mbx.a, merchant: "ENOC", mid: "fedcba9876543210fedcba9876543210"))
+    try log.blob(Copy.alert(5, id: Ids.ulid(8), grant: Mbx.b, merchant: "ENOC", mid: "fedcba9876543210fedcba9876543210"))
+    try log.blob(ingest(6, id: Ids.ulid(9), amount: "2700", merchant: "ENOC", extra: #","entry_method":"manual""#))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.ulid(7))","disposition":"different"}"#, id: 50,
+        entity: ("txn", Ids.ulid(9)), parent: 1))
+    #expect(log.state.txns[Ids.t2]?.mergedInto == Ids.t1 && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    #expect(log.state.txns[Ids.ulid(8)]?.mergedInto == Ids.ulid(7) && log.state.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(7))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.isLive == true && s.txns[Ids.ulid(8)]?.isLive == true)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2 && s.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(s.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(8) && s.txns[Ids.ulid(9)]?.duplicateDisposition == "different")
+    #expect(s.txns.values.allSatisfy { $0.possibleDuplicateMovedFrom.isEmpty })
+    #expect(log.kinds == ["possible_duplicate", "possible_duplicate"])
+  }
+
+  @Test("a notice that a merge moved goes back to the copy the remove promotes")
+  func noticeReturnsToPromotedCopy() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid, gates: Copy.fail))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-04T08:00:00.000Z", mid: Copy.mid, gates: Copy.pass))
+    #expect(log.state.txns[Ids.t1]?.mergedInto == Ids.t2 && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    try log.blob(Mbx.retire(Mbx.b, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.isLive == true && s.txns[Ids.t2]?.retiredBy == "op-60")
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && s.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
   }
 
   @Test("legacy rows join only when the op says so, and only for the same provider")
