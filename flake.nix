@@ -27,13 +27,24 @@
       # stay at or above the `toolchain` line in server/go.mod, which
       # scripts/check.sh enforces.
       #
-      # From nixpkgs master (40b7966, Go 1.27.3) until nixos-unstable has it; then
-      # back to nixos-unstable. Not 26.05, because 26.05 stops at 1.26.8: that release is past
+      # nixpkgs master (40b7966) packages Go 1.27.3; the source is moved to 1.27.4
+      # (GO-2026-6859) until nixpkgs has it, then back to nixos-unstable. Not 26.05, because 26.05 stops at 1.26.8: that release is past
       # GO-2026-6090 (the TLS KeyUpdate DoS in the 2026-08-14 ledgerd security
       # review, which is not published; fixed in 1.26.6) but still
       # carries ten reachable net/http, crypto/tls and mime/multipart advisories
       # fixed in 1.26.9 / 1.27.2, and no nixpkgs branch packages 1.26.9.
-      goFor = system: nixpkgs-unstable.legacyPackages.${system}.go_1_27;
+      goFor =
+        system:
+        let
+          upstream = nixpkgs-unstable.legacyPackages.${system};
+        in
+        upstream.go_1_27.overrideAttrs {
+          version = "1.27.4";
+          src = upstream.fetchurl {
+            url = "https://go.dev/dl/go1.27.4.src.tar.gz";
+            hash = "sha256-c8+4VxrsDAEXdofbhxY9Rqog6XeWcncokaoXZU2aYJk=";
+          };
+        };
 
       # 26.05's buildGoModule, driven by that Go. The server is built with it,
       # and so are the Go tools below: 26.05 compiles them with Go 1.26, and a

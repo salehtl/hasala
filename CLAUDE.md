@@ -75,7 +75,7 @@ same devShell.
 2. In a non-interactive shell, put `direnv exec .` before each command.
 
 Go is the only tool that does not come from 26.05. Go comes from
-`nixos-unstable` (1.27.3; pinned to a nixpkgs master commit until the channel has it), because Go 1.26.8 in 26.05 has standard-library
+`nixos-unstable` (1.27.4: a nixpkgs master commit's Go 1.27.3 with the 1.27.4 source, until nixpkgs has it), because Go 1.26.8 in 26.05 has standard-library
 advisories that are reachable. The flake builds gopls, govulncheck and
 golangci-lint again with this Go. The `toolchain` line in `server/go.mod` is
 the security floor. In `server/`, `govulncheck ./...` must show nothing that
