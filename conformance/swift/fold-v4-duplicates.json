@@ -1,5 +1,5 @@
 {
-  "note": "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. A row without one of these templates takes its role from gates.kind (transfer_notice or account_debit_alert; another value, or a value that is not a string, is dropped). A row with a known template other than these has no transfer role, whatever its gates.kind. When both rows of a transfer pair say ar pass and sender trusted and the alert's merchant names a transfer (after ASCII lower-casing and white-space folding, a word trans, transfer, transfers, trnsfer, trf, tfr, xfer or uaefts, or the Arabic word for transfer anywhere), the alert is merged into the notice at once (merge_kind transfer, merge_op the ingest op, the alert's dedupe keys registered to the notice) and nobody is asked: the notice stays the row whatever came first, and when the alert came first and was not decided it takes copy_of the notice and the notice takes the sort and annotations it lacks. txn_copy_resolved keep_both takes the alert out again and gives its dedupe keys back to it; a null decision merges it again and carries its sort. A candidate whose copy_of names the row with a decision is never paired with it again. A pair with an unverified row, or with an alert whose merchant does not name a transfer, is held as before. A possible_duplicate_of that names the row merged away moves to the row it merged into with its duplicate_disposition (the winner's own notice naming it clears), and the merged row is appended to possible_duplicate_moved_from (emitted only when not empty). When that row comes back (keep_both, a null decision, or a mailbox_retired that brings an alias back), each notice whose possible_duplicate_moved_from holds it names it again, and the list drops it and every row after it. A newer possible_duplicate_of, a txn_duplicate_disposition or a fingerprint change empties the list. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
+  "note": "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. A row without one of these templates takes its role from gates.kind (transfer_notice or account_debit_alert; another value, or a value that is not a string, is dropped). A row with a known template other than these has no transfer role, whatever its gates.kind. When both rows of a transfer pair say ar pass and sender trusted and the alert's merchant names a transfer (after ASCII lower-casing and white-space folding, a word trans, transfer, transfers, trnsfer, trf, tfr, xfer or uaefts, or the Arabic word for transfer anywhere), the alert is merged into the notice at once (merge_kind transfer, merge_op the ingest op, the alert's dedupe keys registered to the notice) and nobody is asked: the notice stays the row whatever came first, and when the alert came first and was not decided it takes copy_of the notice and the notice takes the sort and annotations it lacks. txn_copy_resolved keep_both takes the alert out again and gives its dedupe keys back to it; a null decision merges it again and carries its sort. A candidate whose copy_of names the row with a decision is never paired with it again. A pair with an unverified row, or with an alert whose merchant does not name a transfer, is held as before. A possible_duplicate_of that names the row merged away moves to the row it merged into with its duplicate_disposition; on the row it merged into, a possible_duplicate_of naming it becomes null and keeps its duplicate_disposition. Either way the merged row is appended to possible_duplicate_moved_from (emitted only when not empty). When that row comes back (keep_both, a null decision, or a mailbox_retired that brings an alias back), each notice whose possible_duplicate_moved_from holds it names it again, and the list drops it and every row after it. A newer possible_duplicate_of, a txn_duplicate_disposition or a fingerprint change empties the list. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
   "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
   "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
   "cases": [
@@ -3925,6 +3925,1439 @@
           "unreadable": []
         },
         "state_sha256": "638eec3d41d8490dcae82aea2ac5a28a4194c84d12f50cdd17036c62260e098d",
+        "anomaly_kinds": [
+          "possible_duplicate"
+        ]
+      }
+    },
+    {
+      "name": "retire-moves-the-notice-to-the-released-copy",
+      "group": "fold_v4",
+      "note": "A cash row names the earlier alert as a possible duplicate, and the same alert from mailbox B six minutes later is held as its probable copy. Removing mailbox A releases the held copy as a live row, and the notice moves to it, so the purchase is not counted twice without a flag.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:06:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-a",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "gmail",
+                "legacy": false
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "3",
+              "detail": "",
+              "kind": "possible_duplicate"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "4",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+              "legacy": false,
+              "op_id": "op-retire-a",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000001"
+              ]
+            }
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:06:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": "01JC0000000000000000000002",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "d9e41a08a1fdfeddcbd9d86cb941455114905aeae1fb401cfd1295fbbf8fee26",
+        "anomaly_kinds": [
+          "possible_duplicate"
+        ]
+      }
+    },
+    {
+      "name": "retire-moves-the-notice-to-the-row-a-copy-was-held-against",
+      "group": "fold_v4",
+      "note": "A held copy spelled in lower case and a cash row with the same spelling: the cash row names the copy as a possible duplicate and answers same. Removing the copy's mailbox retires it, and the notice moves, with its answer, to the row the copy was held against.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:06:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "starbucks difc",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "starbucks difc",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_duplicate_disposition",
+              "op_id": "op-same-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000002",
+                "disposition": "same"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-b",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "provider": "gmail",
+                "legacy": false
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "3",
+              "detail": "",
+              "kind": "possible_duplicate"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ],
+            [
+              "4412|2700|debit|starbucks difc|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-same-3",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "4",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+              "legacy": false,
+              "op_id": "op-retire-b",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000002"
+              ]
+            }
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "starbucks difc",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:06:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "retired_by": "op-retire-b",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": "same",
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "starbucks difc",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": "01JC0000000000000000000001",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "fc6caf948daacfb8670d826a29d095229e145cf12ccf1e37cd4bd4e13e17362c",
+        "anomaly_kinds": [
+          "possible_duplicate"
+        ]
+      }
+    },
+    {
+      "name": "merge-sets-aside-the-notice-of-the-row-that-stays",
+      "group": "fold_v4",
+      "note": "The earlier alert is respelled to match its held copy, so it names the copy as a possible duplicate, and the person answers different. The person then merges the copy into it: a row cannot name a row merged into it, so its possible_duplicate_of becomes null, its answer stays, and possible_duplicate_moved_from keeps the copy.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "starbucks difc",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_edited",
+              "op_id": "op-respell-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 1,
+              "payload": {
+                "merchant_raw": "starbucks difc"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_duplicate_disposition",
+              "op_id": "op-different-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 2,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000002",
+                "disposition": "different"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-merge-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "merge"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "3",
+              "detail": "",
+              "kind": "possible_duplicate"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2700|debit|starbucks difc|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-different-1",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-merge-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                    "kind": "user",
+                    "mailbox_message_id": "msg-2",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000002"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": "different",
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "starbucks difc",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_moved_from": [
+                  "01JC0000000000000000000002"
+                ],
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "starbucks difc",
+                "merge_kind": "user",
+                "merge_op": "op-merge-2",
+                "merged_into": "01JC0000000000000000000001",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "d8a8a58fd5ea843d2e441602de48b679b8366b46d79c0ad0fa7e50bfd7ba1e17",
+        "anomaly_kinds": [
+          "possible_duplicate"
+        ]
+      }
+    },
+    {
+      "name": "keep-both-brings-back-the-notice-of-the-row-that-stays",
+      "group": "fold_v4",
+      "note": "The same merge, then Keep both: the copy comes back as its own row, and the notice of the row that stays names it again with its answer.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "starbucks difc",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_edited",
+              "op_id": "op-respell-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 1,
+              "payload": {
+                "merchant_raw": "starbucks difc"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_duplicate_disposition",
+              "op_id": "op-different-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 2,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000002",
+                "disposition": "different"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-merge-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "merge"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-keep-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 2,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "keep_both"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "3",
+              "detail": "",
+              "kind": "possible_duplicate"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2700|debit|starbucks difc|2026-10-03",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "5"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-different-1",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-keep-2",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": "different",
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "starbucks difc",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": "01JC0000000000000000000002",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_decision": "keep_both",
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "starbucks difc",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "1020c979b3479260a62d086211e40e661f673add607a8edac58d1a5511bcd6ab",
         "anomaly_kinds": [
           "possible_duplicate"
         ]

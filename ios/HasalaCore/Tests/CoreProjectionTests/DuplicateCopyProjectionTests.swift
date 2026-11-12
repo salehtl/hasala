@@ -81,6 +81,16 @@ struct DuplicateCopyProjectionTests {
     #expect(try r.txn(M.ulid(3))?.possibleDuplicateOf == M.ulid(2) && r.txn(M.ulid(3))?.reviewLane == "duplicate")
   }
 
+  @Test("a remove that releases a held copy flags the row that named the removed one against it, so one purchase is not confirmed twice")
+  func releasedCopyFlagged() throws {
+    let log = [Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.alert(2, grant: M.b, at: "08:06:00"), Self.cash]
+    #expect(try Self.confirmed(M.reader(try M.fold(log))) == [M.ulid(1): true, M.ulid(3): false])
+    let r = try M.reader(try M.fold(log + [Self.retireA]))
+    #expect(try Self.confirmed(r) == [M.ulid(2): true, M.ulid(3): false])
+    #expect(try r.txn(M.ulid(2))?.heldCopy == false && r.txn(M.ulid(2))?.possibleDuplicateOf == nil)
+    #expect(try r.txn(M.ulid(3))?.possibleDuplicateOf == M.ulid(2) && r.txn(M.ulid(3))?.reviewLane == "duplicate")
+  }
+
   @Test("a remove that leaves nothing of the row a notice names clears the notice, and the row that named it counts")
   func nothingSurvives() throws {
     let r = try M.reader(try M.fold([Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.cash, Self.retireA]))

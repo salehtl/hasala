@@ -184,6 +184,57 @@ struct MailboxRetireTests {
     #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && s.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
   }
 
+  @Test("when the remove releases a held copy of the row a notice names, the notice moves to that copy with its answer")
+  func noticeMovesToReleasedCopy() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.alert(4, id: Ids.ulid(7), grant: Mbx.a, merchant: "ENOC"))
+    try log.blob(Copy.alert(5, id: Ids.ulid(8), grant: Mbx.b, merchant: "ENOC", at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(6, id: Ids.ulid(9), amount: "2700", merchant: "ENOC", extra: #","entry_method":"manual""#))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.ulid(7))","disposition":"different"}"#, id: 50,
+        entity: ("txn", Ids.ulid(9)), parent: 1))
+    #expect(log.state.txns[Ids.t2]?.isHeldCopy == true && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    #expect(log.state.txns[Ids.ulid(8)]?.isHeldCopy == true && log.state.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(7))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.isLive == true && s.txns[Ids.t2]?.isHeldCopy == false && s.txns[Ids.t2]?.possibleDuplicateOf == nil)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2 && s.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(s.txns[Ids.ulid(8)]?.isHeldCopy == false && s.txns[Ids.ulid(8)]?.possibleDuplicateOf == nil)
+    #expect(s.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(8) && s.txns[Ids.ulid(9)]?.duplicateDisposition == "different")
+    #expect(s.txns.values.allSatisfy { $0.possibleDuplicateMovedFrom.isEmpty })
+  }
+
+  @Test("when the remove retires a held copy that a notice names, the notice moves to the row the copy was held against")
+  func noticeOnRetiredHeldCopyMoves() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, merchant: "starbucks difc", at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "starbucks difc", extra: #","entry_method":"manual""#))
+    try log.blob(op("txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t2)","disposition":"same"}"#, id: 50, entity: ("txn", Ids.t3), parent: 1))
+    #expect(log.state.txns[Ids.t2]?.isHeldCopy == true && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    try log.blob(Mbx.retire(Mbx.b, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.retiredBy == "op-60" && s.txns[Ids.t1]?.isLive == true)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && s.txns[Ids.t3]?.duplicateDisposition == "same")
+  }
+
+  @Test("a copy the person kept apart is not the purchase's copy, so the remove does not move the notice to it")
+  func keptCopyIsNotTheSurvivor() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 1, op: 50))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.copyDecision == "keep_both" && s.txns[Ids.t2]?.isLive == true)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == nil && s.txns[Ids.t2]?.possibleDuplicateOf == nil)
+  }
+
   @Test("legacy rows join only when the op says so, and only for the same provider")
   func legacy() throws {
     func fold(legacy: Bool) throws -> State {

@@ -50,10 +50,24 @@ enum DuplicateGoldens {
       entity: ("txn", G.ulid(n)), parent: parent, at: "2026-10-01T09:00:00.000Z")
   }
 
+  static var respelled: [(seq: Int, writer: String, ops: [String])] {
+    [
+      (1, G.w1, [alert(1, grant: R.a)]),
+      (2, G.w1, [alert(2, grant: R.b, merchant: "starbucks difc", at: "08:04:00")]),
+      (3, G.w2, [
+        G.op("txn_edited", #"{"merchant_raw":"starbucks difc"}"#, id: "op-respell-1", entity: ("txn", G.ulid(1)), parent: 1),
+        G.op(
+          "txn_duplicate_disposition", #"{"other_txn_id":"\#(G.ulid(2))","disposition":"different"}"#, id: "op-different-1",
+          entity: ("txn", G.ulid(1)), parent: 2),
+      ]),
+      (4, G.w2, [resolve(2, other: 1, "merge", parent: 1, id: "op-merge-2")]),
+    ]
+  }
+
   static let set = FoldGoldenSet(
     file: "fold-v4-duplicates.json",
     note:
-      "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. A row without one of these templates takes its role from gates.kind (transfer_notice or account_debit_alert; another value, or a value that is not a string, is dropped). A row with a known template other than these has no transfer role, whatever its gates.kind. When both rows of a transfer pair say ar pass and sender trusted and the alert's merchant names a transfer (after ASCII lower-casing and white-space folding, a word trans, transfer, transfers, trnsfer, trf, tfr, xfer or uaefts, or the Arabic word for transfer anywhere), the alert is merged into the notice at once (merge_kind transfer, merge_op the ingest op, the alert's dedupe keys registered to the notice) and nobody is asked: the notice stays the row whatever came first, and when the alert came first and was not decided it takes copy_of the notice and the notice takes the sort and annotations it lacks. txn_copy_resolved keep_both takes the alert out again and gives its dedupe keys back to it; a null decision merges it again and carries its sort. A candidate whose copy_of names the row with a decision is never paired with it again. A pair with an unverified row, or with an alert whose merchant does not name a transfer, is held as before. A possible_duplicate_of that names the row merged away moves to the row it merged into with its duplicate_disposition (the winner's own notice naming it clears), and the merged row is appended to possible_duplicate_moved_from (emitted only when not empty). When that row comes back (keep_both, a null decision, or a mailbox_retired that brings an alias back), each notice whose possible_duplicate_moved_from holds it names it again, and the list drops it and every row after it. A newer possible_duplicate_of, a txn_duplicate_disposition or a fingerprint change empties the list. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
+      "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. A row without one of these templates takes its role from gates.kind (transfer_notice or account_debit_alert; another value, or a value that is not a string, is dropped). A row with a known template other than these has no transfer role, whatever its gates.kind. When both rows of a transfer pair say ar pass and sender trusted and the alert's merchant names a transfer (after ASCII lower-casing and white-space folding, a word trans, transfer, transfers, trnsfer, trf, tfr, xfer or uaefts, or the Arabic word for transfer anywhere), the alert is merged into the notice at once (merge_kind transfer, merge_op the ingest op, the alert's dedupe keys registered to the notice) and nobody is asked: the notice stays the row whatever came first, and when the alert came first and was not decided it takes copy_of the notice and the notice takes the sort and annotations it lacks. txn_copy_resolved keep_both takes the alert out again and gives its dedupe keys back to it; a null decision merges it again and carries its sort. A candidate whose copy_of names the row with a decision is never paired with it again. A pair with an unverified row, or with an alert whose merchant does not name a transfer, is held as before. A possible_duplicate_of that names the row merged away moves to the row it merged into with its duplicate_disposition; on the row it merged into, a possible_duplicate_of naming it becomes null and keeps its duplicate_disposition. Either way the merged row is appended to possible_duplicate_moved_from (emitted only when not empty). When that row comes back (keep_both, a null decision, or a mailbox_retired that brings an alias back), each notice whose possible_duplicate_moved_from holds it names it again, and the list drops it and every row after it. A newer possible_duplicate_of, a txn_duplicate_disposition or a fingerprint change empties the list. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
     cases: [
       FoldGoldenCase(
         name: "certain-merge",
@@ -154,6 +168,37 @@ enum DuplicateGoldens {
           (3, G.w2, [R.ingest(3, merchant: "STARBUCKS DIFC", amount: "2700", grant: nil)]),
           (4, G.w1, [R.retire(R.a, legacy: false, id: "op-retire-a")]),
         ]),
+      FoldGoldenCase(
+        name: "retire-moves-the-notice-to-the-released-copy",
+        note: "A cash row names the earlier alert as a possible duplicate, and the same alert from mailbox B six minutes later is held as its probable copy. Removing mailbox A releases the held copy as a live row, and the notice moves to it, so the purchase is not counted twice without a flag.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a)]),
+          (2, G.w1, [alert(2, grant: R.b, at: "08:06:00")]),
+          (3, G.w2, [R.ingest(3, merchant: "STARBUCKS DIFC", amount: "2700", grant: nil)]),
+          (4, G.w1, [R.retire(R.a, legacy: false, id: "op-retire-a")]),
+        ]),
+      FoldGoldenCase(
+        name: "retire-moves-the-notice-to-the-row-a-copy-was-held-against",
+        note: "A held copy spelled in lower case and a cash row with the same spelling: the cash row names the copy as a possible duplicate and answers same. Removing the copy's mailbox retires it, and the notice moves, with its answer, to the row the copy was held against.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a)]),
+          (2, G.w1, [alert(2, grant: R.b, merchant: "starbucks difc", at: "08:06:00")]),
+          (3, G.w2, [
+            R.ingest(3, merchant: "starbucks difc", amount: "2700", grant: nil),
+            G.op(
+              "txn_duplicate_disposition", #"{"other_txn_id":"\#(G.ulid(2))","disposition":"same"}"#, id: "op-same-3",
+              entity: ("txn", G.ulid(3)), parent: 1),
+          ]),
+          (4, G.w1, [R.retire(R.b, legacy: false, id: "op-retire-b")]),
+        ]),
+      FoldGoldenCase(
+        name: "merge-sets-aside-the-notice-of-the-row-that-stays",
+        note: "The earlier alert is respelled to match its held copy, so it names the copy as a possible duplicate, and the person answers different. The person then merges the copy into it: a row cannot name a row merged into it, so its possible_duplicate_of becomes null, its answer stays, and possible_duplicate_moved_from keeps the copy.",
+        blobs: respelled),
+      FoldGoldenCase(
+        name: "keep-both-brings-back-the-notice-of-the-row-that-stays",
+        note: "The same merge, then Keep both: the copy comes back as its own row, and the notice of the row that stays names it again with its answer.",
+        blobs: respelled + [(5, G.w2, [resolve(2, other: 1, "keep_both", parent: 2, id: "op-keep-2")])]),
       FoldGoldenCase(
         name: "verified-wins-keeps-the-sort",
         note: "The earlier, unverified copy was sorted (txn_categorized, source user) and noted before the verified copy arrived: the verified copy is canonical and takes the sort (category, category_source, needs_review) and the annotations it lacks.",

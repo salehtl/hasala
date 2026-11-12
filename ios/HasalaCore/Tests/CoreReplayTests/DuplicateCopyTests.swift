@@ -215,6 +215,48 @@ struct DuplicateCopyTests {
     #expect(log.kinds == ["possible_duplicate"])
   }
 
+  static func winnerNamesItsCopy(answer: String?) throws -> Log {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, merchant: "starbucks difc", at: "2026-10-03T08:04:00.000Z"))
+    try log.blob(op("txn_edited", #"{"merchant_raw":"starbucks difc"}"#, id: 40, entity: ("txn", Ids.t1), parent: 1))
+    if let answer {
+      try log.blob(
+        op("txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t2)","disposition":"\#(answer)"}"#, id: 41, entity: ("txn", Ids.t1), parent: 2))
+    }
+    #expect(log.state.txns[Ids.t2]?.isHeldCopy == true && log.state.txns[Ids.t1]?.possibleDuplicateOf == Ids.t2)
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, "merge", parent: 1, op: 50))
+    #expect(log.state.txns[Ids.t2]?.mergedInto == Ids.t1)
+    #expect(log.state.txns[Ids.t1]?.possibleDuplicateOf == nil && log.state.txns[Ids.t1]?.possibleDuplicateMovedFrom == [Ids.t2])
+    return log
+  }
+
+  @Test("a merge takes away the notice the row that stays had on the merged row, and Undo or Keep both puts it back with its answer")
+  func winnerNoticeComesBack() throws {
+    var undone = try Self.winnerNamesItsCopy(answer: nil)
+    try undone.blob(Copy.resolve(Ids.t2, other: Ids.t1, nil, parent: 2, op: 51))
+    #expect(undone.state.txns[Ids.t2]?.isHeldCopy == true)
+    #expect(undone.state.txns[Ids.t1]?.possibleDuplicateOf == Ids.t2 && undone.state.txns[Ids.t1]?.duplicateDisposition == nil)
+    #expect(undone.state.txns[Ids.t1]?.possibleDuplicateMovedFrom.isEmpty == true)
+
+    var kept = try Self.winnerNamesItsCopy(answer: "different")
+    try kept.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 2, op: 51))
+    #expect(kept.state.txns[Ids.t2]?.isLive == true && kept.state.txns[Ids.t2]?.copyDecision == "keep_both")
+    #expect(kept.state.txns[Ids.t1]?.possibleDuplicateOf == Ids.t2 && kept.state.txns[Ids.t1]?.duplicateDisposition == "different")
+    #expect(kept.state.txns[Ids.t1]?.possibleDuplicateMovedFrom.isEmpty == true)
+    #expect(kept.kinds == ["possible_duplicate"])
+  }
+
+  @Test("the notice a merge took from the row that stays clears when the merged row leaves with its mailbox")
+  func winnerNoticeClearsWhenTheMergedRowLeaves() throws {
+    var log = try Self.winnerNamesItsCopy(answer: "same")
+    try log.blob(Mbx.retire(Mbx.b, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.retiredBy == "op-60" && s.txns[Ids.t1]?.isLive == true)
+    #expect(s.txns[Ids.t1]?.possibleDuplicateOf == nil && s.txns[Ids.t1]?.duplicateDisposition == nil)
+    #expect(s.txns[Ids.t1]?.possibleDuplicateMovedFrom.isEmpty == true)
+  }
+
   @Test("removing the canonical's mailbox brings its copy back as the row")
   func retirePromotes() throws {
     var log = Log()

@@ -221,12 +221,8 @@ extension State {
   mutating func moveDuplicateNotices(from loser: String, to winner: String) {
     for (id, t) in txns {
       guard let dup = t.possibleDuplicateOf, utf8Equal(dup, loser) else { continue }
-      if utf8Equal(id, winner) {
-        clearDuplicateNotice(id)
-      } else {
-        txns[id]!.possibleDuplicateOf = winner
-        txns[id]!.possibleDuplicateMovedFrom.append(loser)
-      }
+      txns[id]!.possibleDuplicateOf = utf8Equal(id, winner) ? nil : winner
+      txns[id]!.possibleDuplicateMovedFrom.append(loser)
     }
   }
 
@@ -238,15 +234,16 @@ extension State {
     }
   }
 
-  mutating func settleDuplicateNotices(retired ids: [String], promoted: OrderedDictionary<String, String>) {
+  mutating func settleDuplicateNotices(retired ids: [String], survivors: OrderedDictionary<String, String>) {
     guard !ids.isEmpty else { return }
     let gone = OrderedSet(ids.map { ExactKey($0) })
     for (id, t) in txns {
       if t.possibleDuplicateMovedFrom.contains(where: { gone.contains(ExactKey($0)) }) {
         txns[id]!.possibleDuplicateMovedFrom.removeAll { gone.contains(ExactKey($0)) }
+        if t.possibleDuplicateOf == nil, txns[id]!.possibleDuplicateMovedFrom.isEmpty { txns[id]!.duplicateDisposition = nil }
       }
       guard let dup = t.possibleDuplicateOf, gone.contains(ExactKey(dup)) else { continue }
-      if let s = survivingCopy(of: dup, promoted: promoted) {
+      if let s = survivingCopy(of: dup, survivors: survivors) {
         if utf8Equal(s, id) { clearDuplicateNotice(id) } else { txns[id]!.possibleDuplicateOf = s }
       } else if t.duplicateDisposition != "different" {
         clearDuplicateNotice(id)
@@ -254,11 +251,15 @@ extension State {
     }
   }
 
-  func survivingCopy(of id: String, promoted: OrderedDictionary<String, String>) -> String? {
-    if let p = promoted[id] { return p }
-    guard let w = txns[id]?.mergedInto else { return nil }
-    if let p = promoted[w] { return p }
-    return txns[w]?.isLive == true ? w : nil
+  func survivingCopy(of id: String, survivors: OrderedDictionary<String, String>) -> String? {
+    if let p = survivors[id] { return p }
+    guard let t = txns[id] else { return nil }
+    if let w = t.mergedInto {
+      if let p = survivors[w] { return p }
+      return txns[w]?.isLive == true ? w : nil
+    }
+    guard let c = t.copyOf, t.copyDecision == nil else { return nil }
+    return txns[c]?.isLive == true ? c : survivors[c]
   }
 
   mutating func clearDuplicateNotice(_ id: String) {
@@ -395,7 +396,7 @@ extension State {
 
   mutating func releaseAfterRetire(_ retired: [String], seq: Int64) -> OrderedDictionary<String, String> {
     let gone = Set(retired)
-    var promotions: OrderedDictionary<String, String> = [:]
+    var survivors: OrderedDictionary<String, String> = [:]
     for id in retired {
       guard let w = txns[id] else { continue }
       let keep = w.aliases.filter { txns[$0.txnID]?.retiredBy == nil && !gone.contains($0.txnID) }
@@ -406,7 +407,7 @@ extension State {
         txns[p]!.mergedInto = id
         if unmergeRow(p, seq: seq) {
           promoted = p
-          promotions[id] = p
+          survivors[id] = p
           carryUserEdits(from: id, to: p)
           for a in keep.dropFirst() {
             txns[a.txnID]?.mergedInto = p
@@ -417,8 +418,11 @@ extension State {
       for (key, canonical) in byDedupeKey where utf8Equal(canonical, id) {
         byDedupeKey[key] = promoted
       }
-      for h in liveCopies(of: id) where txns[h]!.copyDecision == nil { txns[h]!.copyOf = nil }
+      for h in liveCopies(of: id) where txns[h]!.copyDecision == nil {
+        txns[h]!.copyOf = nil
+        if survivors[id] == nil { survivors[id] = h }
+      }
     }
-    return promotions
+    return survivors
   }
 }

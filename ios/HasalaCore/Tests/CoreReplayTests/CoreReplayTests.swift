@@ -376,7 +376,7 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 70)
+    #expect(s.cursors.hot == 74)
     let text = s.txns["01JC0000000000000000000016"]
     #expect(text?.channel == "sms" && text?.receivedAt == "2026-06-05T08:00:00.000Z" && text?.isText == true)
     #expect(text?.needsReview == false && text?.verifiedSender == false && text?.copyOf == nil)
@@ -395,7 +395,7 @@ struct SnapshotTests {
     #expect(
       s.anomalies.map(\.kind) == [
         "duplicate_ingest", "invalid_payload", "edit_of_retired", "possible_duplicate", "possible_duplicate", "possible_duplicate",
-        "possible_duplicate",
+        "possible_duplicate", "possible_duplicate", "possible_duplicate",
       ])
     #expect(s.txns["01JC0000000000000000000091"]?.retiredBy == "canary-v4-63" && s.txns["01JC0000000000000000000093"]?.mergedInto == "01JC0000000000000000000095")
     #expect(s.txns["01JC0000000000000000000092"]?.possibleDuplicateOf == nil)
@@ -407,6 +407,13 @@ struct SnapshotTests {
     #expect(s.txns["01JC0000000000000000000099"]?.isHeldCopy == true)
     #expect(s.txns["01JC0000000000000000000089"]?.possibleDuplicateOf == "01JC0000000000000000000099")
     #expect(s.txns["01JC0000000000000000000089"]?.possibleDuplicateMovedFrom.isEmpty == true)
+    #expect(s.txns["01JC0000000000000000000088"]?.retiredBy == "canary-v4-79")
+    #expect(s.txns["01JC0000000000000000000087"]?.isLive == true && s.txns["01JC0000000000000000000087"]?.isHeldCopy == false)
+    #expect(s.txns["01JC0000000000000000000087"]?.possibleDuplicateOf == nil)
+    #expect(s.txns["01JC0000000000000000000086"]?.possibleDuplicateOf == "01JC0000000000000000000087")
+    #expect(s.txns["01JC0000000000000000000080"]?.mergedInto == "01JC0000000000000000000085")
+    #expect(s.txns["01JC0000000000000000000085"]?.possibleDuplicateOf == nil)
+    #expect(s.txns["01JC0000000000000000000085"]?.possibleDuplicateMovedFrom == ["01JC0000000000000000000080"])
     #expect(s.txns["01JC0000000000000000000008"]?.category == "dining" && s.txns["01JC0000000000000000000008"]?.version == 2)
     #expect(s.unreadable.isEmpty)
     #expect(s.merchantNames["carrefour moe"]?.value == "Carrefour MoE")
