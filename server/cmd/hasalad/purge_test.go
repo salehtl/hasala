@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
+	"github.com/salehtl/hasala/server/internal/purge"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
@@ -131,6 +134,57 @@ func TestAPurgeSurvivesARestoreThroughTheLedger(t *testing.T) {
 	}
 }
 
+func TestAReplayBesideADeletionSaysItLeftTheAccount(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	user := oplogtest.NewUser(t, pool)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	var code int
+	var out, msg string
+	rep, err := purge.PurgeWith(ctx, pool, user, purge.Options{Record: func(ids []uuid.UUID) error {
+		if err := purgeledger.Append(ledger, ids, time.Now()); err != nil {
+			return err
+		}
+		code, out, msg = hasalad(t, env, "purge-user", "--replay-ledger")
+		return nil
+	}})
+	if err != nil || len(rep.Users) != 1 {
+		t.Fatalf("the deletion: %v %v", rep.Users, err)
+	}
+	if code != 0 || !strings.Contains(out, "0 account(s) purged again") ||
+		!strings.Contains(out, "1 account(s) have a deletion in progress and were left for the next replay") {
+		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	if strings.Contains(out, user.String()) {
+		t.Fatalf("the replay printed the account id: %q", out)
+	}
+}
+
+func TestReplayStartsAfterALedgerWhoseLastLineWasTorn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	gone := oplogtest.NewUser(t, pool)
+	torn := oplogtest.NewUser(t, pool)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	body := gone.String() + " " + time.Now().UTC().Format(time.RFC3339) + "\n" + torn.String() + " 2026-10"
+	if err := os.WriteFile(ledger, []byte(body), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger")
+	if code != 0 || !strings.Contains(out, "1 entries, 1 account(s) purged again") {
+		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = $1`, torn).Scan(&left); err != nil || left != 1 {
+		t.Fatalf("the account of the torn line: %d (%v), want 1", left, err)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 1 || entries[0].ID != gone {
+		t.Fatalf("ledger after the replay %+v %v", entries, err)
+	}
+}
+
 func TestReplayNeedsTheLedgerAndNoAccount(t *testing.T) {
 	env := []string{"HASALA_PG_DSN=host=/nonexistent dbname=hasala"}
 	if code, _, msg := hasalad(t, env, "purge-user", "--replay-ledger"); code != 2 || !strings.Contains(msg, "HASALA_PURGE_LEDGER_PATH") {
@@ -220,6 +274,9 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 			"1 first view(s) of the 12 words, 1 waitlist leave(s) and 1 bounced-invite waitlist deletion(s) applied again, "+
 			"1 sign-out(s) of all sessions, 1 email change(s) and 1 invite revocation(s) applied again, 1 freeze(s) lifted because") {
 		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	if !strings.Contains(out, "0 passkey removal(s) kept back because") {
+		t.Fatalf("the summary does not count the kept-back removals: %q", out)
 	}
 	for _, id := range []string{gone.String(), changed.String(), frozen.String(), thawed.String(), unfrozen.String(), entry, bounced,
 		strings.Repeat("55", 20), signedOut.String(), moved.String(), invite} {

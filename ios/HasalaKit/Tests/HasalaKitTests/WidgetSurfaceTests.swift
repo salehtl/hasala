@@ -138,10 +138,41 @@ struct WidgetGalleryPreviewTests {
     #expect(!stale.stale)
   }
 
+  @Test func theSampleLeavesOutAChoiceMadeFromAnOlderSnapshot() {
+    var old = WidgetPreview.snapshot(asOf: LocalDate(2026, 11, 1))
+    old.categories[0].id = "dining"
+    old.projects[0].id = "kitchen"
+    old.goals[0].id = "car"
+    for reading in [WidgetPreview.reading(old, at: at, isPreview: true),
+                    WidgetPreview.reading(StoredWidgetSnapshot.unusable, at: at, isPreview: true)] {
+      #expect(reading.snapshot?.category(reading.selection("dining"))?.id == "groceries")
+      #expect(reading.snapshot?.project(reading.selection("kitchen"))?.id == "home-repairs")
+      #expect(reading.snapshot?.goal(reading.selection("car"))?.id == "rainy-day")
+    }
+  }
+
+  @Test func aCurrentSnapshotAndTheHomeScreenKeepTheChoice() {
+    var mine = WidgetPreview.snapshot(asOf: day)
+    mine.categories[0].id = "dining"
+    let shown = WidgetPreview.reading(mine, at: at, isPreview: true)
+    #expect(shown.snapshot?.category(shown.selection("dining"))?.id == "dining")
+    #expect(shown.selection("rent") == "rent")
+    let old = WidgetPreview.snapshot(asOf: LocalDate(2026, 11, 1))
+    #expect(WidgetPreview.reading(old, at: at, isPreview: false).selection("dining") == "dining")
+    #expect(WidgetPreview.reading(nil, at: at, isPreview: false).selection("dining") == "dining")
+  }
+
   @Test func aPreviewWithACurrentSnapshotShowsIt() {
     var mine = WidgetPreview.snapshot(asOf: day)
     mine.toReview = ToReviewWidget(count: 2, notCounted: .aed(1_000))
     #expect(WidgetPreview.reading(mine, at: at, isPreview: true).snapshot == mine)
+  }
+
+  @Test func aFileThatCannotBeUsedStillPreviewsAndAsksToOpenTheAppOutsideIt() {
+    let shown = WidgetPreview.reading(StoredWidgetSnapshot.unusable, at: at, isPreview: true)
+    #expect(shown.snapshot != nil && !shown.stale)
+    let reading = WidgetPreview.reading(StoredWidgetSnapshot.unusable, at: at, isPreview: false)
+    #expect(reading.snapshot == nil && reading.stale)
   }
 
   @Test func outsideThePreviewNothingChanges() {

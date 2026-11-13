@@ -36,11 +36,14 @@ struct LiveAccountFlowTests {
     let env: AccountEnvironment
     var binding: AccountBinding? { try? env.secrets.binding() }
 
-    init(_ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore(), passkeys: (any PasskeyProvider)? = nil) {
+    init(
+      _ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore(), passkeys: (any PasskeyProvider)? = nil,
+      accountsDirectory: URL? = nil
+    ) {
       env = AccountEnvironment(
         client: AuthClient(transport: server), secrets: Secrets(store: store, apiHost: "api.hasala.app"),
         approvalKeys: SoftDAK(), passkeys: passkeys, clock: InOctober2026(), random: SystemRandom(),
-        apiBase: "https://api.hasala.app", accountsDirectory: nil)
+        apiBase: "https://api.hasala.app", accountsDirectory: accountsDirectory)
     }
 
     /// The same Keychain after the app was killed and launched again.
@@ -130,6 +133,42 @@ struct LiveAccountFlowTests {
     #expect(Boot.decide(Boot.gather(b.env)) == .restoring)  // in-memory store: bound, never the keys step
   }
 
+  @Test func aKillOnWelcomeBackRelaunchesIntoTheApp() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let words = try await signUp(Phone(server), server)
+    let b = Phone(server)
+    #expect(await signIn(b) == .needsUnlock(passkeyCanUnlock: false))
+    let defaults = try #require(UserDefaults(suiteName: "unlock.\(UUID().uuidString)"))
+    let account = b.relaunched()
+    account.setupDefaults = defaults
+    var opened = false
+    let unlock = UnlockModel(account: account, passkeyCanUnlock: false) { opened = true }
+
+    unlock.phraseText = words.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(unlock.unlocked && !opened)
+    #expect(LocalAccountData.setupFinished(defaults))
+
+    let binding = try #require(b.binding)
+    let (phase, wall) = BootController.initialPhase(.opening(binding), finished: LocalAccountData.setupFinished(defaults))
+    #expect(phase == .ready && wall == nil)
+  }
+
+  @Test func wordsThatAreNotThisAccountsLeaveSetupAsItWas() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    let b = Phone(server)
+    #expect(await signIn(b) == .needsUnlock(passkeyCanUnlock: false))
+    let defaults = try #require(UserDefaults(suiteName: "unlock.\(UUID().uuidString)"))
+    let account = b.relaunched()
+    account.setupDefaults = defaults
+    let unlock = UnlockModel(account: account, passkeyCanUnlock: false) {}
+    unlock.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(!unlock.unlocked)
+    #expect(!LocalAccountData.setupFinished(defaults))
+  }
+
   @Test func anotherAccountsWordsDontUnlockAfterARelaunch() async throws {
     let server = MiniHasalad(invite: Self.invite)
     _ = try await signUp(Phone(server), server)
@@ -189,10 +228,13 @@ struct LiveAccountFlowTests {
     #expect(await account.freezeInfo() == FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true))
 
     server.operatorFreezesBeforeUnfreeze = true
+    var forgotLayout = false
+    account.hooks = LiveAccountHooks(forgetHomeLayout: { forgotLayout = true })
     let stale = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
     await #expect(throws: AuthFailure.sessionEnded) { try await stale.unfreeze(password: Self.password) }
     #expect(server.unfreezeCalls == 1)
     #expect(stale.phase == .signedOut)
+    #expect(!forgotLayout)
     #expect(try a.env.secrets.session() == nil)
     #expect(a.binding != nil)  // the data and keys stay
     let operatorFreeze = FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true)
@@ -209,6 +251,64 @@ struct LiveAccountFlowTests {
     #expect(server.unfreezeCalls == 2)
     #expect(server.lastStepUpAction == "account.unfreeze")
     #expect(await account.freezeInfo() == nil)
+  }
+
+  private func recoveryReadyToFinish(_ server: MiniHasalad) async throws -> (Phone, SignInModel, UserDefaults) {
+    let words = try await signUp(Phone(server), server)
+    let b = Phone(server, passkeys: StubPasskeys())
+    let defaults = try #require(UserDefaults(suiteName: "recover.\(UUID().uuidString)"))
+    let account = b.relaunched()
+    account.setupDefaults = defaults
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = words.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = try #require(server.lastCode)
+    #expect(await m.submitRecoveryCode())
+    #expect(m.verifiedRecoveryKind == .passkey)
+    return (b, m, defaults)
+  }
+
+  @Test func aRecoveryTheServerTookFinishesOnTheSameScreen() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (b, m, _) = try await recoveryReadyToFinish(server)
+    server.accountUnavailable = true
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(m.recovery != nil && m.verifiedRecoveryKind == .passkey)
+    #expect(m.failure(on: .recoverMethod) != nil)
+    #expect(m.failure(on: .recoverWords) == nil)
+    #expect(server.recoverFinishes == 1)
+    #expect(b.binding == nil)
+
+    server.accountUnavailable = false
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(server.recoverFinishes == 1 && server.recoverVerifies == 1)
+    #expect(b.binding != nil)
+  }
+
+  @Test func aRecoveryTheServerRefusedGoesBackToTheWords() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (_, m, defaults) = try await recoveryReadyToFinish(server)
+    server.refusesRecoverFinish = true
+    #expect(await m.finishRecovery(.passkey) == .startAgain)
+    #expect(m.recovery == nil && m.verifiedRecoveryKind == nil)
+    #expect(m.failure(on: .recoverWords) != nil)
+    #expect(server.recoverFinishes == 0)
+    #expect(!LocalAccountData.setupFinished(defaults))
+  }
+
+  @Test func aKillOnBackInRelaunchesIntoTheApp() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (b, m, defaults) = try await recoveryReadyToFinish(server)
+    server.accountUnavailable = true
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(!LocalAccountData.setupFinished(defaults))
+
+    server.accountUnavailable = false
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(LocalAccountData.setupFinished(defaults))
+    let binding = try #require(b.binding)
+    let (phase, wall) = BootController.initialPhase(.opening(binding), finished: LocalAccountData.setupFinished(defaults))
+    #expect(phase == .ready && wall == nil)
   }
 
   @Test func aNewIPhoneSignedInToAFrozenAccountUnfreezesWithItsPasskey() async throws {
@@ -232,6 +332,53 @@ struct LiveAccountFlowTests {
     #expect(server.unfreezeCalls == 1)
     #expect(server.lastStepUpAction == "account.unfreeze")
     #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+  }
+
+  @Test func aSessionEndedAtTheUnfreezeTakesAStoppedEnrolmentsStoreWithIt() async throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    server.freezeAll(byOperator: false)
+    let b = Phone(server, passkeys: AssertingPasskeys(), accountsDirectory: dir)
+    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true)
+    #expect(await signIn(b) == .frozen(info))
+    #expect(b.binding == nil)
+    let signedIn = try #require(try b.env.secrets.session())
+    let user = try #require(UserID(signedIn.user_id))
+    let store = try #require(b.env.storeDirectory(for: user))
+    try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+    try Data().write(to: store.appendingPathComponent("ledger.sqlite"))
+    #expect(Boot.decide(Boot.gather(b.env)) == .onboardingKeys)
+    server.operatorFreezesBeforeUnfreeze = true
+
+    let session = AccountSession(services: services(b.relaunched()), phase: .frozen(info))
+    await #expect(throws: AuthFailure.sessionEnded) { try await session.unfreeze(password: nil) }
+
+    #expect(session.phase == .signedOut)
+    #expect(try b.env.secrets.session() == nil)
+    #expect(!FileManager.default.fileExists(atPath: store.path))
+    #expect(Boot.decide(Boot.gather(b.env)) == .signedOut)
+  }
+
+  @Test func aSessionEndedAtTheUnfreezeLeavesABoundIPhonesStore() async throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, accountsDirectory: dir)
+    _ = try await signUp(a, server)
+    let user = try #require(a.binding?.userID)
+    let store = try #require(a.env.storeDirectory(for: user))
+    #expect(FileManager.default.fileExists(atPath: store.path))
+    server.freezeAll(byOperator: false)
+    server.operatorFreezesBeforeUnfreeze = true
+
+    let session = AccountSession(services: services(a.relaunched()), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    await #expect(throws: AuthFailure.sessionEnded) { try await session.unfreeze(password: Self.password) }
+
+    #expect(session.phase == .signedOut)
+    #expect(a.binding != nil)
+    #expect(FileManager.default.fileExists(atPath: store.path))
   }
 
   @Test func signingOutOnTheFrozenWallEndsTheSession() async throws {
@@ -300,6 +447,59 @@ struct LiveAccountFlowTests {
     #expect(try a.env.secrets.session() == nil)
   }
 
+  @Test func aChangeAfterAFreezeFromTheEmailLinkSignsThisIPhoneOut() async throws {
+    let changes: [SecurityAction] = [.signOutEverywhere, .freeze, .deleteAccount]
+    for change in changes {
+      let server = MiniHasalad(invite: Self.invite)
+      let a = Phone(server)
+      _ = try await signUp(a, server)
+      let session = AccountSession(services: services(a.relaunched()), phase: .ready)
+      let m = SecurityModel(session: session)
+      await m.load()
+      #expect(!m.isFrozen)
+
+      server.freezeFromTheEmailLink()
+      await m.request(change)
+      #expect(m.confirming == .perform(change))
+      m.confirmPassword = Self.password
+      await m.confirm()
+
+      #expect(m.confirming == nil)
+      #expect(m.failure == nil)
+      #expect(session.phase == .signedOut)
+      #expect(try a.env.secrets.session() == nil)
+      #expect(a.binding != nil)
+      #expect(server.deletedAccounts == 0)
+      #expect(await signIn(a) == .frozen(FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true)))
+    }
+  }
+
+  @Test func theWordsAfterAFreezeFromTheEmailLinkSignThisIPhoneOut() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, passkeys: SamePRFPasskeys())
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    server.freezeFromTheEmailLink()
+    await #expect(throws: AuthFailure.sessionEnded) { _ = try await account.viewRecoveryPhrase() }
+    #expect(server.phraseViews == 0)
+    #expect(try a.env.secrets.session() == nil)
+    #expect(a.binding != nil)
+  }
+
+  @Test func aChangeWithASignOutStillToSendKeepsItsRetry() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    var pending = try #require(try a.env.secrets.session())
+    pending.pending_logout = true
+    try a.env.secrets.writeSession(pending)
+    await #expect(throws: AuthFailure.sessionEnded) {
+      try await account.perform(.signOutEverywhere, password: Self.password)
+    }
+    #expect(try a.env.secrets.session()?.pending_logout == true)
+  }
+
   @Test func aPasswordAccountAddsAPasskeyFromSecurity() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server, passkeys: StubPasskeys())
@@ -365,6 +565,80 @@ struct LiveAccountFlowTests {
     #expect(server.wrapsStored == 0)
   }
 
+  @Test func aPasskeyThatCantOpenTheWordsLeavesThemUnseen() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, passkeys: SamePRFPasskeys())
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    await #expect(throws: AuthFailure.passkeyCantShowPhrase) { _ = try await account.viewRecoveryPhrase() }
+    #expect(server.lastStepUpAction == "phrase.view")
+    #expect(server.phraseViews == 0)
+  }
+
+  @Test func keysThatCantBeReadLeaveTheWordsUnseen() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, passkeys: SamePRFPasskeys())
+    _ = try await signUp(a, server)
+    server.keysUnavailable = true
+    let account = a.relaunched()
+    await #expect(throws: AuthFailure.self) { _ = try await account.viewRecoveryPhrase() }
+    #expect(server.lastStepUpAction == "phrase.view")
+    #expect(server.phraseViews == 0)
+  }
+
+  @Test func theWordsOpenOnceTheViewIsRecorded() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let words = try await signUp(Phone(server), server)
+    let b = Phone(server, passkeys: SamePRFPasskeys())
+    let account = b.relaunched()
+    _ = try await account.signInWithPassword(email: "maya@example.com", password: Self.password)
+    let m = UnlockModel(account: account, passkeyCanUnlock: false) {}
+    m.phraseText = words.joined(separator: " ")
+    await m.unlockWithWords()
+    m.addingPasskey = true
+    m.confirmPassword = Self.password
+    await m.addPasskey()
+    #expect(server.wrapsStored == 1)
+    let shown = try await account.viewRecoveryPhrase()
+    #expect(shown == words)
+    #expect(server.phraseViews == 1)
+  }
+
+  @Test func aPasskeySignInWithNoWrapUnlocksThroughOneThatHas() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let words = try await signUp(Phone(server), server)
+    let passkeys = BareThenWrappedPasskeys()
+    let b = Phone(server, passkeys: passkeys)
+    let adding = b.relaunched()
+    _ = try await adding.signInWithPassword(email: "maya@example.com", password: Self.password)
+    let m = UnlockModel(account: adding, passkeyCanUnlock: false) {}
+    m.phraseText = words.joined(separator: " ")
+    await m.unlockWithWords()
+    m.addingPasskey = true
+    m.confirmPassword = Self.password
+    await m.addPasskey()
+    #expect(server.wrapsStored == 1)
+    let user = try #require(b.binding?.user_id)
+
+    server.passkeySignsInAs = user
+    let c = Phone(server, passkeys: passkeys)
+    let account = c.relaunched()
+    #expect(try await account.signInWithPasskey() == .needsUnlock(passkeyCanUnlock: true))
+    #expect(passkeys.allowLists.last == [])
+    try await account.unlockWithPasskey()
+    #expect(passkeys.allowLists.last == [passkeys.wrapped.credentialID])
+    #expect(c.binding?.user_id == user)
+  }
+
+  @Test func aPasskeySignInOnAnAccountWithNoWrapOffersOnlyTheWords() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    server.passkeySignsInAs = try #require(a.binding?.user_id)
+    let account = Phone(server, passkeys: SamePRFPasskeys()).relaunched()
+    #expect(try await account.signInWithPasskey() == .needsUnlock(passkeyCanUnlock: false))
+  }
+
   @Test func aWrongPasswordAddsNoPasskey() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server, passkeys: StubPasskeys())
@@ -381,13 +655,17 @@ struct LiveAccountFlowTests {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
     _ = try await signUp(a, server)
-    let session = AccountSession(services: services(a.relaunched()), phase: .ready)
+    let account = a.relaunched()
+    var forgotLayout = false
+    account.hooks = LiveAccountHooks(forgetHomeLayout: { forgotLayout = true })
+    let session = AccountSession(services: services(account), phase: .ready)
     let m = SecurityModel(session: session)
     await m.load()
     await m.request(.signOutEverywhere)
     m.confirmPassword = Self.password
     await m.confirm()
     #expect(m.failure == nil)
+    #expect(forgotLayout)
     #expect(server.lastStepUpAction == "session.logout_all")
     #expect(session.phase == .signedOut)
     #expect(try a.env.secrets.session() == nil)
@@ -484,6 +762,53 @@ nonisolated final class AssertingPasskeys: PasskeyProvider, @unchecked Sendable 
       rawClientDataJSON: Data(#"{"type":"webauthn.get","challenge":"\#(Base64.encodeURL(challenge))"}"#.utf8),
       authenticatorData: Data(repeating: 0, count: 37), signature: Data([0x30]), userHandle: nil, prfFirst: nil)
   }
+
+  func reportUnknown(credentialID: Data) async {}
+}
+
+nonisolated final class SamePRFPasskeys: PasskeyProvider, @unchecked Sendable {
+  let credentialID = Data(repeating: 9, count: 16)
+
+  private func output() -> SecureBytes { SecureBytes(copying: Data(repeating: 5, count: 32)) }
+
+  func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
+    RawRegistration(
+      credentialID: credentialID,
+      rawClientDataJSON: Data(#"{"type":"webauthn.create","challenge":"\#(Base64.encodeURL(options.challenge))"}"#.utf8),
+      rawAttestationObject: Data([0xa0]), prfFirst: output())
+  }
+
+  func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
+    RawAssertion(
+      credentialID: credentialID,
+      rawClientDataJSON: Data(#"{"type":"webauthn.get","challenge":"\#(Base64.encodeURL(challenge))"}"#.utf8),
+      authenticatorData: Data(repeating: 0, count: 37), signature: Data([0x30]), userHandle: nil, prfFirst: output())
+  }
+
+  func reportUnknown(credentialID: Data) async {}
+}
+
+nonisolated final class BareThenWrappedPasskeys: PasskeyProvider, @unchecked Sendable {
+  let wrapped = SamePRFPasskeys()
+  let bareID = Data(repeating: 7, count: 16)
+  private let asked = Mutex<[[Data]]>([])
+
+  var allowLists: [[Data]] { asked.withLock { $0 } }
+
+  func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
+    try await wrapped.register(options, prfSalt: prfSalt)
+  }
+
+  func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
+    asked.withLock { $0.append(allowCredentialIDs) }
+    let a = try await wrapped.assert(challenge: challenge, allowCredentialIDs: allowCredentialIDs, prfSalt: prfSalt)
+    guard allowCredentialIDs.isEmpty else { return a }
+    return RawAssertion(
+      credentialID: bareID, rawClientDataJSON: a.rawClientDataJSON, authenticatorData: a.authenticatorData,
+      signature: a.signature, userHandle: a.userHandle, prfFirst: a.prfFirst)
+  }
+
+  func reportUnknown(credentialID: Data) async {}
 }
 
 /// `02` §7's password-account routes in memory, in `02`'s JSON shapes.
@@ -499,6 +824,8 @@ nonisolated final class StubPasskeys: PasskeyProvider, @unchecked Sendable {
   func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
     throw .noCredential
   }
+
+  func reportUnknown(credentialID: Data) async {}
 }
 
 nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
@@ -514,6 +841,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var deleted = false
     var passkeys: [String] = []
     var wraps: [[String: Any]] = []
+    var phraseBox: Any?
   }
 
   struct State {
@@ -539,6 +867,14 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var passkeyLoginRefusal: (status: Int, code: String)?
     var mailboxLink: (thisDevice: Bool, provider: String)?
     var mailboxLinkAsks = 0
+    var recoveries: [String: (user: String, code: String)] = [:]
+    var recoverNonces: [String: Data] = [:]
+    var recoverVerifies = 0
+    var recoverFinishes = 0
+    var refusesRecoverFinish = false
+    var accountUnavailable = false
+    var phraseViews = 0
+    var keysUnavailable = false
   }
 
   private let lock = NSLock()
@@ -564,7 +900,22 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var passkeysAdded: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.passkeys.count } } }
   var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
+  var recoverVerifies: Int { state.withLock { $0.recoverVerifies } }
+  var recoverFinishes: Int { state.withLock { $0.recoverFinishes } }
+  var refusesRecoverFinish: Bool {
+    get { state.withLock { $0.refusesRecoverFinish } }
+    set { state.withLock { $0.refusesRecoverFinish = newValue } }
+  }
+  var accountUnavailable: Bool {
+    get { state.withLock { $0.accountUnavailable } }
+    set { state.withLock { $0.accountUnavailable = newValue } }
+  }
   var mailboxLinkAsks: Int { state.withLock { $0.mailboxLinkAsks } }
+  var phraseViews: Int { state.withLock { $0.phraseViews } }
+  var keysUnavailable: Bool {
+    get { state.withLock { $0.keysUnavailable } }
+    set { state.withLock { $0.keysUnavailable = newValue } }
+  }
   var mailboxLink: (thisDevice: Bool, provider: String)? {
     get { state.withLock { $0.mailboxLink } }
     set { state.withLock { $0.mailboxLink = newValue } }
@@ -611,6 +962,13 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     }
   }
 
+  func freezeFromTheEmailLink() {
+    freezeAll(byOperator: false)
+    state.withLock { s in
+      for t in s.sessions.keys { s.sessions[t]?.revoked = true }
+    }
+  }
+
   func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
     if offline { throw .offline(.notConnectedToInternet) }
     let body = request.body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
@@ -648,6 +1006,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
           "recovery_pubkey": boot["recovery_pubkey"] ?? "", "recovery_wrap": boot["recovery_wrap"] ?? "", "current_epoch": 1,
         ])
       u.writers.append(writerRow(wid, w["pubkey"], w["dak_pubkey"], boot["nonce"], boot["registration_sig"], id: 1))
+      u.phraseBox = boot["phrase_box"]
       s.users[c.user] = u
       let t = token()
       s.sessions[t] = (c.user, wid, false)
@@ -684,8 +1043,43 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       s.sessions[t] = (u.id, writer, false)
       return grant(t, u, writer: writer)
     case "POST /api/v1/auth/recover/begin":
-      // #7 for words whose recovery key no account here has (this fake keeps none).
-      return error(404, "not_found")
+      guard let key = b["recovery_pubkey"] as? String,
+        let u = s.users.values.first(where: { !$0.deleted && $0.keys["recovery_pubkey"] as? String == key })
+      else { return error(404, "not_found") }
+      let id = token()
+      s.recoveries[id] = (u.id, "654321")
+      s.lastCode = "654321"
+      return ok(["ceremony_id": id, "email_hint": "m\u{2022}\u{2022}\u{2022}@e\u{2022}\u{2022}\u{2022}.com"])
+    case "POST /api/v1/auth/recover/verify":
+      s.recoverVerifies += 1
+      guard let id = b["ceremony_id"] as? String, let c = s.recoveries[id], c.code == b["code"] as? String,
+        let u = s.users[c.user]
+      else { return error(403, "code_rejected") }
+      let nonce = bytes(32)
+      s.recoverNonces[id] = nonce
+      return ok([
+        "nonce": Base64.encode(nonce), "user_id": u.id, "amk_commitment": u.keys["amk_commitment"] ?? "",
+        "authority_pubkey": u.keys["authority_pubkey"] ?? "", "recovery_wrap": u.keys["recovery_wrap"] ?? "",
+        "current_epoch": 1,
+        "options": [
+          "publicKey": [
+            "challenge": Base64.encodeURL(bytes(32)), "rp": ["id": "hasala.app", "name": "Hasala"],
+            "user": ["id": Base64.encodeURL(bytes(32)), "name": "Hasala", "displayName": "Hasala"],
+          ]
+        ],
+      ])
+    case "POST /api/v1/auth/recover/finish":
+      guard !s.refusesRecoverFinish, let id = b["ceremony_id"] as? String, let c = s.recoveries.removeValue(forKey: id),
+        var u = s.users[c.user], let nonce = s.recoverNonces.removeValue(forKey: id),
+        let w = b["writer"] as? [String: Any], let wid = w["writer_id"] as? String
+      else { return error(403, "recovery_refused") }
+      s.recoverFinishes += 1
+      u.writers.append(
+        writerRow(wid, w["pubkey"], w["dak_pubkey"], Base64.encode(nonce), w["registration_sig"], id: u.writers.count + 1))
+      s.users[u.id] = u
+      let t = token()
+      s.sessions[t] = (c.user, wid, false)
+      return grant(t, u, writer: wid)
     default: break
     }
     guard let bearer, let sess = s.sessions[bearer], !sess.revoked else { return error(401, "unauthorized") }
@@ -702,6 +1096,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     case "GET /api/v1/auth/session":
       return ok(["user_id": u.id, "writer_id": opt(sess.writer), "restricted": u.frozenBy != nil])
     case "GET /api/v1/account":
+      if s.accountUnavailable { return error(503, "unavailable") }
       return ok([
         "user_id": u.id, "status": "active", "has_keys": true, "email": u.email, "display_name": u.name,
         "has_password": true, "password_salt": Base64.encode(salt(u.email)), "has_passkey": !u.passkeys.isEmpty,
@@ -716,7 +1111,13 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       u.name = valid
       s.users[u.id] = u
       return APIResponse(status: 204)
-    case "GET /api/v1/keys": return ok(u.keys)
+    case "GET /api/v1/keys":
+      if s.keysUnavailable { return error(503, "unavailable") }
+      return ok(u.keys)
+    case "POST /api/v1/keys/phrase/view":
+      guard b["step_up"] != nil, let box = u.phraseBox else { return error(403, "step_up_required") }
+      s.phraseViews += 1
+      return ok(["phrase_box": box])
     case "GET /api/v1/keys/wraps": return ok(["wraps": u.wraps])
     case "POST /api/v1/writers/challenge":
       let n = bytes(32)

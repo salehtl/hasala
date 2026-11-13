@@ -20,7 +20,8 @@ import Observation
 @MainActor
 @Observable
 final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
-  static let pairedTransfer = "It's one side of a matched transfer."
+  static let pairedTransfer = RefundEdit.refusedMatchedTransfer
+  static let undoKept = 256
   private(set) var state: LedgerState
   private(set) var now: LocalDateTime
   private(set) var revision = 0
@@ -35,6 +36,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   /// The lane's last status, as read with its phase: the mailbox row comes from it
   /// (`LiveMailboxConnecting.mailboxes`). Read-only plumbing; nothing is authored from it.
   private(set) var mailboxStatus: MailboxStatus?
+  var readMailboxStatus: MailboxStatus? { mailboxStatus.flatMap { $0.stateUnread ? nil : $0 } }
   private(set) var importProgress: MailboxProgress?
   private(set) var importSeen = false
 
@@ -112,7 +114,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
     unreadSenders = status.unparsedSenders
     if mailboxStatus != status { mailboxStatus = status }
-    if mailboxPhase != status.phase { mailboxPhase = status.phase }
+    let phase = status.stateUnread ? nil : status.phase
+    if mailboxPhase != phase { mailboxPhase = phase }
     if mailboxHalt != status.haltedOn { mailboxHalt = status.haltedOn }
     switch status.phase {
     case .scanning, .awaitingCards, .authoringBackfill:
@@ -126,11 +129,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   }
 
   func noteImport(_ progress: MailboxProgress) {
-    var next = progress
-    if case .failed = progress.stage, let last = importProgress {
-      next.done = last.done
-      next.total = last.total
-    }
+    let next = MailboxProgress.following(progress, after: importProgress, phase: mailboxPhase)
     if importProgress != next { importProgress = next }
   }
 
@@ -179,6 +178,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
     let edit = withCategoryID(edit)
     if let why = try categoryRefusal(edit) { throw .refused(why) }
+    if case .markTransfer(let id) = edit, matchedTransfer(id) { throw .refused(Self.pairedTransfer) }
     let before = state
     var s = state
     var batch = false
@@ -199,6 +199,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     if let token {
       if !inverses.isEmpty { undos[token.id] = inverses }
       if !inverses.isEmpty || (author != nil && Self.authorsInverse(edit)) { undoable.insert(token.id) }
+      undos[token.id - Self.undoKept] = nil
+      undoable.remove(token.id - Self.undoKept)
     }
     state = s
     revision += 1
@@ -207,6 +209,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       enqueue(undo: token?.id) { try await author.author(edit, before: before, today: today) }
     }
     return token
+  }
+
+  private func matchedTransfer(_ id: TxnID) -> Bool {
+    (try? reader.txn(id))??.transferState != nil
   }
 
   static func authorsInverse(_ edit: LedgerEdit) -> Bool {
@@ -237,7 +243,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   private func takeUndo(_ id: Int) -> [LedgerEditAuthor.Inverse]? { undos.removeValue(forKey: id) }
 
+  private func keepsUndo(_ id: Int) -> Bool { id >= nextToken - Self.undoKept }
+
   private func keepUndo(_ id: Int, _ inverses: [LedgerEditAuthor.Inverse]) {
+    guard keepsUndo(id) else { return }
     undos[id] = inverses
     undoable.insert(id)
   }
@@ -265,11 +274,15 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
           undoable.remove(undo)
         }
         onWriteFailed?()
-      } else if let undo, !authored.isEmpty {
+      } else if let undo, keepsUndo(undo), !authored.isEmpty {
         undos[undo, default: []] += authored
       }
       await reload()
     }
+  }
+
+  func writesFinished() async {
+    await writes?.value
   }
 
   func canUndo(_ token: UndoToken) -> Bool { undoable.contains(token.id) }
@@ -328,13 +341,13 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       if let refusal = d.refusal { throw refusal }
       if let c = d.categoryID, s.category(c) == nil { throw .notFound }
       if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      s.txns.append(d.txn(id: "pending-manual-\(UUID().uuidString.lowercased())"))
+      s.txns.append(d.txn(id: "pending-manual-\(UUID().uuidString.lowercased())", in: s))
       return (nil, [])
     case .categorize(let id, let c, let learnRule, let project):
       guard s.category(c) != nil else { throw .notFound }
       let i = try index(id)
       let old = s.txns[i]
-      SortPatch.file(&s.txns[i], c, at: now)
+      SortPatch.file(&s, i, c, at: now)
       if let project { s.txns[i].projectID = project }
       var inverses: [LedgerEditAuthor.Inverse] = old.splits.isEmpty ? [] : [.split(txn: id, lines: old.splits)]
       if let project, project != old.projectID { inverses.append(.project(txn: id, project: old.projectID)) }
@@ -356,12 +369,17 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].categoryID = undo ? nil : "transfer"
       s.txns[i].categorySource = undo ? nil : .user
       s.txns[i].isTransfer = !undo
+      if !undo {
+        s.txns[i].refundOf = nil
+        s.txns[i].refundLinkBroken = false
+      }
+      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
       s.txns[i].needsReview = undo
+      s.txns[i].priorFiling = nil
       if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, undo ? nil : "transfer") }
-      return (
-        undo ? "No longer a transfer" : "Marked as a transfer",
-        [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
-      )
+      var inverses: [LedgerEditAuthor.Inverse] = [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
+      if !undo, old.refundOf != nil { inverses.append(.refundOf(txn: id, of: old.refundOf)) }
+      return (undo ? "No longer a transfer" : "Marked as a transfer", inverses)
     case .markRefund(let id):
       let i = try index(id)
       let old = s.txns[i]
@@ -383,6 +401,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       )
     case .setNote(let id, let note):
       let i = try index(id)
+      if s.txns[i].mergedInto != nil { throw .refused(SamePurchaseText.restoreRefused) }
       s.txns[i].note = note.trimmingCharacters(in: .whitespacesAndNewlines)
       return (nil, [])
     case .renameMerchant(let id, let new):
@@ -397,6 +416,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       let t = s.txns[i]
       if !lines.isEmpty, !TransactionEngine.splitAddsUp(lines, total: t.amount) { throw .splitDoesNotAddUp }
       s.txns[i].splits = t.apportioned(lines)
+      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
       if let first = lines.first { s.txns[i].categoryID = first.categoryID }
       s.txns[i].needsReview = false
       if t.countsAsPick || s.txns[i].countsAsPick {
@@ -442,7 +462,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].archived = true
       s.txns[i].mergedInto = match.of
       s.txns[i].note = SamePurchaseText.note(s.txns[j].amount)
-      s.txns[j].homeMinor = s.txns[i].amount.minor
+      s.txns[j].setStatedHome(s.txns[i].amount.minor)
       return (
         "Counted once",
         [.samePurchase(foreign: match.of, previousHome: previous, previousRateMicro: previousRate, home: id, previousNote: oldNote)]
@@ -456,7 +476,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       return (try SortPatch.stopRule(&s, id), [])
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
-      s.plan.budgets[PlanState.key(c, month)] = amount
+      s.plan.setBudget(c, month, to: amount, thisMonth: now.date.yearMonth)
       return ("\(name(c)) budget changed", [])
     case .moveMoney(let from, let to, let month, let amount):
       guard amount.minor > 0 else { throw .invalidAmount }
@@ -470,11 +490,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.plan.budgets[PlanState.key(to, month)] = .aed(s.plan.budget(to, month).minor + amount.minor)
       return ("Moved to \(name(to))", [])
     case .markBillPaid(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }), !s.bills[i].isIncome else { throw .notFound }
-      let due = s.bills[i].nextDue
-      let next = due.yearMonth.next
-      s.bills[i].history.insert(due, at: 0)
-      s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
+      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      let due = try BillLifecycle.markPaid(&s.bills[i])
       return ("\(s.bills[i].name) marked paid", [.occurrence(bill: id, due: due)])
     case .acceptBillAmount(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }),

@@ -153,6 +153,57 @@ final class CoreScreensTests: XCTestCase {
   }
 
   @MainActor
+  private func sortedRowOnAllCaughtUp(_ app: XCUIApplication) -> XCUIElement {
+    XCTAssertTrue(element(app, "review.copy").waitForExistence(timeout: 15))
+    drag(app, to: CGVector(dx: 0.5, dy: 0.05))
+    XCTAssertTrue(element(app, "pick.close").waitForExistence(timeout: uiWait))
+    element(app, "pick.transfer").tap()
+    XCTAssertTrue(element(app, "pick.close").waitForNonExistence(timeout: uiWait))
+    let done = element(app, "review.done")
+    let skip = element(app, "review.skip")
+    while !done.waitForExistence(timeout: 1), skip.isHittable { skip.tap() }
+    XCTAssertTrue(done.waitForExistence(timeout: uiWait))
+    let row = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "identifier BEGINSWITH 'review.done.row.'")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    return row
+  }
+
+  @MainActor
+  func testArchivingARowFromAllCaughtUpOffersUndoOnThatScreen() throws {
+    let app = launch(scenario: "mayaCopy", screen: "review.copy")
+    let row = sortedRowOnAllCaughtUp(app)
+    XCTAssertFalse(element(app, "toast").exists)
+    row.tap()
+    let archive = element(app, "txn.archive")
+    XCTAssertTrue(element(app, "txn.note").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, archive), "could not reach txn.archive")
+    archive.tap()
+    XCTAssertTrue(element(app, "txn.close").waitForNonExistence(timeout: uiWait))
+    let undo = element(app, "toast").buttons["Undo"]
+    XCTAssertTrue(undo.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(undo.isHittable)
+    XCTAssertTrue(element(app, "review.seeActivity").isHittable)
+    undo.tap()
+    XCTAssertTrue(element(app, "toast").waitForNonExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testATransactionOpenedAfterASwipeDownStartsAtItsRoot() throws {
+    let app = launch(scenario: "mayaCopy", screen: "review.copy")
+    let row = sortedRowOnAllCaughtUp(app)
+    row.tap()
+    XCTAssertTrue(element(app, "txn.note").waitForExistence(timeout: uiWait))
+    element(app, "txn.note").tap()
+    XCTAssertTrue(element(app, "note.field").waitForExistence(timeout: uiWait))
+    app.navigationBars.element(boundBy: 0).swipeDown(velocity: .fast)
+    XCTAssertTrue(element(app, "note.field").waitForNonExistence(timeout: uiWait))
+    row.tap()
+    XCTAssertTrue(element(app, "txn.close").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(element(app, "note.field").exists)
+  }
+
+  @MainActor
   func testReviewDeckAsksSamePurchase() throws {
     let app = launch(scenario: "mayaSamePurchase", screen: "review.samePurchase")
     let line = element(app, "review.copy")

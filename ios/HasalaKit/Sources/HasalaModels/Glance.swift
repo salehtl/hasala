@@ -159,8 +159,10 @@ public struct WidgetSnapshot: Sendable, Hashable, Codable {
   public var lockShowsAmounts: Bool { lockScreenDetails && !amountsHidden }
 
   public func category(_ id: CategoryID?) -> CategoryWatchWidget? {
-    if let id, let c = categories.first(where: { $0.id == id }) { return c }
-    return categories.first { $0.verdict == .overPace || $0.verdict == .overBudget } ?? categories.first
+    guard let id else {
+      return categories.first { $0.verdict == .overPace || $0.verdict == .overBudget } ?? categories.first
+    }
+    return categories.first { $0.id == id }
   }
 
   public func project(_ id: ProjectID?) -> ProjectWidget? {
@@ -171,6 +173,12 @@ public struct WidgetSnapshot: Sendable, Hashable, Codable {
   public func goal(_ id: GoalID?) -> GoalWidget? {
     guard let id else { return goals.first }
     return goals.first { $0.id == id }
+  }
+
+  public static func chosen<Item>(
+    _ ids: [String], known: [Item], id: (Item) -> String, gone: (String) -> Item
+  ) -> [Item] {
+    ids.map { wanted in known.first { id($0) == wanted } ?? gone(wanted) }
   }
 }
 

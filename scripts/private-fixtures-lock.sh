@@ -60,8 +60,15 @@ commit_of() {
 
 if [[ "$mode" == "write" ]]; then
 	# The lock names a commit, so it may only describe committed state.
-	if git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
-		[[ -n "$(git -C "$dir" status --porcelain)" ]]; then
+	if [[ "$(git -C "$dir" rev-parse --is-inside-work-tree --show-prefix 2>/dev/null)" != "true" ]]; then
+		echo "private-fixtures-lock: $dir is not the top of a git checkout; write needs a checkout of salehtl/hasala-fixtures" >&2
+		exit 1
+	fi
+	if ! git -C "$dir" rev-parse --verify -q HEAD >/dev/null; then
+		echo "private-fixtures-lock: $dir has no commit for the lock to name" >&2
+		exit 1
+	fi
+	if [[ -n "$(git -C "$dir" status --porcelain)" ]]; then
 		echo "private-fixtures-lock: $dir has uncommitted changes; commit them in the fixtures repo first" >&2
 		exit 1
 	fi

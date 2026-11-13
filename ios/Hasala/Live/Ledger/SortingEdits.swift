@@ -232,8 +232,8 @@ nonisolated extension LedgerEditAuthor {
     d.removed = true
     let draft = d
     try await build { a throws(AuthorError) in try a.rule(id: id, parentVersion: snapshot.version, draft) }
-    memory.update { $0.stopReruns(ruleID: id) }
-    return [.rule(id: id, restore: snapshot.draft)]
+    let stopped = memory.update { $0.stopReruns(ruleID: id) }
+    return [.rule(id: id, restore: snapshot.draft), .reruns(batches: stopped)]
   }
 
   func followUp() async -> Bool {
@@ -306,7 +306,8 @@ nonisolated extension LedgerEditAuthor {
     let mem = memory.value
     let own = mem.ownOps
     guard !own.isEmpty else { return false }
-    let forks = try reader.forkNotices(kind: "txn").filter { own.contains($0.winnerOp) && !mem.repaired.contains($0.loserOp) }
+    let (forks, kept) = RuleReach.forkRepairs(try reader.forkNotices(kind: "txn"), own: own, repaired: mem.repaired)
+    if kept != mem.repaired { memory.update { $0.repaired = kept } }
     guard !forks.isEmpty else { return false }
     let lookup = await observer.ops(Set(forks.flatMap { [$0.winnerOp, $0.loserOp] }))
     var settled: Set<String> = []

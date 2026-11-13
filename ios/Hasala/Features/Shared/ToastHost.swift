@@ -24,7 +24,8 @@ struct ToastHost: View {
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var pull: CGFloat = 0
-  @State private var held = false
+  @GestureState private var touching = false
+  @State private var hold = ToastTouch()
 
   var body: some View {
     let motion = MotionPolicy(reduceMotion: policy.reduceMotion || reduceMotion, settled: policy.settled)
@@ -42,28 +43,35 @@ struct ToastHost: View {
       }
     }
     .animation(motion.animation(app.toast == nil ? .toastOut : .toastIn), value: app.toast)
+    .onChange(of: touching) { _, now in
+      guard !now else { return }
+      apply(hold.lost())
+      pull = 0
+    }
   }
 
   /// Down holds the toast; a pull down past 24 pt sends it away; a shorter one lets it go
   /// back and stay its full time.
   private var touch: some Gesture {
     DragGesture(minimumDistance: 0)
+      .updating($touching) { _, state, _ in state = true }
       .onChanged { value in
-        if !held {
-          held = true
-          app.holdToast(true)
-        }
+        apply(hold.moved())
         pull = max(0, value.translation.height)
       }
       .onEnded { value in
-        held = false
-        if value.translation.height > 24 {
-          app.dismissToast()
-        } else {
-          app.holdToast(false)
-        }
+        apply(hold.ended(pulled: value.translation.height))
         pull = 0
       }
+  }
+
+  private func apply(_ effect: ToastTouch.Effect?) {
+    switch effect {
+    case .hold: app.holdToast(true)
+    case .resume: app.holdToast(false)
+    case .dismiss: app.dismissToast()
+    case nil: break
+    }
   }
 
   private func disc(_ d: AppModel.Toast.Disc) -> GlassToast.Disc {

@@ -23,7 +23,7 @@ import (
 )
 
 func TestBootStandaloneServesConnectionsAndStopScriptTearsDown(t *testing.T) {
-	dsn, stopScript, err := pgtest.BootStandalone()
+	dsn, stopScript, err := pgtest.BootStandalone(0)
 	if err != nil {
 		t.Fatalf("BootStandalone: %v", err)
 	}

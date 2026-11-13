@@ -44,6 +44,28 @@ struct ModelStageTests {
     #expect(cloud.accepts("٧-١١ ب"))
   }
 
+  @Test("the cloud signal counts each request sent, a retry too, and not one the off-screen check held back")
+  func cloudSentSignal() async {
+    let sent = Mutex(0)
+    let device = StageFake("apple-fm/26.1")
+    let cut = StageFake("cf-clef/1", answers: ["b shop": .failed(.offScreen)])
+    let a = await ModelTier.run(
+      subjects: ["a shop", "b shop", "c shop"], stages: [.cloud(cut)], allowed: Self.allowed, context: .foreground, now: { 0 },
+      cloudSent: { sent.withLock { $0 += 1 } })
+    #expect(sent.withLock { $0 } == 1 && a.cloudRequests == 1)
+    sent.withLock { $0 = 0 }
+    let long = StageFake("cf-clef/1", answers: ["a shop": .failed(.contextOverflow)])
+    let b = await ModelTier.run(
+      subjects: ["a shop"], stages: [.cloud(long)], allowed: Self.allowed, context: .foreground, now: { 0 },
+      cloudSent: { sent.withLock { $0 += 1 } })
+    #expect(sent.withLock { $0 } == 2 && b.cloudRequests == 2)
+    sent.withLock { $0 = 0 }
+    _ = await ModelTier.run(
+      subjects: ["a shop"], stages: [.onDevice(device)], allowed: Self.allowed, context: .foreground, now: { 0 },
+      cloudSent: { sent.withLock { $0 += 1 } })
+    #expect(sent.withLock { $0 } == 0 && device.calls == ["a shop"])
+  }
+
   @Test("Latin goes on-device first; Arabic skips on-device and goes to cloud; first answer wins")
   func routing() async {
     let device = StageFake("apple-fm/26.1", answers: [Self.latin: .category("dining")])

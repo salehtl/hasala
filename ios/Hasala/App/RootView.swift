@@ -107,7 +107,6 @@ struct LiveRootView: View {
     }
     .environment(\.avatarPictures, GravatarPreference.shared.isOn ? GravatarLoader.shared.provider : nil)
     .onAppear { boot.start() }
-    .onChange(of: boot.session.phase) { _, phase in boot.phaseChanged(phase) }
     .onChange(of: scenePhase) { _, phase in
       OnScreen.shared.update(phase)
       if phase == .active { boot.foreground() }

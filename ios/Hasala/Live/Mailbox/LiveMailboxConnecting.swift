@@ -68,7 +68,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// Observed through the runtime: the lane's status is read when the account opens and
   /// after every run and connect.
   var mailboxes: [MailboxSnapshot] {
-    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return [] }
+    guard let rt = runtime(), let status = rt.store.readMailboxStatus else { return [] }
     return Self.mailboxes(status, provider: rt.lane?.provider ?? .gmail, nowMs: rt.context.clock.nowMs())
   }
 
@@ -77,7 +77,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// over, after the provider screen's confirmation. The holder may be an iPhone the person
   /// no longer has (the server can't tell), so this iPhone isn't left with no way to read.
   var heldElsewhere: MailProviderKind? {
-    guard let rt = runtime(), let lane = rt.lane, let phase = rt.store.mailboxStatus?.phase else { return nil }
+    guard let rt = runtime(), let lane = rt.lane, let phase = rt.store.readMailboxStatus?.phase else { return nil }
     return Self.heldElsewhere(phase: phase, link: rt.serverLink, provider: lane.provider)
   }
 
@@ -105,7 +105,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// has none to read).
   var mailboxesKnown: Bool {
     guard let rt = runtime() else { return false }
-    return rt.lane == nil || rt.store.mailboxStatus != nil
+    return rt.lane == nil || rt.store.readMailboxStatus != nil
   }
 
   /// Observed through the runtime: the review flag arrives with `GET /account`.
@@ -124,6 +124,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// Observed through the runtime, like `mailboxes`.
   var offer: MailOffer? { runtime()?.mailOffer }
 
+  var offerKnown: Bool { runtime()?.mailOfferKnown ?? false }
+
   var importing: MailImport? {
     guard let rt = runtime(), !rt.store.holdsSample else { return nil }
     return Self.importing(phase: rt.store.mailboxPhase, seen: rt.store.importSeen, progress: rt.store.importProgress)
@@ -131,20 +133,25 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
 
   var firstScanFinished: Bool {
     guard let rt = runtime(), !rt.store.holdsSample else { return false }
-    return rt.store.mailboxPhase == .active && rt.store.mailboxStatus?.readFromMs == nil
+    return rt.store.mailboxPhase == .active && rt.store.readMailboxStatus?.readFromMs == nil
   }
 
   var pastMailDays: Int {
     guard let rt = runtime() else { return 90 }
-    if let status = rt.store.mailboxStatus, status.readFromMs != nil, let days = status.backfillDays { return days }
+    if let status = rt.store.readMailboxStatus, status.readFromMs != nil, let days = status.backfillDays { return days }
     return MailboxEngine.backfillDays(
       newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
   }
 
   func importPastMail(_ mailboxID: String) async -> MailPastImport {
-    guard let rt = runtime(), let lane = rt.lane else { return .later }
+    guard let rt = runtime(), let lane = rt.lane else { return .notStarted }
     let report = await lane.importPastMail()
     await rt.refreshMailbox()
+    return Self.pastImport(report)
+  }
+
+  static func pastImport(_ report: CycleReport) -> MailPastImport {
+    guard report.pastImportStarted else { return .notStarted }
     return report.completed && report.haltedOn == nil ? .finished(report.ops) : .later
   }
 
@@ -185,7 +192,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     }
   }
 
-  var unlistedSenders: [String] { runtime()?.store.mailboxStatus?.unlisted ?? [] }
+  var unlistedSenders: [String] { runtime()?.store.readMailboxStatus?.unlisted ?? [] }
 
   func addSenderAddress(_ typed: String, for domain: String) async -> SenderAddressOutcome {
     guard let rt = runtime(), let lane = rt.lane else { return .offline }
@@ -221,13 +228,13 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
 
   /// How long ago the lane's newest alert from `bank` arrived, from its bank health rows.
   func lastEmail(_ bank: SupportedBank) -> String? {
-    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return nil }
+    guard let rt = runtime(), let status = rt.store.readMailboxStatus else { return nil }
     return Self.lastEmail(bank, health: status.health, nowMs: rt.context.clock.nowMs())
   }
 
   /// The alerts the lane read this month, from its bank health rows.
   var readThisMonth: MonthRead? {
-    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return nil }
+    guard let rt = runtime(), let status = rt.store.readMailboxStatus else { return nil }
     return Self.readThisMonth(status.health, nowMs: rt.context.clock.nowMs())
   }
 
@@ -290,7 +297,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
         // Not the provider ending access: the account has no mailbox to read.
         if halt == .noMailbox { row.note = message(.noMailbox, provider: provider) }
       } else {
-        row.note = "Reading your bank alerts stopped."
+        row.state = .readingStopped
       }
     case .otherDevice:
       row.note = otherIPhone
@@ -316,6 +323,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let day = date.formatted(format.weekday(.abbreviated).day(.defaultDigits).month(.abbreviated))
     let time = date.formatted(format.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
     return "\(day), \(time)"
+  }
+
+  static func offerKnown(phase: MailboxPhase, sampleLoaded: Bool, serverLink: MailboxLinkStatus?) -> Bool {
+    sampleLoaded || phase != .unlinked || serverLink != nil
   }
 
   /// What the bell, Profile and Bank alerts offer for a lane `phase` (spec 04 §6.6 row 4,
@@ -411,6 +422,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     if let refusal = Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
       throw .failed(refusal.message)
     }
+    rt.connectStarted()
+    defer { rt.connectEnded() }
     let current = rt.lane
     let status = await (current ?? lane).status()
     let replaces = try Self.admit(
@@ -425,22 +438,23 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let days = MailboxEngine.backfillDays(
       newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
     let oldPlan = switching && replaces && removingOld ? await current?.retirePlan() : nil
+    let retiring = oldPlan.flatMap { $0.total > 0 || !$0.countKnown ? $0 : nil }
     let oldName = status.address ?? current?.provider.appName ?? provider.appName
     let old = switching ? current : nil
     await old?.stop()
     let newest = (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil
     let result = await lane.connect(
-      backfillDays: days, pastMail: Self.pastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
-      replacing: replaces, confirm: Self.confirm(ask, provider: provider))
+      backfillDays: days, pastMail: Self.connectPastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
+      replacing: replaces, retiring: retiring, confirm: Self.confirm(ask, provider: provider))
     let nowReading: String?
     do { nowReading = try Self.linked(result, provider: provider) } catch {
-      await old?.resume()
+      await old?.resume(restartingCut: old === rt.lane)
       throw error
     }
     rt.linkedHere(provider)
     if switching, let old = current { await old.endGrant() }
     var retired = Self.retired(result)
-    if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
+    if let retiring { retired = await lane.retire(retiring) }
     await rt.refreshMailbox()
     let reads = await lane.status()
     if reads.phase == .active, reads.readFromMs != nil, reads.lastSuccessAtMs == nil {
@@ -449,6 +463,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     }
     return MailLinked(
       mailboxID: Self.mailboxID(provider), nowReading: nowReading, removal: Self.removal(retired, old: oldName))
+  }
+
+  static func connectPastMail(_ answer: MailPastChoice, takesOver: Bool, newestImportMs: Int64?) -> MailboxPastMail {
+    pastMail(takesOver ? .newOnly : answer, takesOver: takesOver, newestImportMs: newestImportMs)
   }
 
   static func pastMail(_ choice: MailPastChoice, takesOver: Bool, newestImportMs: Int64?) -> MailboxPastMail {
@@ -524,6 +542,41 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
       BankTextsLinkKeeper(nowMs: { SystemClock().nowMs() }).disconnected(outcome)
     }
     try Self.disconnected(outcome, provider: lane.provider)
+  }
+
+  var heldRemoval: MailHeldRemoval? {
+    guard let plan = runtime()?.store.readMailboxStatus?.heldRetires.first else { return nil }
+    return Self.heldRemoval(plan)
+  }
+
+  static func heldRemoval(_ plan: MailboxRetirePlan) -> MailHeldRemoval {
+    MailHeldRemoval(
+      address: plan.address ?? MailProviderKind(rawValue: plan.provider)?.appName ?? plan.provider,
+      transactions: plan.countKnown ? plan.total : nil)
+  }
+
+  func removeHeld() async -> MailHeldRemovalOutcome {
+    guard let rt = runtime(), let lane = rt.lane, let plan = rt.store.readMailboxStatus?.heldRetires.first else {
+      return .failed
+    }
+    let outcome = await lane.retryHeld(plan)
+    await rt.refreshMailbox()
+    return Self.heldOutcome(outcome)
+  }
+
+  static func heldOutcome(_ outcome: MailboxHeldRetryOutcome) -> MailHeldRemovalOutcome {
+    switch outcome {
+    case .removed(let n): .removed(n)
+    case .failed: .failed
+    case .readElsewhere: .readElsewhere
+    case .ended: .ended
+    }
+  }
+
+  func keepHeld() async {
+    guard let rt = runtime(), let lane = rt.lane, let plan = rt.store.readMailboxStatus?.heldRetires.first else { return }
+    await lane.dropHeld(plan)
+    await rt.refreshMailbox()
   }
 
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {

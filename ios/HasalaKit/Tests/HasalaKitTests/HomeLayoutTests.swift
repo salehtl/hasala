@@ -150,6 +150,55 @@ struct HomeLayoutTests {
     #expect(canvas[0].kind.waitingSentence == "Start a project in Plan.")
   }
 
+  func item(_ entries: [HomeLayout.Entry], _ state: LedgerState) throws -> HomeCanvasItem {
+    try #require(HomeEngine.canvas(HomeLayout(entries), state, now: now).first)
+  }
+
+  func finished(_ state: LedgerState, _ id: ProjectID) throws -> LedgerState {
+    var out = state
+    let i = try #require(out.projects.firstIndex { $0.id == id })
+    out.projects[i].complete = true
+    return out
+  }
+
+  let kitchen = Project(id: "kitchen", name: "Kitchen", glyph: .flag, budget: nil, starts: nil, ends: nil)
+
+  @Test func aFinishedProjectsTilePointsAtTheProjectsLeftToChoose() throws {
+    var state = try finished(s, "japan")
+    state.projects.append(kitchen)
+    let tile = try item([entry(.project, .project("japan"))], state)
+    #expect(tile.isWaiting)
+    #expect(tile.waitingSentence == "Touch and hold to choose a project.")
+  }
+
+  @Test func aRemovedProjectsAndGoalsTilesPointAtWhatIsLeftToChoose() throws {
+    var state = s
+    state.projects = [kitchen]
+    #expect(try item([entry(.project, .project("japan"))], state).waitingSentence == "Touch and hold to choose a project.")
+    #expect(try item([entry(.goal, .goal("gone"))], s).waitingSentence == "Touch and hold to choose a goal.")
+  }
+
+  @Test func aTileWithNothingLeftToChooseKeepsItsWaitingSentence() throws {
+    let none = try finished(s, "japan")
+    #expect(try item([entry(.project, .project("japan"))], none).waitingSentence == "Start a project in Plan.")
+    var taken = none
+    taken.projects.append(kitchen)
+    let onHome = [entry(.project, .project("japan")), entry(.project, .project("kitchen"))]
+    #expect(try item(onHome, taken).waitingSentence == "Start a project in Plan.")
+    var noGoals = s
+    noGoals.goals = []
+    #expect(try item([entry(.goal, .goal("emergency"))], noGoals).waitingSentence == "Add a savings goal in Plan.")
+  }
+
+  @Test func reopeningAProjectBringsItsTileBack() throws {
+    var state = try finished(s, "japan")
+    let layout = [entry(.project, .project("japan"))]
+    #expect(try item(layout, state).isWaiting)
+    let i = try #require(state.projects.firstIndex { $0.id == "japan" })
+    state.projects[i].complete = false
+    #expect(try !item(layout, state).isWaiting)
+  }
+
   @Test func itRoundTripsThroughJSON() throws {
     let layout = HomeLayout([entry(.today), entry(.goal, .goal("emergency")), entry(.comingUp)])
     let data = try JSONEncoder().encode(layout)

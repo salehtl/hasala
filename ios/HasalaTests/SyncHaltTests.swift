@@ -23,11 +23,25 @@ struct SyncHaltTests {
   @Test func onlyARunThatGetsThroughTakesTheWallAway() {
     #expect(BootController.clearsSyncHalt(nil))
     #expect(BootController.clearsSyncHalt(.latched(.accountFull)))
-    #expect(BootController.clearsSyncHalt(.rateLimited(retryAfter: 30)))
+    #expect(!BootController.clearsSyncHalt(.rateLimited(retryAfter: 30)))
     #expect(!BootController.clearsSyncHalt(.halted(.tampered(.chainBreak))))
     #expect(!BootController.clearsSyncHalt(.halted(.serverRestored)))
     #expect(!BootController.clearsSyncHalt(.offline))
     #expect(!BootController.clearsSyncHalt(.protocolError("refused 409 cursor_ahead")))
+  }
+
+  @Test func aChainConflictStillHeldKeepsTheWall() {
+    #expect(!BootController.clearsSyncHalt(nil, latch: .chainBreak))
+    #expect(!BootController.clearsSyncHalt(.rateLimited(retryAfter: 30), latch: .chainBreak))
+    #expect(BootController.clearsSyncHalt(nil, latch: nil))
+    #expect(BootController.clearsSyncHalt(nil, latch: .accountFull))
+    #expect(!BootController.clearsSyncHalt(.offline, latch: nil))
+  }
+
+  @Test func aRetryThatVerifiedNothingLeavesTheWallUp() {
+    for stop: SyncStop in [.notNow, .cancelled, .suspended] {
+      #expect(!BootController.clearsSyncHalt(stop), "\(stop)")
+    }
   }
 
   @Test func aRestoredServerIsShownAsRestoredNotTampered() {

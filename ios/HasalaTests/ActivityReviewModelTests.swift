@@ -51,6 +51,22 @@ struct ActivityReviewModelTests {
     #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
   }
 
+  @Test func aRowTappedOverAnOpenDeckDoesNotSeedALaterPlainStart() {
+    let app = AppModel(store: InMemoryLedger())
+    ReviewEntry.open(app, at: "lulu")
+    _ = ReviewViewModel(app: app)
+    ReviewEntry.open(app, at: "atm")
+    app.cover = nil
+    app.startReview()
+    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
+    ReviewEntry.open(app, at: "atm")
+    app.cover = nil
+    app.startReview(over: .allTime)
+    #expect(ReviewViewModel(app: app).cards.first?.id != "atm")
+    ReviewEntry.open(app, at: "lulu")
+    #expect(ReviewViewModel(app: app).cards.first?.id == "lulu")
+  }
+
   /// A swipe or a pill asks which category; the bucket's list keeps its own order with the
   /// suggestion in its place, and so do the projects; the sheet's sort files it and VoiceOver
   /// hears where the deck stands.
@@ -510,6 +526,42 @@ struct ActivityTransactionChoiceTests {
     #expect(app.toast?.title == "Archived")
     app.toastAction()
     #expect(txn.detail?.archived == false)
+  }
+
+  @Test func archivingFromANestedSheetClosesOnlyThatSheet() {
+    let app = AppModel(store: InMemoryLedger())
+    app.sheet = .search
+    var closed = 0
+    let txn = TransactionViewModel(app: app, id: "carrefour", close: { closed += 1 })
+    txn.setArchived(true)
+    #expect(txn.detail?.archived == true)
+    #expect(closed == 1 && app.sheet == .search)
+    #expect(app.toast?.title == "Archived" && app.toast?.actionTitle == "Undo")
+    app.toastAction()
+    #expect(txn.detail?.archived == false)
+  }
+
+  @Test func mergingFromANestedSheetClosesOnlyThatSheet() {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaCopy.state))
+    app.sheet = .search
+    var closed = 0
+    let txn = TransactionViewModel(app: app, id: "starbucks-copy", close: { closed += 1 })
+    txn.resolve(.probableCopy, merge: true)
+    #expect(app.store.state.txn("starbucks-copy") == nil)
+    #expect(closed == 1 && app.sheet == .search)
+    #expect(app.toast?.actionTitle == "Undo")
+  }
+
+  @Test func keepingBothOrRestoringLeavesANestedSheetUp() {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaCopy.state))
+    app.sheet = .search
+    var closed = 0
+    let txn = TransactionViewModel(app: app, id: "starbucks-copy", close: { closed += 1 })
+    txn.resolve(.probableCopy, merge: false)
+    txn.setArchived(true)
+    #expect(closed == 1)
+    txn.setArchived(false)
+    #expect(closed == 1 && app.sheet == .search)
   }
 
   @Test func moneyOutNeverOffersRefunds() {

@@ -208,7 +208,7 @@ public enum PlanEngine {
       splitName: s.plan.startingSplit.map(String.init).joined(separator: "/"),
       split: split, sections: sections, projects: projects, planned: .aed(planned),
       lastMonthBudgets: lastMonthBudgets, outsidePlan: outsidePlan(projects), incomeKnown: known, income: incomeState,
-      expiredMoves: month == current ? s.plan.expiredMoves : [:], phase: phase,
+      expiredMoves: month == current ? s.plan.expiredMoves.filter { $0.value.minor > 0 } : [:], phase: phase,
       selectableMonths: selectableMonths(s, today: now.date)
     )
   }
@@ -406,8 +406,8 @@ public enum PlanEngine {
 
   static func projectModel(_ p: Project, _ s: LedgerState, today: LocalDate) -> PlanProjectModel {
     let txns = projectTxns(p, s)
-    let spent = Fils.sum(txns.filter { !$0.needsReview }, projectMinor)
-    let pending = Fils.sum(txns.filter(\.needsReview), projectMinor)
+    let spent = Fils.sum(txns.filter { !$0.inReview }, projectMinor)
+    let pending = Fils.sum(txns.filter(\.inReview), projectMinor)
     let range = projectRange(p)
     let when = projectWhen(p, today: today)
     return PlanProjectModel(
@@ -639,6 +639,26 @@ public struct ProjectCandidateFilter: Sendable, Hashable {
   }
 }
 
+public enum BudgetSource<Source: Equatable>: Equatable {
+  case offered(Source)
+  case readyToAssign
+  case gone(CategoryID)
+}
+
+public extension PlanEngine {
+  static func moveSource<Source: Identifiable>(picked: Source.ID?, offered: [Source]) -> Source? {
+    guard let picked else { return offered.first }
+    return offered.first { $0.id == picked }
+  }
+
+  static func budgetSource<Source: Identifiable & Equatable>(
+    picked: CategoryID?, offered: [Source]
+  ) -> BudgetSource<Source> where Source.ID == CategoryID? {
+    if let source = offered.first(where: { $0.id == picked }) { return .offered(source) }
+    return picked.map(BudgetSource.gone) ?? .readyToAssign
+  }
+}
+
 public extension PlanEngine {
   /// Plan · Dining for `id` in the month of `now`; nil when the category is gone.
   static func category(_ id: CategoryID, _ s: LedgerState, now: LocalDateTime) -> CategoryDetail? {
@@ -815,7 +835,7 @@ public extension PlanEngine {
     let txns = projectTxns(p, s).sorted { $0.postedAt < $1.postedAt }
     var order: [CategoryID] = []
     var byCategory: [CategoryID: [Txn]] = [:]
-    for t in txns where !t.needsReview {
+    for t in txns where !t.inReview {
       let key = t.categoryID ?? ""
       if byCategory[key] == nil { order.append(key) }
       byCategory[key, default: []].append(t)
@@ -855,7 +875,7 @@ public extension PlanEngine {
         var r = MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
           detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? ""), amount: t.amount,
-          isIncome: t.direction == .in, toReview: t.needsReview)
+          isIncome: t.direction == .in, toReview: t.inReview)
         r.showHome(t)
         return r
       },
@@ -887,10 +907,15 @@ public extension PlanEngine {
       var r = MiniTxnRow(
         id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
         detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? "") + other, amount: t.amount,
-        toReview: t.needsReview)
+        toReview: t.inReview)
       r.showHome(t)
       return r
     }
+  }
+
+  static func projectChosen(_ project: ProjectID, _ s: LedgerState, selected: Set<TxnID>) -> [MiniTxnRow] {
+    guard !selected.isEmpty else { return [] }
+    return projectCandidates(project, s, filter: ProjectCandidateFilter()).filter { selected.contains($0.id) }
   }
 
   /// What a project's spending is called in its explainer: "Trip" for a trip (Paper's words on

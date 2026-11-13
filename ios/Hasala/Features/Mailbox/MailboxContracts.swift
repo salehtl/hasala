@@ -14,6 +14,7 @@ enum MailPastChoice: Equatable, Sendable {
 enum MailPastImport: Equatable, Sendable {
   case finished(Int)
   case later
+  case notStarted
 }
 
 /// What the bell, the Profile card and Bank alerts offer for mail.
@@ -66,13 +67,22 @@ enum MailConnectFailure: Error, Equatable {
     switch self {
     case .cancelled, .switchDeclined: nil
     case .alreadyConnected(let address): "\(address) is already connected."
-    case .takenByOtherIPhone: "Your email is read on your other iPhone."
+    case .takenByOtherIPhone: Self.readOnOtherIPhone
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
     case .noMailbox(let account): Self.noMailboxLine(account)
     case .permissionMissing(let account): Self.permissionMissingLine(account)
     case .failed(let message): message
     }
   }
+
+  var hasScreen: Bool {
+    switch self {
+    case .cancelled, .noMailbox, .permissionMissing: true
+    case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .failed: false
+    }
+  }
+
+  static let readOnOtherIPhone = "Your email is read on your other iPhone."
 
   static func permissionMissingLine(_ provider: MailProviderKind) -> String {
     switch provider {
@@ -129,6 +139,7 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// What the bell, the Profile card and Bank alerts offer; nil when nothing needs doing,
   /// the lane's state isn't known yet, or the account loaded the App Review sample.
   var offer: MailOffer? { get }
+  var offerKnown: Bool { get }
   var connectRefusal: MailConnectRefusal? { get }
   /// The banks the account reads (its sender-trust ops).
   func chosenBanks() -> [SupportedBank]
@@ -159,6 +170,9 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// Stops reading the mailbox and forgets its sign-in.
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure)
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact?
+  var heldRemoval: MailHeldRemoval? { get }
+  func removeHeld() async -> MailHeldRemovalOutcome
+  func keepHeld() async
   /// The first scan's progress: it reads the window and files what it finds, then ends
   /// with `.finished`, `.background` (it goes on later) or `.failed`, with the summary.
   func firstScan() -> AsyncStream<ScanProgress>
@@ -167,6 +181,18 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of mail.
   var offersSampleData: Bool { get }
   func loadSampleData() async throws(SetupFailure)
+}
+
+struct MailHeldRemoval: Equatable, Sendable {
+  var address: String
+  var transactions: Int?
+}
+
+enum MailHeldRemovalOutcome: Equatable, Sendable {
+  case removed(Int?)
+  case failed
+  case readElsewhere
+  case ended
 }
 
 struct MailboxDisconnectImpact: Equatable, Sendable {
@@ -246,7 +272,7 @@ struct MailImport: Equatable, Sendable {
 extension MailboxConnecting {
   var pastMailDays: Int { 90 }
 
-  func importPastMail(_ mailboxID: String) async -> MailPastImport { .later }
+  func importPastMail(_ mailboxID: String) async -> MailPastImport { .notStarted }
 
   var defaultPastMail: MailPastChoice { heldElsewhere == nil ? .importPast : .newOnly }
 
@@ -260,12 +286,20 @@ extension MailboxConnecting {
 
   var firstScanFinished: Bool { false }
 
+  var heldRemoval: MailHeldRemoval? { nil }
+
+  func removeHeld() async -> MailHeldRemovalOutcome { .failed }
+
+  func keepHeld() async {}
+
   func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
     try await disconnect(mailboxID, removeTransactions: false)
   }
 
   /// Known at once where the mailboxes are held in memory (the mock).
   var mailboxesKnown: Bool { true }
+
+  var offerKnown: Bool { true }
 
   /// No other iPhone where the mailboxes are held in memory (the mock).
   var heldElsewhere: MailProviderKind? { nil }
@@ -316,8 +350,12 @@ struct MailboxesSummary: Equatable {
 
   /// `known`: false while the mailbox state is still being read, which says so rather
   /// than "not connected".
-  init(_ mailboxes: [MailboxSnapshot], health: MailboxHealth, offer: MailOffer?, known: Bool = true) {
+  init(
+    _ mailboxes: [MailboxSnapshot], health: MailboxHealth, offer: MailOffer?, known: Bool = true,
+    reading: ReadingState? = nil
+  ) {
     let live = mailboxes.filter { $0.state != .disconnected }
+    let quietElsewhere = ReadingOnScreen.quietElsewhereLine(reading)
     let broken = live.first { $0.state == .needsSignIn }
     if !known {
       self.init(title: "Checking your email", detail: "Reading your mailbox's state.", hue: .sky, needsYou: false)
@@ -336,8 +374,8 @@ struct MailboxesSummary: Equatable {
         needsYou: offer == .connect)
     } else if health.status == .reconnect {
       // The lane halted for a reason a new sign-in doesn't fix (a full account, missing
-      // templates): its row still reads connected, but nothing is being read.
-      let stopped = live.first { $0.note != nil } ?? live[0]
+      // templates): its row reads "Reading stopped".
+      let stopped = live.first { $0.state == .readingStopped } ?? live[0]
       let working = live.filter { $0.id != stopped.id && ($0.state == .connected || $0.state == .syncing) }
       var detail = "Hasala stopped reading \(stopped.address)."
       if let other = working.first { detail += " Your \(other.provider.appName) still works." }
@@ -345,8 +383,8 @@ struct MailboxesSummary: Equatable {
     } else if live.allSatisfy({ $0.state == .syncing }) || health.status == .importing {
       self.init(title: "Importing your bank alerts", detail: Self.lines(health) ?? "Checking now", hue: .mint,
                 needsYou: false)
-    } else if health.status == .quiet {
-      self.init(title: "Bank alerts went quiet", detail: Self.lines(health) ?? "", hue: .sand, needsYou: true)
+    } else if let quietElsewhere {
+      self.init(title: "Bank alerts went quiet", detail: quietElsewhere, hue: .sand, needsYou: true)
     } else {
       self.init(title: "Bank alerts are working", detail: Self.lines(health) ?? live[0].meta, hue: .mint,
                 needsYou: false)

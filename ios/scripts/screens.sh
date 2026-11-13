@@ -17,10 +17,10 @@
 #                      UICTContentSizeCategoryAccessibilityXXXL); files end in .<category>.png
 #   --all              every id registered in ios/Hasala/App/Debug/ScreenLaunch+*.swift
 #
-# It builds Debug once (derived data $HASALA_SCREENS_DD, default /tmp/hasala-dd-screens),
-# installs it, launches each id, waits for it to settle ($HASALA_SCREENS_WAIT seconds,
-# default 2.5) and writes $HASALA_SCREENS_OUT/<id>[.release].png (default
-# /tmp/hasala-screens). Debug builds only: the hook is compiled out of Release.
+# It builds Debug once (derived data $HASALA_SCREENS_DD, default one directory per checkout,
+# /tmp/hasala-dd-screens-<n>), installs it, launches each id, waits for it to settle
+# ($HASALA_SCREENS_WAIT seconds, default 2.5) and writes $HASALA_SCREENS_OUT/<id>[.release].png
+# (default /tmp/hasala-screens-<n>). Debug builds only: the hook is compiled out of Release.
 set -euo pipefail
 
 usage() {
@@ -34,8 +34,9 @@ udid="$1"
 shift
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ios="$(cd "$here/.." && pwd)"
-dd="${HASALA_SCREENS_DD:-/tmp/hasala-dd-screens}"
-out="${HASALA_SCREENS_OUT:-/tmp/hasala-screens}"
+checkout="$(printf '%s' "$ios" | cksum | cut -d' ' -f1)"
+dd="${HASALA_SCREENS_DD:-/tmp/hasala-dd-screens-$checkout}"
+out="${HASALA_SCREENS_OUT:-/tmp/hasala-screens-$checkout}"
 wait="${HASALA_SCREENS_WAIT:-2.5}"
 release=false
 motion=off
@@ -115,7 +116,11 @@ for id in "${ids[@]}"; do
 		continue
 	fi
 	sleep "$wait"
-	"${xcrun[@]}" simctl io "$udid" screenshot "$out/$name.png" >/dev/null 2>&1
+	if ! "${xcrun[@]}" simctl io "$udid" screenshot "$out/$name.png" >/dev/null 2>&1; then
+		echo "screens.sh: $id was not captured" >&2
+		failed=1
+		continue
+	fi
 	echo "$out/$name.png"
 done
 "${xcrun[@]}" simctl terminate "$udid" app.hasala.ios 2>/dev/null || true

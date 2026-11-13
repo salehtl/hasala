@@ -58,16 +58,32 @@ public struct PullSummary: Sendable, Hashable {
 enum Puller {
   static let pageLimit = 500
 
+  struct StoredPage: Sendable, Hashable {
+    let rows: Int
+    let whole: Bool
+  }
+
   static func pull(
     _ ctx: SyncContext, observer: (any PageObserver)?, plaintextBudget: Int = PageReader.maxPagePlaintext
   ) async throws(SyncStop) -> PullSummary {
     do {
+      let before = try ctx.storeCall { () throws(StoreError) in try ctx.store.syncState() }
       let summary = try await pages(ctx, observer: observer, plaintextBudget: plaintextBudget)
+      recordChainsShortOfFinal(PinnedRoster.decode(before.rosterJSON), ctx: ctx)
       await observer?.pullEnded()
       return summary
     } catch {
       await observer?.pullEnded()
       throw error
+    }
+  }
+
+  static func recordChainsShortOfFinal(_ roster: PinnedRoster?, ctx: SyncContext) {
+    guard let roster, let heads = try? ctx.store.chainHeads() else { return }
+    let now = ctx.clock.nowMs()
+    for (writer, final) in roster.shortOfFinal(heads: heads) {
+      try? ctx.store.recordFoldEventOnce(
+        kind: "integrity_alarm", detail: "short_of_final_\(writer.string)_\(final.counter)", at: now)
     }
   }
 
@@ -96,14 +112,14 @@ enum Puller {
       summary.pages += 1
       let stored = try await readAndPersist(
         page, state: state, bearer: bearer, ctx: ctx, observer: observer, plaintextBudget: plaintextBudget, summary: &summary)
-      if page.complete, stored == page.rows.count { return summary }
+      if page.complete, stored.whole { return summary }
     }
   }
 
   static func readAndPersist(
     _ page: PullPage, state: SyncStateRow, bearer: String, ctx: SyncContext, observer: (any PageObserver)?,
     plaintextBudget: Int, summary: inout PullSummary
-  ) async throws(SyncStop) -> Int {
+  ) async throws(SyncStop) -> StoredPage {
     // R0's page-level checks the row checker cannot see: seqs strictly
     // increasing above the cursor (I1), `next` = the last seq.
     var seqs: [Int64] = []
@@ -142,7 +158,6 @@ enum Puller {
     var hwm = state.epochHWM
     var serverEpoch: UInt32?
     var rosterRefreshed = false
-    var epochRefreshed = false
     var newerVersionUnshipped = false
 
     while true {
@@ -154,25 +169,19 @@ enum Puller {
       let result = PageReader.read(rows, state: readerState, plaintextBudget: plaintextBudget)
       switch result.stop {
       case .refreshRoster?:
-        guard !rosterRefreshed else { throw .halted(.tampered(.unknownWriter)) }
         let fresh = try await RosterService.refetch(client: ctx.client, bearer: bearer, pinned: pinned)
         try ctx.storeCall { () throws(StoreError) in try ctx.store.setRoster(fresh.encoded()) }
         roster = fresh
         rosterRefreshed = true
         continue
       case .refreshEpoch(let e)?:
-        guard !epochRefreshed else { throw .halted(.tampered(.epochInvalid)) }
         let keys: KeysResponse
         do { keys = try await ctx.client.keys(bearer: bearer) } catch { throw SyncStop.read(error) }
         guard keys.current_epoch >= 1, keys.current_epoch <= Int(Int32.max) else {
           throw .halted(.tampered(.epochInvalid))
         }
         serverEpoch = UInt32(keys.current_epoch)
-        epochRefreshed = true
-        if serverEpoch! >= e {
-          hwm = max(hwm, serverEpoch!)
-          try ctx.storeCall { () throws(StoreError) in try ctx.store.setEpochHWM(hwm) }
-        }
+        if serverEpoch! >= e { hwm = max(hwm, serverEpoch!) }
         continue
       case .needsUnlock(let e)?:
         throw .needsUnlock(epoch: e)
@@ -186,7 +195,7 @@ enum Puller {
           continue
         case .tampered(let t): throw .halted(.tampered(t))
         }
-      case nil:
+      case .budgetReached?, nil:
         break
       }
 
@@ -219,7 +228,9 @@ enum Puller {
       let now = ctx.clock.nowMs()
       do {
         try ctx.storeCall { () throws(StoreError) in
-          try ctx.store.persistPage(rows: records, heads: newHeads, cursor: seqs[records.count - 1], at: now, snapshot: snapshot)
+          try ctx.store.persistPage(
+            rows: records, heads: newHeads, cursor: seqs[records.count - 1], at: now, snapshot: snapshot,
+            epochHWM: hwm > state.epochHWM ? hwm : nil)
         }
       } catch {
         await observer?.pageAbandoned()
@@ -230,7 +241,7 @@ enum Puller {
         try? ctx.store.recordFoldEvent(kind: "integrity_alarm", detail: "aead_failed", at: now)
       }
       summary.rowsStored += records.count
-      return records.count
+      return StoredPage(rows: records.count, whole: result.stop == nil)
     }
   }
 }

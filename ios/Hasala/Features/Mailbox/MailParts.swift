@@ -30,6 +30,8 @@ enum MailCopy {
 
   static let confirmNote = "You'll confirm it's you before it connects."
 
+  static let readingStopped = "Reading your bank alerts stopped."
+
   static let pastMailTitle = "Import your past email?"
 
   static func pastWindow(days: Int) -> String { days >= 365 ? "the last year" : "the last \(days) days" }
@@ -83,6 +85,29 @@ enum MailCopy {
 
   static func removed(_ n: Int) -> String {
     n == 1 ? "1 transaction removed." : "\(MoneyFormat.count(n)) transactions removed."
+  }
+
+  static func heldRemovalTitle(_ held: MailHeldRemoval) -> String {
+    switch held.transactions {
+    case 1?: "1 transaction wasn't removed"
+    case let n?: "\(MoneyFormat.count(n)) transactions weren't removed"
+    case nil: "Transactions weren't removed"
+    }
+  }
+
+  static func heldRemovalDetail(_ held: MailHeldRemoval) -> String {
+    let still = held.transactions == 1 ? "It still counts" : "They still count"
+    return "From \(held.address), which you disconnected. \(still) in your totals."
+  }
+
+  static func heldRemovalLine(_ outcome: MailHeldRemovalOutcome, _ held: MailHeldRemoval) -> String? {
+    switch outcome {
+    case .removed(let n?): removed(n)
+    case .removed(nil): "The old transactions were removed."
+    case .failed: "Transactions from \(held.address) couldn't be removed."
+    case .readElsewhere: MailConnectFailure.readOnOtherIPhone
+    case .ended: nil
+    }
   }
 
   static func impactLines(_ impact: MailboxDisconnectImpact, from source: String = "It") -> [String] {
@@ -217,6 +242,15 @@ enum MailboxMoment: Equatable {
 
   static func hand(_ moment: MailboxMoment) {
     pending = moment
+  }
+
+  static func hand(_ moment: MailboxMoment, to router: AppRouter) {
+    guard router.sheet == .profile, router.profile.last != .bankAlerts else { return }
+    hand(moment)
+  }
+
+  static func discard() {
+    pending = nil
   }
 
   /// The pending moment, once.
@@ -741,5 +775,75 @@ private struct MailSwitchQuestionAlert: ViewModifier {
 extension View {
   func mailSwitchQuestion(_ coordinator: MailConnectCoordinator?, asks: Bool = true) -> some View {
     modifier(MailSwitchQuestionAlert(coordinator: coordinator, asks: asks))
+  }
+}
+
+struct HeldRemovalRow: View {
+  let app: AppModel
+  let lane: any MailboxConnecting
+  let held: MailHeldRemoval
+  @State private var settling = false
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    HStack(alignment: .top, spacing: HSpacing.listRowGap) {
+      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
+        .overlay { HIconView(.trash, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 7) {
+          Circle().fill(HColor.paceFillOverPace).frame(width: 8, height: 8).accessibilityHidden(true)
+          Text(MailCopy.heldRemovalTitle(held)).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Text(MailCopy.heldRemovalDetail(held)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        let actions = typeSize.isAccessibilitySize
+          ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0)) : AnyLayout(HStackLayout(spacing: 24))
+        actions {
+          Button("Remove them") { remove() }
+            .foregroundStyle(HColor.textLink)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier("bankAlerts.heldRemoval.remove")
+          Button("Keep them") { keep() }
+            .foregroundStyle(HColor.textSecondary)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier("bankAlerts.heldRemoval.keep")
+        }
+        .hType(.subheadline.weight(.semibold))
+        .buttonStyle(.plain)
+        .disabled(settling)
+        .padding(.top, -4)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.top, 14)
+    .padding(.bottom, 2)
+    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("bankAlerts.heldRemoval")
+  }
+
+  private func remove() {
+    guard !settling else { return }
+    settling = true
+    Task {
+      defer { settling = false }
+      let outcome = await lane.removeHeld()
+      guard let line = MailCopy.heldRemovalLine(outcome, held) else { return }
+      if case .removed = outcome { app.say(line) } else { app.say(line, icon: .info) }
+    }
+  }
+
+  private func keep() {
+    guard !settling else { return }
+    settling = true
+    Task {
+      defer { settling = false }
+      await lane.keepHeld()
+    }
   }
 }

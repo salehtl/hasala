@@ -39,7 +39,7 @@ func (c *Console) banksPage(ctx context.Context, tx pgx.Tx, login string, v *vie
 		        count(r.id) FILTER (WHERE r.source = 'app'),
 		        count(r.id) FILTER (WHERE r.source = 'web_waitlist'),
 		        count(r.id) FILTER (WHERE r.source = 'web'),
-		        count(r.id) FILTER (WHERE r.notified_at IS NOT NULL),
+		        count(r.id) FILTER (WHERE `+banks.ToldSQL+`),
 		        max(r.created_at)
 		   FROM banks b LEFT JOIN bank_requests r ON r.bank_slug = b.slug
 		  GROUP BY b.slug

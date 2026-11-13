@@ -46,6 +46,8 @@
     var gmailPermissionMissing = false
     var signInAgainReads: String? = MockAccountService.identity.signInAgainReads
     var switchRemoveFails = false
+    var heldRemoval: MailHeldRemoval?
+    var heldRemoveFails = false
     var disconnectFails = false
     var disconnectFailsFor: Set<String> = []
     private(set) var questions: [MailSwitchQuestion] = []
@@ -63,6 +65,7 @@
     /// The alerts a mailbox fetched but couldn't read.
     var unreadableMail: [UnreadableMail] = []
     var importing: MailImport?
+    @ObservationIgnored private var scanWatchers: [AsyncStream<ScanProgress>.Continuation] = []
 
     var firstScanFinished: Bool {
       !sampleLoaded && importing == nil && !mailboxes.contains(where: \.pastMailSkipped)
@@ -152,7 +155,7 @@
 
     func importPastMail(_ mailboxID: String) async -> MailPastImport {
       pastImports += 1
-      guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return .later }
+      guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return .notStarted }
       mailboxes[i].pastMailSkipped = false
       return .finished(total)
     }
@@ -218,6 +221,8 @@
         mailboxes[i].meta = "Checking now"
         mailboxes[i].banks = banks.map(\.name)
         mailboxes[i].connectedOn = "10 Oct"
+        mailboxes[i].pastMailSkipped = false
+        mailboxes[i].note = nil
         return MailLinked(mailboxID: mailboxes[i].id, removal: removal)
       }
       let n = mailboxes.filter { $0.provider == provider }.count + 1
@@ -231,7 +236,11 @@
 
     private func remove(_ id: String, old: String) -> MailSwitchRemoval? {
       guard let impact = imported[id], impact.transactions > 0 else { return nil }
-      if switchRemoveFails { return .failed(from: old) }
+      if switchRemoveFails {
+        heldRemoval = MailHeldRemoval(address: old, transactions: impact.transactions)
+        heldRemovalID = id
+        return .failed(from: old)
+      }
       removed.append(id)
       imported[id] = nil
       return .removed(impact.transactions)
@@ -280,7 +289,10 @@
 
     func tryAgain(_ mailboxID: String) async {
       tryAgainCalls += 1
-      if let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) { mailboxes[i].note = nil }
+      if let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) {
+        mailboxes[i].note = nil
+        if mailboxes[i].state == .readingStopped { mailboxes[i].state = .connected }
+      }
     }
 
     func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
@@ -296,6 +308,21 @@
 
     var imported: [String: MailboxDisconnectImpact] = MockAccountService.identity.impacts
     private(set) var removed: [String] = []
+
+    @ObservationIgnored private var heldRemovalID: String?
+
+    func removeHeld() async -> MailHeldRemovalOutcome {
+      guard let held = heldRemoval, !heldRemoveFails else { return .failed }
+      if let id = heldRemovalID { removed.append(id) }
+      heldRemoval = nil
+      heldRemovalID = nil
+      return .removed(held.transactions)
+    }
+
+    func keepHeld() async {
+      heldRemoval = nil
+      heldRemovalID = nil
+    }
 
     func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {
       guard let impact = imported[mailboxID], impact.transactions > 0 else { return nil }
@@ -331,6 +358,8 @@
       let summary = SortSummary(
         total: total, byRules: 0, byDictionary: dictionary, byModel: model, toReview: total - dictionary - model)
       return AsyncStream { continuation in
+        self.scanWatchers.append(continuation)
+        guard self.scanWatchers.count == 1 else { return }
         // Like the live lane, the import outlives the stream.
         Task {
           var read = 0
@@ -339,14 +368,19 @@
             try? await Task.sleep(for: step)
             read = min(total, read + 24)
             self.importing = MailImport(state: .reading, read: read, total: total)
-            continuation.yield(ScanProgress(phase: read < total / 3 ? .downloading : .sorting, read: read, total: total))
+            self.tellScanWatchers(ScanProgress(phase: read < total / 3 ? .downloading : .sorting, read: read, total: total))
           }
           self.importing = nil
           self.scanFinished()
-          continuation.yield(ScanProgress(phase: .finished, read: total, total: total, summary: summary))
-          continuation.finish()
+          self.tellScanWatchers(ScanProgress(phase: .finished, read: total, total: total, summary: summary))
+          self.scanWatchers.forEach { $0.finish() }
+          self.scanWatchers = []
         }
       }
+    }
+
+    private func tellScanWatchers(_ progress: ScanProgress) {
+      for watcher in scanWatchers { watcher.yield(progress) }
     }
 
     /// The first scan read its window: every syncing mailbox is connected.

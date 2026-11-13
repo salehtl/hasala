@@ -16,18 +16,21 @@ import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import WaitlistCoin from '../components/brand/WaitlistCoin.astro';
 import { SITE } from '../data/site';
-import { WAITLIST_MODE } from '../lib/env';
+import { TURNSTILE_SITEKEY, WAITLIST_MODE } from '../lib/env';
 
 const byEmail = WAITLIST_MODE === 'email';
+const refusedWithoutScript = !!TURNSTILE_SITEKEY;
 const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Hasala invite request')}`;
 ---
 
 <Base
-  title={byEmail ? 'Email us to join' : 'Check your email'}
+  title={byEmail ? 'Email us to join' : refusedWithoutScript ? 'That didn’t go through' : 'Check your email'}
   description={
     byEmail
       ? `To join the Hasala waitlist, email ${SITE.supportEmail} with your email address and your bank. We'll email you when your TestFlight invite is ready.`
-      : "Check your email: tap Confirm my email within 7 days to join the Hasala waitlist. We'll email you when your TestFlight invite is ready."
+      : refusedWithoutScript
+        ? 'We couldn’t add you to the list.'
+        : "Check your email: tap Confirm my email within 7 days to join the Hasala waitlist. We'll email you when your TestFlight invite is ready."
   }
   path="/joined"
   noindex
@@ -53,9 +56,9 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
           </div>
         </div>
       ) : (
-        <div class="joined__panel panel panel--pace" data-state="success">
+        <div class="joined__panel panel panel--pace" data-state={refusedWithoutScript ? 'error' : 'success'}>
           <WaitlistCoin id="joined-coin" />
-          <div class="joined__card" data-joined-ok>
+          <div class="joined__card" data-joined-ok hidden={refusedWithoutScript}>
             <h1>Check your email.</h1>
             <p>We sent you a message. If it asks you to confirm, tap Confirm my email within 7 days to join the list. We’ll email again when your TestFlight invite is ready.</p>
             <p class="joined__from">
@@ -63,7 +66,7 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
             </p>
             <a class="btn btn--subtle" href="/">Back to the home page</a>
           </div>
-          <div class="joined__card" data-joined-error hidden>
+          <div class="joined__card" data-joined-error hidden={!refusedWithoutScript}>
             <h1>That didn’t go through.</h1>
             <p data-joined-error-text>We couldn’t add you to the list.</p>
             <a class="btn btn--primary" href="/#invite">Try again</a>
@@ -77,24 +80,9 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
 
 <script>
   import { onPage } from '../scripts/page';
+  import { landJoined } from '../scripts/joined';
 
-  const ERRORS: Record<string, string> = {
-    bad_email: 'We couldn’t use that email address. Check it and try again.',
-    bad_bank: 'We couldn’t use that bank. Pick one from the list, or type its name with letters, numbers and spaces.',
-    turnstile_failed: 'We couldn’t check that you’re not a bot. Try again.',
-    rate_limited: 'Too many tries from here. Wait a few minutes, then try again.',
-    waitlist_full: 'The waitlist is full for now. Please try again in a few days.',
-  };
-  onPage(() => {
-    const ok = document.querySelector<HTMLElement>('[data-joined-ok]');
-    const code = new URLSearchParams(location.search).get('error');
-    if (!ok || !code) return;
-    ok.hidden = true;
-    document.querySelector<HTMLElement>('[data-joined-error]')!.hidden = false;
-    document.querySelector<HTMLElement>('[data-joined-error-text]')!.textContent = ERRORS[code] ?? 'Something went wrong on our side. Try again in a minute.';
-    document.querySelector<HTMLElement>('.joined__panel')!.dataset.state = 'error';
-    document.title = 'Hasala · That didn’t go through';
-  });
+  onPage(() => landJoined(document, location));
 </script>
 
 <style>

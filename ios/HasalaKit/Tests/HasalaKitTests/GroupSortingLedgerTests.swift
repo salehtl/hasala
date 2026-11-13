@@ -177,7 +177,7 @@ struct GroupSortingLedgerTests {
     #expect(ReviewEngine.repeatsMonthly(MayaBacklog.tailscale, l.state))
     try l.apply(.trackCandidate(MayaBacklog.candidate.id))
     #expect(!l.state.billCandidates.contains { $0.id == MayaBacklog.candidate.id })
-    #expect(l.state.bills.first { $0.id == "bill-\(MayaBacklog.candidate.id)" }?.keys == ["tailscale.com"])
+    #expect(l.state.bills.first { $0.id == MayaBacklog.candidate.id }?.keys == ["tailscale.com"])
     #expect(ReviewEngine.repeatsMonthly(MayaBacklog.tailscale, l.state))
   }
 

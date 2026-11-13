@@ -14,8 +14,9 @@ struct MailboxDetailPage: View {
   let mailboxID: String
   @State private var choosing = false
   @State private var impact: MailboxDisconnectImpact?
+  @State private var confirming: MailboxSnapshot?
   @State private var confirmingPlain = false
-  @State private var busy = false
+  @State private var work = MailboxPageWork.idle
   @State private var failure: MailConnectFailure?
   /// The sign-in again, made once for this page.
   @State private var signIn: MailConnectCoordinator?
@@ -67,14 +68,17 @@ struct MailboxDetailPage: View {
     .navigationTitle(mailbox?.provider.appName ?? "Mailbox")
     .navigationBarTitleDisplayMode(.inline)
     .navigationDestination(isPresented: $choosing) {
-      if let m = mailbox, let impact {
+      if let m = confirming, let impact {
         MailboxDisconnectPage(
-          mailbox: m, impact: impact, textsNote: textsNote, busy: busy,
+          mailbox: m, impact: impact, textsNote: textsNote, busy: work == .disconnecting,
           failure: failure?.message(for: m.provider)
         ) { removing in
           Task { await disconnect(removing: removing) }
         }
       }
+    }
+    .onChange(of: mailbox == nil) { _, gone in
+      if gone, !work.isBusy { choosing = false }
     }
     .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirmingPlain) {
       Button("Cancel", role: .cancel) {}
@@ -102,13 +106,13 @@ struct MailboxDetailPage: View {
       }
     }
     .accessibilityIdentifier("mailbox.card")
-    if let note = m.note, m.state == .connected, !m.readElsewhere {
+    if m.state == .readingStopped, !m.readElsewhere {
       VStack(alignment: .leading, spacing: 10) {
-        InlineStatus(tone: .warning, text: note, size: .regular)
+        InlineStatus(tone: .warning, text: MailCopy.readingStopped, size: .regular)
         if app.mailbox?.capabilities.contains(.tryAgain) == true {
           Button("Try again") { Task { await tryAgain(m) } }
-            .buttonStyle(.pill(.primary, size: .large, fill: true, loading: busy))
-            .disabled(busy)
+            .buttonStyle(.pill(.primary, size: .large, fill: true, loading: work.tryAgainLoads))
+            .disabled(work.isBusy)
             .accessibilityIdentifier("mailbox.tryAgain")
         }
       }
@@ -169,14 +173,14 @@ struct MailboxDetailPage: View {
     switch await mailbox.importPastMail(m.id) {
     case .finished(let count): app.say(MailCopy.pastImported(count))
     case .later: app.say(MailCopy.pastImportLater)
+    case .notStarted: app.say(SourceSwitch.checking, icon: .info)
     }
   }
 
   private func tryAgain(_ m: MailboxSnapshot) async {
-    guard let mailbox = app.mailbox, !busy else { return }
-    busy = true
+    guard let mailbox = app.mailbox, work.begin(.tryingAgain, clearing: &failure, signIn: signIn) else { return }
     await mailbox.tryAgain(m.id)
-    busy = false
+    work = .idle
   }
 
   // MARK: Needs sign-in (1O3N)
@@ -204,7 +208,8 @@ struct MailboxDetailPage: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       if app.mailbox?.capabilities.contains(.signInAgain) == true {
-        ProviderButton(provider: m.provider, loading: signIn?.busy ?? false) { signInAgain(m.provider) }
+        ProviderButton(provider: m.provider, loading: work.signInLoads) { signInAgain(m.provider) }
+          .disabled(work.isBusy)
           .accessibilityIdentifier("mailbox.signInAgain")
         if let line = signIn?.failureLine {
           InlineStatus(tone: .warning, text: line, size: .regular).hTransition(.rise)
@@ -298,7 +303,8 @@ struct MailboxDetailPage: View {
     } else if m.state != .disconnected, app.mailbox?.capabilities.contains(.disconnect) == true {
       VStack(alignment: .leading, spacing: 10) {
         Button("Disconnect this mailbox") { Task { await askToDisconnect() } }
-          .buttonStyle(.pill(.destructiveQuiet, size: .large, fill: true, loading: busy))
+          .buttonStyle(.pill(.destructiveQuiet, size: .large, fill: true, loading: work.disconnectLoads))
+          .disabled(work.isBusy)
           .accessibilityIdentifier("mailbox.disconnect")
         if let footnote {
           Text(footnote).hType(.footnote).foregroundStyle(HColor.textSecondary)
@@ -324,11 +330,11 @@ struct MailboxDetailPage: View {
   }
 
   private func signInAgain(_ provider: MailProviderKind) {
-    guard let signIn else { return }
-    failure = nil
+    guard let signIn, work.begin(.signingIn, clearing: &failure, signIn: signIn) else { return }
     let policy = motion
     Task {
       await signIn.connect(provider)
+      work = .idle
       if signIn.failedWithNoMailbox {
         MailConnectCoordinator.hand(signIn, to: app.router)
         self.signIn = Self.signInAttempt(app, mailboxID)
@@ -352,29 +358,33 @@ struct MailboxDetailPage: View {
   }
 
   private func askToDisconnect() async {
-    guard let lane = app.mailbox, !busy else { return }
-    busy = true
+    guard let lane = app.mailbox, work.begin(.askingToDisconnect, clearing: &failure, signIn: signIn) else { return }
     impact = await lane.disconnectImpact(mailboxID)
-    busy = false
-    failure = nil
+    work = .idle
+    confirming = mailbox
     if impact == nil { confirmingPlain = true } else { choosing = true }
   }
 
   /// Disconnect, then back to Bank alerts. The mock keeps a grey row there; the live lane
   /// keeps none, so the toast says what happened in both.
   private func disconnect(removing: Bool) async {
-    guard let lane = app.mailbox, let m = mailbox else { return }
+    guard let lane = app.mailbox, let m = mailbox, work.begin(.disconnecting, clearing: &failure, signIn: signIn) else { return }
     let removed = removing ? impact?.transactions : nil
-    busy = true
-    defer { busy = false }
+    defer { work = .idle }
+    var refused: MailConnectFailure?
     do {
       try await lane.disconnect(mailboxID, removeTransactions: removing)
+    } catch {
+      refused = error
+    }
+    switch MailboxDisconnectEnding.after(refused, mailboxRemains: mailbox != nil, provider: m.provider, removed: removed) {
+    case .left(let line, let partly):
       failure = nil
       choosing = false
-      app.say(MailCopy.disconnected(m.provider, removed: removed))
+      app.say(line, icon: partly ? .info : nil)
       app.router.backToBankAlerts()
-    } catch {
-      failure = error
+    case .stayed(let reason):
+      failure = reason
     }
   }
 }
@@ -428,6 +438,48 @@ private struct FactValue: View {
     Text(text).hType(.subheadline)
       .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
       .multilineTextAlignment(stacked ? .leading : .trailing)
+  }
+}
+
+enum MailboxPageWork: Equatable {
+  case idle
+  case tryingAgain
+  case askingToDisconnect
+  case disconnecting
+  case signingIn
+
+  var isBusy: Bool { self != .idle }
+  var tryAgainLoads: Bool { self == .tryingAgain }
+  var disconnectLoads: Bool { self == .askingToDisconnect || self == .disconnecting }
+  var signInLoads: Bool { self == .signingIn }
+
+  mutating func begin(_ next: MailboxPageWork) -> Bool {
+    guard self == .idle else { return false }
+    self = next
+    return true
+  }
+
+  @MainActor
+  mutating func begin(
+    _ next: MailboxPageWork, clearing failure: inout MailConnectFailure?, signIn: MailConnectCoordinator?
+  ) -> Bool {
+    guard begin(next) else { return false }
+    failure = nil
+    signIn?.reset()
+    return true
+  }
+}
+
+enum MailboxDisconnectEnding: Equatable {
+  case left(line: String, partly: Bool)
+  case stayed(MailConnectFailure)
+
+  static func after(
+    _ failure: MailConnectFailure?, mailboxRemains: Bool, provider: MailProviderKind, removed: Int?
+  ) -> MailboxDisconnectEnding {
+    guard let failure else { return .left(line: MailCopy.disconnected(provider, removed: removed), partly: false) }
+    if mailboxRemains { return .stayed(failure) }
+    return .left(line: failure.message(for: provider) ?? MailCopy.disconnected(provider, removed: nil), partly: true)
   }
 }
 

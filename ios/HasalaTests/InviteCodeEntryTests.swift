@@ -157,6 +157,20 @@ struct InviteCodeEntryTests {
     #expect(!other.invitePasted)
   }
 
+  @MainActor
+  @Test func typingAnotherCodeIsNoLongerThePastedOne() throws {
+    let m = SignupModel(account: MockAccountService())
+    m.paste(Self.code)
+    #expect(m.invitePasted)
+    m.paste(Self.code)
+    #expect(m.invitePasted)
+    m.inviteText = "XBCDEFGHIJKLMNOPQRSTUVWA"
+    #expect(m.inviteCode != nil)
+    #expect(!m.invitePasted)
+    m.paste(Self.code)
+    #expect(m.invitePasted)
+  }
+
   // MARK: Deleting
 
   @Test func deletingAtTheEndAcrossAHyphen() {

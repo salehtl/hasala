@@ -117,6 +117,50 @@ struct AlwaysUseReachTests {
     #expect(item.txnIDs.allSatisfy { l.state.txn($0)?.categoryID == "subscriptions" && l.state.txn($0)?.filedByRule == true })
   }
 
+  static func splitLines(_ t: Txn) -> [SplitLine] {
+    [
+      SplitLine(id: 0, categoryID: "subscriptions", amount: Money(minor: t.amount.minor - 1_00, currency: t.amount.currency)),
+      SplitLine(id: 1, categoryID: "dining", amount: Money(minor: 1_00, currency: t.amount.currency)),
+    ]
+  }
+
+  static func expectGoesToReview(_ l: InMemoryLedger, _ id: TxnID) throws {
+    try l.apply(.returnToReview([id]))
+    let t = try #require(l.state.txn(id))
+    #expect(t.inReview && t.categoryID == nil && t.categorySource == nil && t.ruleID == nil && t.needsReview)
+  }
+
+  @Test func removingASplitForgetsTheFilingTheRuleReplaced() throws {
+    let l = InMemoryLedger(state: try Self.state())
+    try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil))
+    let filed = try #require(l.state.txn("ts-rule"))
+    #expect(filed.priorFiling != nil)
+    let filedAt = try #require(filed.categorizedAt)
+
+    try l.apply(.split("ts-rule", Self.splitLines(filed)))
+    #expect(l.state.txn("ts-rule")?.priorFiling == nil)
+
+    try l.apply(.split("ts-rule", []))
+    let unsplit = try #require(l.state.txn("ts-rule"))
+    #expect(unsplit.sortedForYou && unsplit.priorFiling == nil)
+    #expect(unsplit.categorizedAt == filedAt)
+
+    try Self.expectGoesToReview(l, "ts-rule")
+  }
+
+  @Test func undoingASplitForgetsTheFilingTheRuleReplaced() throws {
+    let l = InMemoryLedger(state: try Self.state())
+    try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil))
+    let filed = try #require(l.state.txn("ts-rule"))
+    #expect(filed.priorFiling != nil)
+
+    l.undo(try #require(try l.apply(.split("ts-rule", Self.splitLines(filed)))))
+    let back = try #require(l.state.txn("ts-rule"))
+    #expect(back.splits.isEmpty && back.sortedForYou && back.priorFiling == nil)
+
+    try Self.expectGoesToReview(l, "ts-rule")
+  }
+
   @Test func undoAllAfterUndoingAnUndoAllPutsEachRowBackAgain() throws {
     let before = try Self.state()
     let l = InMemoryLedger(state: before)
@@ -246,5 +290,41 @@ struct AlwaysUseReachTests {
     try l.apply(.split("carrefour", lines))
     #expect(l.state.txn("carrefour")?.canAlwaysUse == false)
     #expect(TransactionEngine.detail("carrefour", l.state, now: l.now)?.canAlwaysUse == false)
+  }
+
+  @Test func theReachTallyDropsWhatAnUndoPutBack() throws {
+    let l = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let card: TxnID = "bl-alnoor-t-2"
+    let ref = try #require(l.state.txn(card)?.groupRef)
+    let waiting = l.state.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card && $0.categoryID != "groceries" }.map(\.id)
+    let token = try #require(try l.apply(.categorize(card, "groceries", learnRule: true, project: nil)))
+    let moved = waiting.filter { l.state.txn($0)?.categoryID == "groceries" }
+    #expect(!moved.isEmpty)
+    var tally = ReviewReachTally()
+    tally.record(card, into: "groceries", others: moved)
+    #expect(tally.count(l.state) == moved.count)
+    l.undo(token)
+    #expect(l.state.txn(card)?.inReview == true)
+    #expect(tally.count(l.state) == 0)
+    try l.apply(.categorize(card, "groceries", learnRule: false, project: nil))
+    tally.record(card, into: "groceries", others: [])
+    #expect(tally.count(l.state) == 0)
+  }
+
+  @Test func theReachTallyCountsARowOnceAndOnlyWhileItStays() throws {
+    let l = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let card: TxnID = "bl-alnoor-t-2"
+    let ref = try #require(l.state.txn(card)?.groupRef)
+    let waiting = l.state.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card && $0.categoryID != "groceries" }.map(\.id)
+    try l.apply(.categorize(card, "groceries", learnRule: true, project: nil))
+    let moved = waiting.filter { l.state.txn($0)?.categoryID == "groceries" }
+    let row = try #require(moved.first)
+    var tally = ReviewReachTally()
+    tally.record(card, into: "groceries", others: moved)
+    tally.record(card, into: "groceries", others: moved)
+    #expect(tally.count(l.state) == moved.count)
+    try l.apply(.categorize(row, "shopping", learnRule: false, project: nil))
+    #expect(tally.count(l.state) == moved.count - 1)
+    #expect(ReviewReachTally().count(l.state) == 0)
   }
 }

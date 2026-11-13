@@ -61,8 +61,12 @@ actor FakeLedger: MailboxLedger {
     return texts
   }
 
+  var syncGate: (@Sendable () async -> Void)?
+  func setSyncGate(_ g: (@Sendable () async -> Void)?) { syncGate = g }
+
   func syncToHead() async throws(MailboxLedgerError) {
     syncs += 1
+    if let syncGate { await syncGate() }
     if syncFails { throw MailboxLedgerError("offline") }
     if let pulled = textsOnPull {
       texts = pulled
@@ -72,7 +76,10 @@ actor FakeLedger: MailboxLedger {
   func senderTrust() async -> [String: Bool] { trust }
   func projectedMessageIDs(among ids: [String]) async -> Set<String> { projected.intersection(ids) }
   func isIngested(_ ingestID: String) async -> Bool { ingested.contains(ingestID) }
+  var trustFails = false
+  func setTrustFails(_ v: Bool) { trustFails = v }
   func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError) {
+    if trustFails { throw MailboxLedgerError("enqueue") }
     authoredTrust.append((domain, trusted))
     trust[domain] = trusted
   }
@@ -84,7 +91,10 @@ actor FakeLedger: MailboxLedger {
   }
   var retireFails = false
   func setRetireFails(_ v: Bool) { retireFails = v }
+  var retireGate: (@Sendable () async -> Void)?
+  func setRetireGate(_ g: (@Sendable () async -> Void)?) { retireGate = g }
   func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError) {
+    if let retireGate { await retireGate() }
     if retireFails { throw MailboxLedgerError("enqueue") }
     retired.append(plan)
   }
@@ -107,20 +117,28 @@ actor FakeServer: MailboxServer {
   /// Route 36's refusal, when set (e.g. `.noWatchTopic`: a server without the Pub/Sub push).
   var watchRefusal: MailboxServerError?
   var linkRefusal: MailboxServerError?
+  var deleteRefusal: MailboxServerError?
   var topicReads = 0
+  var afterPut: (@Sendable () -> Void)?
 
   func setLink(_ l: MailboxLinkStatus) { link = l }
+  func setOffline(_ v: Bool) { offline = v }
   func setTopic(_ t: String?) { topic = t }
   func setWatchRefusal(_ e: MailboxServerError?) { watchRefusal = e }
   func setLinkRefusal(_ e: MailboxServerError?) { linkRefusal = e }
+  func setDeleteRefusal(_ e: MailboxServerError?) { deleteRefusal = e }
+  func setAfterPut(_ f: (@Sendable () -> Void)?) { afterPut = f }
 
   func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
     if offline { throw .offline }
+    if topic == nil, case .holder(let mine, _) = link { return .holder(isThisDevice: mine, watchExpiresAtMs: nil) }
     return link
   }
   var linkProvider: MailProviderID?
+  var linkStatusReads = 0
   func setLinkProvider(_ p: MailProviderID?) { linkProvider = p }
   func linkStatus(provider: MailProviderID) async throws(MailboxServerError) -> MailboxLinkStatus {
+    linkStatusReads += 1
     if let linkProvider, linkProvider != provider { throw .otherProvider }
     return try await linkStatus()
   }
@@ -132,13 +150,16 @@ actor FakeServer: MailboxServer {
     if let linkRefusal { throw linkRefusal }
     linkedProviders.append(provider)
     link = .holder(isThisDevice: true, watchExpiresAtMs: nil)
+    afterPut?()
     return MailboxLinkResult(status: link)
   }
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
     if let watchRefusal { throw watchRefusal }
     watches.append(expiresAtMs)
+    if case .holder(isThisDevice: true, _) = link { link = .holder(isThisDevice: true, watchExpiresAtMs: expiresAtMs) }
   }
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) {
+    if let deleteRefusal { throw deleteRefusal }
     deletes += 1
     link = .noLink
   }
@@ -201,6 +222,28 @@ final class AuthoredDrafts: @unchecked Sendable {
   var batches: [Int] { lock.withLock { sizes } }
 }
 
+final class WriteRefusingTokenStore: MailRefreshTokenStore, @unchecked Sendable {
+  let inner: MemoryMailRefreshTokenStore
+  private let lock = NSLock()
+  private var refusing = false
+  private var refusingDeletes = false
+
+  init(_ inner: MemoryMailRefreshTokenStore) { self.inner = inner }
+
+  func refuseWrites(_ v: Bool) { lock.withLock { refusing = v } }
+  func refuseDeletes(_ v: Bool) { lock.withLock { refusingDeletes = v } }
+
+  func read() throws(SecretUnavailable) -> String? { try inner.read() }
+  func write(_ token: String) throws(SecretUnavailable) {
+    if lock.withLock({ refusing }) { throw SecretUnavailable() }
+    try inner.write(token)
+  }
+  func delete() throws(SecretUnavailable) {
+    if lock.withLock({ refusingDeletes }) { throw SecretUnavailable() }
+    try inner.delete()
+  }
+}
+
 enum Backend { case sqlite, memory }
 
 /// A whole engine over fakes. The persistence is the production one (ledger.sqlite tables in an
@@ -216,7 +259,7 @@ struct Rig {
   let ledger = FakeLedger()
   let server = FakeServer()
   let clock = ManualClock(Rig.t0)
-  let keychain = MemoryGmailRefreshTokenStore()
+  let keychain: MemoryGmailRefreshTokenStore
   let readerKeys = MemoryMailReaderKeyStore()
   let stepUps = StepUpLog()
   let engine: MailboxEngine
@@ -226,9 +269,11 @@ struct Rig {
     backend: Backend = .sqlite, categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false,
     gmail: FakeGmail = FakeGmail(), config: ((inout MailboxEngineConfig) -> Void)? = nil,
     wrapStore: ((any MailboxPersistence) -> any MailboxPersistence)? = nil,
-    templates: [CompiledTemplate] = BundledTemplates.load(channel: .mail).templates
+    templates: [CompiledTemplate] = BundledTemplates.load(channel: .mail).templates,
+    keychain: MemoryGmailRefreshTokenStore = MemoryGmailRefreshTokenStore(), tokenStore: (any MailRefreshTokenStore)? = nil
   ) {
     self.gmail = gmail
+    self.keychain = keychain
     self.backend = backend
     let authored = self.authored
     let clockForStore = clock
@@ -249,7 +294,7 @@ struct Rig {
     let oauth = GoogleOAuthClient(
       config: GmailOAuthConfig(clientID: "synthetic-client.apps.googleusercontent.com", redirectScheme: "com.googleusercontent.apps.synthetic-client"),
       http: gmail)
-    tokens = RefreshingGmailTokenProvider(oauth: oauth, store: keychain, clock: clock)
+    tokens = RefreshingGmailTokenProvider(oauth: oauth, store: tokenStore ?? keychain, clock: clock)
     var c = MailboxEngineConfig(grantID: "00000000-0000-4000-8000-000000000001", buildTopic: nil)
     config?(&c)
     let clock = self.clock
@@ -264,6 +309,19 @@ struct Rig {
   func connectAndActivate(days: Int = 90) async {
     _ = await engine.connect(presenter: FakePresenter(gmail: gmail), backfillDays: days)
     _ = await engine.runCycle(trigger: .launch)  // the scan authors what it finds (no cards step)
+  }
+
+  func restarted() -> MailboxEngine {
+    let oauth = GoogleOAuthClient(
+      config: GmailOAuthConfig(clientID: "synthetic-client.apps.googleusercontent.com", redirectScheme: "com.googleusercontent.apps.synthetic-client"),
+      http: gmail)
+    let clock = self.clock
+    return MailboxEngine(
+      config: MailboxEngineConfig(grantID: "00000000-0000-4000-8000-000000000001", buildTopic: nil), oauth: oauth,
+      tokens: RefreshingGmailTokenProvider(oauth: oauth, store: keychain, clock: clock), gmailHTTP: gmail, store: store,
+      ledger: ledger, server: server, stepUp: FakeStepUp(fail: false, log: stepUps), categorizer: NoCategorizer(),
+      templates: BundledTemplates.load(channel: .mail).templates, clock: clock, random: CountingRandom(),
+      readerKeys: readerKeys, sleep: { ms in clock.advance(ms) })
   }
 
   func enqueued() async -> [MailboxIngestDraft] { backend == .memory ? await memory.enqueued : authored.all }

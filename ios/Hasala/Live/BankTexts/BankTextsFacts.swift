@@ -46,6 +46,11 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     return nowMs >= opened && nowMs < opened + Self.testWindowMs
   }
 
+  mutating func openTest(atMs ms: Int64) {
+    testOpenedMs = ms
+    testPassedMs = nil
+  }
+
   mutating func prune(nowMs: Int64) {
     if let older = lastKeptMs.values.max() { lastTextMs = max(lastTextMs ?? older, older) }
     lastKeptMs = [:]
@@ -65,6 +70,11 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
   mutating func noteAuthored(atMs ms: Int64) {
     let day = Self.day(ms)
     authoredToday = DayCount(day: day, count: authoredToday?.day == day ? (authoredToday?.count ?? 0) + 1 : 1)
+  }
+
+  mutating func releaseAuthored(atMs ms: Int64) {
+    guard let authored = authoredToday, authored.day == Self.day(ms) else { return }
+    authoredToday = authored.count > 1 ? DayCount(day: authored.day, count: authored.count - 1) : nil
   }
 
   mutating func addSetAside(sender: String, bank: String?, kind: BankTextDropKind, atMs: Int64) {
@@ -91,6 +101,12 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     }
   }
 
+  mutating func addLockedRuns(_ n: Int, latestMinuteMs: Int64) {
+    addIgnored(n, atMs: latestMinuteMs)
+    guard n > 0, let link, link.linked, latestMinuteMs >= LockedTextsMarkerFile.minute(link.learnedAtMs) else { return }
+    lastRunMs = max(lastRunMs ?? latestMinuteMs, latestMinuteMs)
+  }
+
   func ignoredTotal(nowMs: Int64) -> Int {
     let today = Self.day(nowMs)
     return ignored.filter { today - $0.day < Self.keptDays }.reduce(0) { $0 + $1.count }
@@ -102,12 +118,18 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
   }
 
   func sawAutomationRun(nowMs: Int64) -> Bool {
-    lastRunMs != nil || ignoredTotal(nowMs: nowMs) > 0
+    lastRunMs != nil
   }
 }
 
 nonisolated enum BankTextsFactsError: Error, Equatable, Sendable {
   case unavailable
+}
+
+nonisolated enum BankTextsDailyClaim: Equatable, Sendable {
+  case claimed
+  case atLimit
+  case notSaved
 }
 
 nonisolated final class BankTextsFacts: Sendable {
@@ -117,6 +139,7 @@ nonisolated final class BankTextsFacts: Sendable {
   private let file: URL?
   private let cache = Mutex<BankTextsFactsData?>(nil)
   private let lock = NSLock()
+  private let missedTest = Mutex(false)
 
   init(directory: URL?) {
     file = directory?.appendingPathComponent("facts.json")
@@ -161,13 +184,31 @@ nonisolated final class BankTextsFacts: Sendable {
     return next
   }
 
+  func claimDailyText(nowMs: Int64) -> BankTextsDailyClaim {
+    var atLimit = false
+    do {
+      try update(nowMs: nowMs) { data in
+        atLimit = data.atDailyTextLimit(nowMs: nowMs)
+        if !atLimit { data.noteAuthored(atMs: nowMs) }
+      }
+    } catch {
+      return atLimit ? .atLimit : .notSaved
+    }
+    return atLimit ? .atLimit : .claimed
+  }
+
   func forget() {
     lock.withLock {
       cache.withLock { $0 = BankTextsFactsData() }
       if let file { try? FileManager.default.removeItem(at: file) }
     }
+    missedTest.withLock { $0 = false }
     Self.announce()
   }
+
+  var testMissed: Bool { missedTest.withLock { $0 } }
+
+  func setTestMissed(_ missed: Bool) { missedTest.withLock { $0 = missed } }
 
   var fileExists: Bool {
     guard let file else { return false }

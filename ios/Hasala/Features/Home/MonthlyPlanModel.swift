@@ -10,7 +10,7 @@ final class MonthlyPlanModel: Identifiable {
 
   @ObservationIgnored private let setup: SetupAuthoring
   @ObservationIgnored private let done: (_ held: SetupReadBack?) -> Void
-  @ObservationIgnored private let saved: SetupReadBack
+  @ObservationIgnored private var saved: SetupReadBack
   var path: [Route] = []
   var busy = false
   var failure: SetupFailure?
@@ -24,9 +24,23 @@ final class MonthlyPlanModel: Identifiable {
     self.done = done
     let readBack = setup.readBack()
     saved = readBack
-    if let minor = readBack.incomeMinor, minor > 0 { entry = AmountEntry(minor: minor) }
+    entry = Self.entry(readBack)
     payday = readBack.payday.map { .day($0) }
     split = readBack.split
+  }
+
+  private static func entry(_ readBack: SetupReadBack) -> AmountEntry {
+    guard let minor = readBack.incomeMinor, minor > 0 else { return AmountEntry() }
+    return AmountEntry(minor: minor)
+  }
+
+  func reopen() {
+    path = []
+    let latest = setup.readBack()
+    if latest.incomeMinor != saved.incomeMinor { entry = Self.entry(latest) }
+    if latest.payday != saved.payday { payday = latest.payday.map { .day($0) } }
+    if latest.split != saved.split { split = latest.split }
+    saved = latest
   }
 
   var today: LocalDate { (setup as? SetupClock)?.today() ?? LedgerToday.device() }

@@ -275,9 +275,80 @@ let
     HASALA_ASC_REQUEST_BUDGET = "300";
   };
 
+  retryText = ''
+    attempts="$1"
+    delay="$2"
+    shift 2
+    try=1
+    while true; do
+      rc=0
+      "$@" || rc=$?
+      [ "$rc" != 0 ] || exit 0
+      [ "$try" -lt "$attempts" ] || exit "$rc"
+      echo "hasala-retry: attempt $try of $attempts failed with exit $rc; trying again in ''${delay}s" >&2
+      sleep "$delay"
+      try=$((try + 1))
+    done
+  '';
+  retryScript = pkgs.writeShellApplication {
+    name = "hasala-retry";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = retryText;
+  };
+  retrying = "${lib.getExe retryScript} 4 15";
+  migrateRunSec = 600;
+
   # ------------------------------------------------------------------- backups
   offsiteFilter = "--filter '- *.part' --filter '+ hasala-*.age*' --filter '- *'";
   ageRecipientFlags = concatStringsSep " " (map (r: "-r ${r}") cfg.backup.ageRecipients);
+  backupText = ''
+    # §5.8: an age-encrypted custom-format dump plus the purge ledger, then
+    # retention. The plaintext dump is never written to a file: pg_dump
+    # streams into age, and a copy of the stream goes through a FIFO to
+    # pg_restore --list, whose TOC (no data) is the only thing kept under
+    # $RUNTIME_DIRECTORY (tmpfs, 0700). Both are removed on every exit.
+    tag="''${1:-daily}"
+    case "$tag" in daily | premigrate) ;; *) echo "hasala-backup: unknown tag $tag" >&2; exit 2 ;; esac
+    ts="$(date -u +%Y%m%dT%H%M%SZ)"
+    dir=${lib.escapeShellArg cfg.backup.dir}
+    out="$dir/hasala-$tag-$ts.dump.age"
+    led="$dir/hasala-ledger-$tag-$ts.tar.age"
+    exec 9< ${maintenanceLock}
+    flock 9
+    # Retention is a hard bound (N-06): every dump, ledger copy and checksum
+    # ${toString cfg.backup.retentionDays} days old or older goes, however few remain.
+    find "$dir" -maxdepth 1 -name 'hasala-*.age*' -mtime +${
+      toString (cfg.backup.retentionDays - 1)
+    } -delete
+    work="$(mktemp -d "$RUNTIME_DIRECTORY/work.XXXXXX")"
+    trap 'rm -rf "$work"; rm -f "$out.part" "$out.sha256.part" "$led.part"' EXIT
+    mkfifo -m 0600 "$work/stream"
+    { pg_restore --list > "$work/toc"; cat > /dev/null; } < "$work/stream" &
+    toc_pid=$!
+    timeout ${toString cfg.backup.dumpTimeoutSec} pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
+      --format=custom --compress=zstd:6 --no-password \
+      | tee "$work/stream" \
+      | age ${ageRecipientFlags} -o "$out.part"
+    wait "$toc_pid"
+    if [ "$tag" = daily ]; then grep -q ' TABLE DATA public op_log ' "$work/toc"; fi
+    # The purge ledger and the log generation (§5.8.1), read through the
+    # hasala-ledger group; never written here.
+    # A missing purge ledger, or one that cannot be read, fails the backup
+    # (pipefail), never an empty ledger copy.
+    [ -f ${ledgerDir}/purged ] || { echo "hasala-backup: ${ledgerDir}/purged is missing" >&2; exit 1; }
+    files=(purged)
+    if [ -e ${ledgerDir}/generation ]; then files+=(generation); fi
+    tar -C ${ledgerDir} -cf - -T /dev/null "''${files[@]}" \
+      | age ${ageRecipientFlags} -o "$led.part"
+    sum="$(sha256sum < "$out.part")"
+    printf '%s  %s\n' "''${sum%% *}" "$(basename "$out")" > "$out.sha256.part"
+    sync "$out.part" "$out.sha256.part" "$led.part"
+    mv "$led.part" "$led"
+    mv "$out.sha256.part" "$out.sha256"
+    mv "$out.part" "$out"
+    date +%s > "$STATE_DIRECTORY/last-success-$tag"
+    echo "hasala-backup: $tag written"
+  '';
   backupScript = pkgs.writeShellApplication {
     name = "hasala-backup";
     runtimeInputs = [
@@ -289,53 +360,7 @@ let
       pkgs.gnutar
       pkgs.util-linux
     ];
-    text = ''
-      # §5.8: an age-encrypted custom-format dump plus the purge ledger, then
-      # retention. The plaintext dump is never written to a file: pg_dump
-      # streams into age, and a copy of the stream goes through a FIFO to
-      # pg_restore --list, whose TOC (no data) is the only thing kept under
-      # $RUNTIME_DIRECTORY (tmpfs, 0700). Both are removed on every exit.
-      tag="''${1:-daily}"
-      case "$tag" in daily | premigrate) ;; *) echo "hasala-backup: unknown tag $tag" >&2; exit 2 ;; esac
-      ts="$(date -u +%Y%m%dT%H%M%SZ)"
-      dir=${lib.escapeShellArg cfg.backup.dir}
-      out="$dir/hasala-$tag-$ts.dump.age"
-      led="$dir/hasala-ledger-$tag-$ts.tar.age"
-      exec 9< ${maintenanceLock}
-      flock 9
-      work="$(mktemp -d "$RUNTIME_DIRECTORY/work.XXXXXX")"
-      trap 'rm -rf "$work"; rm -f "$out.part" "$led.part"' EXIT
-      mkfifo -m 0600 "$work/stream"
-      { pg_restore --list > "$work/toc"; cat > /dev/null; } < "$work/stream" &
-      toc_pid=$!
-      pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
-        --format=custom --compress=zstd:6 --no-password \
-        | tee "$work/stream" \
-        | age ${ageRecipientFlags} -o "$out.part"
-      wait "$toc_pid"
-      if [ "$tag" = daily ]; then grep -q ' TABLE DATA public op_log ' "$work/toc"; fi
-      sync "$out.part"
-      mv "$out.part" "$out"
-      ( cd "$dir" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256" )
-      # The purge ledger and the log generation (§5.8.1), read through the
-      # hasala-ledger group; never written here.
-      # A missing purge ledger, or one that cannot be read, fails the backup
-      # (pipefail), never an empty ledger copy.
-      [ -f ${ledgerDir}/purged ] || { echo "hasala-backup: ${ledgerDir}/purged is missing" >&2; exit 1; }
-      files=(purged)
-      if [ -e ${ledgerDir}/generation ]; then files+=(generation); fi
-      tar -C ${ledgerDir} -cf - -T /dev/null "''${files[@]}" \
-        | age ${ageRecipientFlags} -o "$led.part"
-      sync "$led.part"
-      mv "$led.part" "$led"
-      # Retention is a hard bound (N-06): every dump, ledger copy and checksum
-      # ${toString cfg.backup.retentionDays} days old or older goes, however few remain.
-      find "$dir" -maxdepth 1 -name 'hasala-*.age*' -mtime +${
-        toString (cfg.backup.retentionDays - 1)
-      } -delete
-      date +%s > "$STATE_DIRECTORY/last-success-$tag"
-      echo "hasala-backup: $tag written"
-    '';
+    text = backupText;
   };
 
   backupServiceConfig = hardening // {
@@ -367,54 +392,96 @@ let
     invite = "hasala";
     waitlist = "hasala";
     account = "hasala";
+    mailbox = "hasala";
     email = "hasala";
     purge-user = "hasala";
     verify = "hasala";
     version = "hasala";
     migrate = "hasala-migrate";
   };
+  adminText = ''
+    [ "$(id -u)" -eq 0 ] || { echo "hasala-admin: run it with sudo" >&2; exit 2; }
+    mode="''${1:-}"; [ $# -gt 0 ] && shift
+    case "$mode" in
+      ${concatStringsSep "\n    " (lib.mapAttrsToList (m: u: "${m}) user=${u} ;;") adminModes)}
+      *) echo "usage: sudo hasala-admin {${concatStringsSep "|" (lib.attrNames adminModes)}} [flags]" >&2; exit 2 ;;
+    esac
+    # Every mode except migrate runs as hasala_runtime: spec 02 §5.6 refuses
+    # any non-migrate mode whose role owns op_log or key_history. (Spec 05
+    # review 2 row 1, F-10, moves these to OS user hasala-cli → role
+    # hasala_console; deferred until spec 02/07's grants for that role exist.)
+    if [ "$user" = hasala-migrate ]; then
+      dsn="HASALA_MIGRATE_DSN=${migrateDSN}"
+      groups="hasala-db"
+    else
+      dsn="HASALA_PG_DSN=${runtimeDSN}"
+      groups="hasala-db hasala-ledger"
+    fi
+    logger -t hasala-admin -- "mode=$mode by=''${SUDO_USER:-root}"   # never the arguments
+    lock=()
+    if [ "$mode" = migrate ]; then
+      case "$#:''${1:-}" in
+        1:--status | 1:-status | 1:--pending | 1:-pending | 1:--help | 1:-help | 1:-h) ;;
+        *)
+          ${optionalString cfg.backup.enable "systemctl start hasala-backup-premigrate.service"}
+          lock=(flock --no-fork ${maintenanceLock})
+          ;;
+      esac
+    fi
+    io=--pipe; [ -t 0 ] && [ -t 1 ] && io=--pty
+    # --description: without it systemd logs "Started <the full command line>",
+    # which would put the arguments (a note, an account id) in the journal.
+    exec "''${lock[@]}" systemd-run --quiet --wait --collect "$io" --service-type=exec \
+      --description="hasala-admin $mode" \
+      --uid="$user" --gid="$user" -p SupplementaryGroups="$groups" -p Slice=hasala.slice \
+      -p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes \
+      -p PrivateDevices=yes -p ProtectKernelTunables=yes -p ProtectControlGroups=yes \
+      -p PrivateNetwork=yes -p RestrictAddressFamilies=AF_UNIX -p CapabilityBoundingSet= \
+      -p LimitCORE=0 \
+      ${concatStringsSep " " (map (p: "-p InaccessiblePaths=${p}") cfg.hardening.inaccessiblePaths)} \
+      -p SyslogIdentifier=hasala-admin -p ReadWritePaths=${ledgerDir} -p UMask=0077 \
+      -E "$dsn" -E TZ=UTC -E HASALA_PURGE_LEDGER_PATH=${ledgerDir}/purged \
+      -E "HASALA_ADMIN_ACTOR=cli:''${SUDO_USER:-root}" \
+      ${hasalad} "$mode" "$@"
+  '';
   hasalaAdmin = pkgs.writeShellApplication {
     name = "hasala-admin";
     runtimeInputs = [
       config.systemd.package
       pkgs.util-linux
     ];
-    text = ''
-      [ "$(id -u)" -eq 0 ] || { echo "hasala-admin: run it with sudo" >&2; exit 2; }
-      mode="''${1:-}"; [ $# -gt 0 ] && shift
-      case "$mode" in
-        ${concatStringsSep "\n    " (lib.mapAttrsToList (m: u: "${m}) user=${u} ;;") adminModes)}
-        *) echo "usage: sudo hasala-admin {${concatStringsSep "|" (lib.attrNames adminModes)}} [flags]" >&2; exit 2 ;;
-      esac
-      # Every mode except migrate runs as hasala_runtime: spec 02 §5.6 refuses
-      # any non-migrate mode whose role owns op_log or key_history. (Spec 05
-      # review 2 row 1, F-10, moves these to OS user hasala-cli → role
-      # hasala_console; deferred until spec 02/07's grants for that role exist.)
-      if [ "$user" = hasala-migrate ]; then
-        dsn="HASALA_MIGRATE_DSN=${migrateDSN}"
-        groups="hasala-db"
-      else
-        dsn="HASALA_PG_DSN=${runtimeDSN}"
-        groups="hasala-db hasala-ledger"
-      fi
-      logger -t hasala-admin -- "mode=$mode by=''${SUDO_USER:-root}"   # never the arguments
-      io=--pipe; [ -t 0 ] && [ -t 1 ] && io=--pty
-      # --description: without it systemd logs "Started <the full command line>",
-      # which would put the arguments (a note, an account id) in the journal.
-      exec systemd-run --quiet --wait --collect "$io" --service-type=exec \
-        --description="hasala-admin $mode" \
-        --uid="$user" --gid="$user" -p SupplementaryGroups="$groups" -p Slice=hasala.slice \
-        -p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes \
-        -p PrivateDevices=yes -p ProtectKernelTunables=yes -p ProtectControlGroups=yes \
-        -p PrivateNetwork=yes -p RestrictAddressFamilies=AF_UNIX -p CapabilityBoundingSet= \
-        -p LimitCORE=0 \
-        ${concatStringsSep " " (map (p: "-p InaccessiblePaths=${p}") cfg.hardening.inaccessiblePaths)} \
-        -p SyslogIdentifier=hasala-admin -p ReadWritePaths=${ledgerDir} -p UMask=0077 \
-        -E "$dsn" -E TZ=UTC -E HASALA_PURGE_LEDGER_PATH=${ledgerDir}/purged \
-        -E "HASALA_ADMIN_ACTOR=cli:''${SUDO_USER:-root}" \
-        ${hasalad} "$mode" "$@"
-    '';
+    text = adminText;
   };
+
+  bumpGenerationText = ''
+    [ "$(id -u)" -eq 0 ] || { echo "hasala-bump-generation: run it with sudo" >&2; exit 2; }
+    file=${ledgerDir}/generation
+    old=0
+    if [ -e "$file" ]; then old="$(tr -d '[:space:]' < "$file")"; fi
+    case "$old" in
+      "" | *[!0-9]*) echo "hasala-bump-generation: $file does not hold a number; fix it by hand" >&2; exit 1 ;;
+    esac
+    next="$(date -u +%s)"
+    if [ "$old" -ge "$next" ]; then next=$((old + 1)); fi
+    tmp="$(mktemp "$file.XXXXXX")"
+    trap 'rm -f "$tmp"' EXIT
+    printf '%s\n' "$next" > "$tmp"
+    chown hasala:hasala-ledger "$tmp"
+    chmod 0640 "$tmp"
+    mv "$tmp" "$file"
+    echo "hasala-bump-generation: $old -> $next"
+  '';
+  bumpGeneration = pkgs.writeShellApplication {
+    name = "hasala-bump-generation";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = bumpGenerationText;
+  };
+
+  unlessFirewallReload = commands: ''
+    if ! iptables -w -C INPUT -j nixos-drop 2>/dev/null; then
+      ${commands}
+    fi
+  '';
 
   # ------------------------------------------------------------------ health
   # §5.9.3, the probes this build can answer: P1 (local API), P2–P4 and P9
@@ -424,6 +491,111 @@ let
   # ::1; this unit runs as hasala-health, never nginx). P6 (mail metrics) and P7
   # (apex token pages) need the metrics listener and the website's live
   # checks; they join when those land.
+  healthProbes = [
+    "P1"
+  ]
+  ++ optionals cfg.tunnel.enable [
+    "P2"
+    "P3"
+    "P5"
+    "P9"
+  ]
+  ++ optionals cfg.console.enable [
+    "P8"
+    "P10"
+  ];
+  healthProbesOff = lib.subtractLists healthProbes [
+    "P1"
+    "P2"
+    "P3"
+    "P5"
+    "P8"
+    "P9"
+    "P10"
+  ];
+  healthText = ''
+    failed=" "
+    note() { echo "hasala-health: $1 $2"; failed="$failed$1 "; }
+    code() { curl -s -o "$RUNTIME_DIRECTORY/body" -D "$RUNTIME_DIRECTORY/headers" -w '%{http_code}' --max-time 10 "$1" || true; }
+
+    c=$(code ${lib.escapeShellArg "http://${loopback cfg.listen.port}/api/v1/healthz"})
+    { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P1 "local healthz answered $c"
+    ${optionalString cfg.tunnel.enable ''
+      c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/healthz"})
+      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P2 "public healthz answered $c"
+      for p in metrics admin/; do
+        c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/"}"$p")
+        case "$c" in 403 | 404) ;; *) note P3 "/$p answered $c (want 403 or 404)" ;; esac
+      done
+      c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/console"})
+      [ "$c" = 404 ] || note P9 "/api/v1/console answered $c (want 404)"
+      c=$(code ${lib.escapeShellArg cfg.monitoring.healthCheck.aasaUrl})
+      if [ "$c" != 200 ] || grep -qi '^location:' "$RUNTIME_DIRECTORY/headers" \
+        || ! grep -qi '^content-type: application/json' "$RUNTIME_DIRECTORY/headers"; then
+        note P5 "AASA answered $c"
+      elif ! jq -e --arg app ${lib.escapeShellArg appId} \
+        '.webcredentials.apps == [$app] and ([.applinks.details[0].components[] | .["/"]] == ["/i/*"])' \
+        "$RUNTIME_DIRECTORY/body" >/dev/null 2>&1; then
+        note P5 "AASA body does not claim exactly webcredentials and /i/*"
+      fi
+    ''}
+    ${optionalString cfg.console.enable ''
+      c=$(code ${lib.escapeShellArg "http://${loopback cfg.console.metricsPort}/healthz"})
+      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P8 "console healthz answered $c"
+      for u in ${lib.escapeShellArg "http://127.0.0.1:${toString cfg.console.port}/"} ${lib.escapeShellArg "http://[::1]:${toString cfg.console.port}/"}; do
+        rc=0
+        curl -sg -o /dev/null --max-time 5 "$u" || rc=$?
+        [ "$rc" = 7 ] || note P10 "$u: curl exit $rc, want 7 (the console's kernel rule must reset this user)"
+      done
+    ''}
+    rm -f "$RUNTIME_DIRECTORY/body" "$RUNTIME_DIRECTORY/headers"
+
+    # Each probe alerts on its second consecutive failing run only, then stays
+    # quiet until it passes (which posts one recovery notice), so one failing
+    # probe never mutes another.
+    rm -f "$STATE_DIRECTORY/failures"
+    on=(${concatStringsSep " " healthProbes})
+    off=(${concatStringsSep " " healthProbesOff})
+    for p in "''${off[@]}"; do
+      rm -f "$STATE_DIRECTORY/failures.$p" "$STATE_DIRECTORY/recovered.$p"
+    done
+    alert=0
+    for p in "''${on[@]}"; do
+      f="$STATE_DIRECTORY/failures.$p"
+      n=$(cat "$f" 2>/dev/null || echo 0)
+      case "$failed" in
+        *" $p "*)
+          n=$((n + 1))
+          echo "$n" > "$f"
+          if [ "$n" -eq 2 ]; then
+            alert=1
+            rm -f "$STATE_DIRECTORY/recovered.$p"
+          fi
+          ;;
+        *)
+          if [ "$n" -ge 2 ]; then : > "$STATE_DIRECTORY/recovered.$p"; fi
+          echo 0 > "$f"
+          ;;
+      esac
+    done
+    ${
+      if cfg.monitoring.ntfyUrl != null then
+        ''
+          recovered=""
+          for p in "''${on[@]}"; do
+            if [ -e "$STATE_DIRECTORY/recovered.$p" ]; then recovered="$recovered $p"; fi
+          done
+          if [ -n "$recovered" ] && curl -sf --max-time 10 -d "hasala: recovered$recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null; then
+            for p in $recovered; do rm -f "$STATE_DIRECTORY/recovered.$p"; done
+          fi
+        ''
+      else
+        ''
+          rm -f "$STATE_DIRECTORY"/recovered.*
+        ''
+    }
+    exit "$alert"
+  '';
   healthScript = pkgs.writeShellApplication {
     name = "hasala-health";
     runtimeInputs = [
@@ -431,71 +603,17 @@ let
       pkgs.jq
       pkgs.coreutils
     ];
-    text = ''
-      failed=" "
-      note() { echo "hasala-health: $1 $2"; failed="$failed$1 "; }
-      code() { curl -s -o "$RUNTIME_DIRECTORY/body" -D "$RUNTIME_DIRECTORY/headers" -w '%{http_code}' --max-time 10 "$1" || true; }
+    text = healthText;
+  };
 
-      c=$(code ${lib.escapeShellArg "http://${loopback cfg.listen.port}/api/v1/healthz"})
-      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P1 "local healthz answered $c"
-      ${optionalString cfg.tunnel.enable ''
-        c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/healthz"})
-        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P2 "public healthz answered $c"
-        for p in metrics admin/; do
-          c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/"}"$p")
-          case "$c" in 403 | 404) ;; *) note P3 "/$p answered $c (want 403 or 404)" ;; esac
-        done
-        c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/console"})
-        [ "$c" = 404 ] || note P9 "/api/v1/console answered $c (want 404)"
-        c=$(code ${lib.escapeShellArg cfg.monitoring.healthCheck.aasaUrl})
-        if [ "$c" != 200 ] || grep -qi '^location:' "$RUNTIME_DIRECTORY/headers" \
-          || ! grep -qi '^content-type: application/json' "$RUNTIME_DIRECTORY/headers"; then
-          note P5 "AASA answered $c"
-        elif ! jq -e --arg app ${lib.escapeShellArg appId} \
-          '.webcredentials.apps == [$app] and ([.applinks.details[0].components[] | .["/"]] == ["/i/*"])' \
-          "$RUNTIME_DIRECTORY/body" >/dev/null 2>&1; then
-          note P5 "AASA body does not claim exactly webcredentials and /i/*"
-        fi
-      ''}
-      ${optionalString cfg.console.enable ''
-        c=$(code ${lib.escapeShellArg "http://${loopback cfg.console.metricsPort}/healthz"})
-        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P8 "console healthz answered $c"
-        for u in ${lib.escapeShellArg "http://127.0.0.1:${toString cfg.console.port}/"} ${lib.escapeShellArg "http://[::1]:${toString cfg.console.port}/"}; do
-          rc=0
-          curl -sg -o /dev/null --max-time 5 "$u" || rc=$?
-          [ "$rc" = 7 ] || note P10 "$u: curl exit $rc, want 7 (the console's kernel rule must reset this user)"
-        done
-      ''}
-      rm -f "$RUNTIME_DIRECTORY/body" "$RUNTIME_DIRECTORY/headers"
-
-      # Each probe alerts on its second consecutive failing run only, then stays
-      # quiet until it passes (which posts one recovery notice), so one failing
-      # probe never mutes another.
-      rm -f "$STATE_DIRECTORY/failures"
-      alert=0
-      recovered=""
-      for p in P1 P2 P3 P5 P8 P9 P10; do
-        f="$STATE_DIRECTORY/failures.$p"
-        n=$(cat "$f" 2>/dev/null || echo 0)
-        case "$failed" in
-          *" $p "*)
-            n=$((n + 1))
-            echo "$n" > "$f"
-            if [ "$n" -eq 2 ]; then alert=1; fi
-            ;;
-          *)
-            if [ "$n" -ge 2 ]; then recovered="$recovered $p"; fi
-            echo 0 > "$f"
-            ;;
-        esac
-      done
-      ${optionalString (cfg.monitoring.ntfyUrl != null) ''
-        if [ -n "$recovered" ]; then
-          curl -s --max-time 10 -d "hasala: recovered$recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null || true
-        fi
-      ''}
-      exit "$alert"
-    '';
+  postgresAlertText = ''
+    [ "''${SERVICE_RESULT:-}" != success ] || exit 0
+    systemctl start --no-block -- "$@"
+  '';
+  postgresAlert = pkgs.writeShellApplication {
+    name = "hasala-postgresql-alert";
+    runtimeInputs = [ config.systemd.package ];
+    text = postgresAlertText;
   };
 
   emailTokenCheck = pkgs.writeShellApplication {
@@ -889,6 +1007,21 @@ in
       };
     };
 
+    renderedScripts = mkOption {
+      type = types.attrsOf types.str;
+      internal = true;
+      readOnly = true;
+      default = {
+        backup = backupText;
+        retry = retryText;
+        admin = adminText;
+        bumpGeneration = bumpGenerationText;
+        health = healthText;
+        postgresAlert = postgresAlertText;
+      };
+      description = "The text of the operational scripts; the ops-scripts check runs it against stubs.";
+    };
+
     backup = {
       enable = mkEnableOption "encrypted daily backups";
       dir = mkOption {
@@ -910,6 +1043,11 @@ in
         type = types.ints.positive;
         default = 29;
         description = "Local copies are deleted once this many days old (≤ 29, M13).";
+      };
+      dumpTimeoutSec = mkOption {
+        type = types.ints.positive;
+        default = 3600;
+        description = "The longest one pg_dump may run, in seconds. A dump holds the maintenance lock, hasala-migrate waits on that lock, and hasala-migrate's start timeout is derived from this value.";
       };
       offsite = {
         enable = mkEnableOption "the off-site copy (rclone)";
@@ -1228,8 +1366,16 @@ in
             "App Store Connect needs the console, the dedicated key (file, 10-character id not in a non-empty refusedKeyIds) and a UUID issuer; serve never gets a console, ASC or TestFlight variable."
           )
           (a "M21"
-            (!cfg.console.enable || (config.networking.firewall.enable && !config.networking.nftables.enable))
-            "the console's kernel rule lives in the iptables firewall: it must be enabled, and an nftables host would silently drop the rule."
+            (
+              !(cfg.console.enable || cfg.tunnel.enable)
+              || (
+                config.networking.firewall.enable
+                && config.networking.firewall.backend == "iptables"
+                && !config.networking.nftables.enable
+                && !config.services.firewalld.enable
+              )
+            )
+            "the kernel rules on the console and API ports live in the iptables firewall: it must be enabled and be the only firewall, and an nftables or firewalld host would silently drop the rules."
           )
           (a "M22" (secretsInStore == [ ])
             "every secret-file option is an absolute path outside ${builtins.storeDir} (a secret in the store is world-readable); offending: ${concatStringsSep ", " secretsInStore}."
@@ -1237,6 +1383,9 @@ in
           (a "M23" (
             !cfg.monitoring.earlyAccessNotice || cfg.monitoring.ntfyUrl != null
           ) "monitoring.earlyAccessNotice posts to monitoring.ntfyUrl: set it too.")
+          (a "M24" (
+            !cfg.monitoring.healthCheck.enable || cfg.monitoring.onFailure != [ ]
+          ) "monitoring.healthCheck alerts through monitoring.onFailure: set it too.")
         ];
 
       # ------------------------------------------------------------- §5.11
@@ -1331,7 +1480,10 @@ in
         mode = "0440";
       };
 
-      environment.systemPackages = [ hasalaAdmin ];
+      environment.systemPackages = [
+        hasalaAdmin
+        bumpGeneration
+      ];
       security.pki.caCertificateBlacklist = cfg.hardening.distrustedCARoots;
       services.journald.extraConfig = lib.mkDefault "SystemMaxUse=1G";
 
@@ -1349,14 +1501,20 @@ in
         preStart = ''
           set -euo pipefail
           shopt -s nullglob
+          allowed="$(cat ${pgRoot}/ALLOW_MAJOR_CHANGE 2>/dev/null || true)"
+          other=""
           for v in ${pgRoot}/*/PG_VERSION; do
             d="''${v%/PG_VERSION}"
-            if [ "$d" != "${dataDir}" ] && [ ! -e ${pgRoot}/ALLOW_MAJOR_CHANGE ]; then
+            [ "$d" != "${dataDir}" ] || continue
+            other="$d"
+            if [ "$allowed" != "${pgMajor}" ]; then
               echo "hasala-postgresql: a cluster exists at $d but this build runs PostgreSQL ${pgMajor}." >&2
               echo "Dump and restore first (spec 05 §11.7, 'PostgreSQL major upgrade')." >&2
+              echo "To start an empty ${pgMajor} cluster for the restore, write ${pgMajor} to ${pgRoot}/ALLOW_MAJOR_CHANGE." >&2
               exit 1
             fi
           done
+          [ -n "$other" ] || rm -f ${pgRoot}/ALLOW_MAJOR_CHANGE
           if [ ! -s ${dataDir}/PG_VERSION ]; then
             if [ -n "$(ls -A ${dataDir})" ]; then
               echo "hasala-postgresql: ${dataDir} is not empty but has no PG_VERSION; refusing initdb" >&2
@@ -1367,30 +1525,41 @@ in
               --data-checksums
           fi
         '';
-        serviceConfig = hardening // {
-          Type = "notify";
-          User = "hasala-pg";
-          Group = "hasala-db";
-          ExecStart = "${pg}/bin/postgres -D ${dataDir} -c config_file=${pgConf}";
-          ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
-          KillMode = "mixed";
-          KillSignal = "SIGINT";
-          TimeoutSec = 120;
-          StateDirectory = [
-            "hasala-postgresql"
-            "hasala-postgresql/${pgMajor}"
-          ];
-          StateDirectoryMode = "0700";
-          RuntimeDirectory = "hasala-postgresql";
-          RuntimeDirectoryMode = "0750";
-          PrivateNetwork = true;
-          RestrictAddressFamilies = [ "AF_UNIX" ];
-          IPAddressDeny = "any";
-          MemoryHigh = cfg.limits.postgresMemoryHigh;
-          MemoryMax = cfg.limits.postgresMemoryMax;
-          CPUQuota = "200%";
-          TasksMax = 128;
-          LimitNOFILE = 4096;
+        serviceConfig =
+          hardening
+          // {
+            Type = "notify";
+            User = "hasala-pg";
+            Group = "hasala-db";
+            ExecStart = "${pg}/bin/postgres -D ${dataDir} -c config_file=${pgConf}";
+            ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
+            KillMode = "mixed";
+            KillSignal = "SIGINT";
+            TimeoutSec = 120;
+            StateDirectory = [
+              "hasala-postgresql"
+              "hasala-postgresql/${pgMajor}"
+            ];
+            StateDirectoryMode = "0700";
+            RuntimeDirectory = "hasala-postgresql";
+            RuntimeDirectoryMode = "0750";
+            PrivateNetwork = true;
+            RestrictAddressFamilies = [ "AF_UNIX" ];
+            IPAddressDeny = "any";
+            MemoryHigh = cfg.limits.postgresMemoryHigh;
+            MemoryMax = cfg.limits.postgresMemoryMax;
+            CPUQuota = "200%";
+            TasksMax = 128;
+            LimitNOFILE = 4096;
+            Restart = "on-failure";
+            RestartSec = "5s";
+          }
+          // optionalAttrs (cfg.monitoring.onFailure != [ ]) {
+            ExecStopPost = "+${lib.getExe postgresAlert} ${lib.escapeShellArgs cfg.monitoring.onFailure}";
+          };
+        unitConfig = {
+          StartLimitIntervalSec = 300;
+          StartLimitBurst = 5;
         };
         restartTriggers = [ pgConf ];
       };
@@ -1441,11 +1610,11 @@ in
           User = "hasala-migrate";
           Group = "hasala-migrate";
           SupplementaryGroups = [ "hasala-db" ];
-          ExecStart = "${pkgs.util-linux}/bin/flock --no-fork ${maintenanceLock} ${hasalad} migrate";
+          ExecStart = "${pkgs.util-linux}/bin/flock --no-fork ${maintenanceLock} ${pkgs.coreutils}/bin/timeout ${toString migrateRunSec} ${retrying} ${hasalad} migrate";
           PrivateNetwork = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
           IPAddressDeny = "any";
-          TimeoutStartSec = "10min";
+          TimeoutStartSec = cfg.backup.dumpTimeoutSec + migrateRunSec + 300;
         };
       };
 
@@ -1474,7 +1643,7 @@ in
             "hasala-db"
             "hasala-ledger"
           ];
-          ExecStart = "${hasalad} purge-user --replay-ledger";
+          ExecStart = "${retrying} ${hasalad} purge-user --replay-ledger";
           ReadWritePaths = [ ledgerDir ];
           PrivateNetwork = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
@@ -1519,6 +1688,7 @@ in
           ReadWritePaths = [ ledgerDir ];
           Restart = "on-failure";
           RestartSec = "5s";
+          TimeoutStopSec = "90s";
           RestrictAddressFamilies = [
             "AF_INET"
             "AF_INET6"
@@ -1608,7 +1778,7 @@ in
         iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out 2>/dev/null \
           || iptables -w -I OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out
       '';
-      networking.firewall.extraStopCommands = ''
+      networking.firewall.extraStopCommands = unlessFirewallReload ''
         iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out 2>/dev/null || true
         iptables -w -F hasala-api-out 2>/dev/null || true
         iptables -w -X hasala-api-out 2>/dev/null || true
@@ -1688,7 +1858,7 @@ in
         ip6tables -w -C OUTPUT -o lo -p tcp -d ::1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null \
           || ip6tables -w -I OUTPUT -o lo -p tcp -d ::1 --dport ${toString cfg.console.port} -j hasala-console-out
       '';
-      networking.firewall.extraStopCommands = ''
+      networking.firewall.extraStopCommands = unlessFirewallReload ''
         iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null || true
         iptables -w -F hasala-console-out 2>/dev/null || true
         iptables -w -X hasala-console-out 2>/dev/null || true
@@ -1754,7 +1924,7 @@ in
           TZ = "UTC";
         };
         script = ''
-          n=$(${hasalad} migrate --pending)
+          n=$(${retrying} ${hasalad} migrate --pending)
           if [ "$n" = 0 ]; then
             echo "hasala-backup-premigrate: no pending migrations, no dump"
             exit 0
@@ -1846,6 +2016,15 @@ in
           IOSchedulingClass = "idle";
           MemoryMax = cfg.limits.backupMemoryMax;
           CPUQuota = "100%";
+        };
+      };
+      systemd.timers.hasala-backup-offsite = {
+        wantedBy = [ "hasala.target" ];
+        partOf = [ "hasala.target" ];
+        timerConfig = {
+          OnCalendar = "*-*-* 08:00:00";
+          Persistent = true;
+          RandomizedDelaySec = "5m";
         };
       };
     })

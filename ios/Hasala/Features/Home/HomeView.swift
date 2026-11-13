@@ -80,6 +80,11 @@ struct HomeView: View {
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)
+        if app.syncNotices.uploadsStuck {
+          UploadsStuckBanner(notices: app.syncNotices)
+            .padding(.horizontal, HSpacing.insetPage)
+            .padding(.top, 8 - HSpacing.gapScreenSection)
+        }
         if snapshot.isThisMonth, let line = app.sortedForYou.homeLine {
           SortedForYouRow(line: line, spoken: app.sortedForYou.homeSpoken ?? line) { app.router.home.append(.sortedForYou) }
             .padding(.horizontal, HSpacing.insetPage)

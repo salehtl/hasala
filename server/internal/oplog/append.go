@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/budget"
@@ -281,9 +282,17 @@ func (a *Appender) appendRows(ctx context.Context, rows []Row, prepare prepareFu
 		return nil, a.budget().RecordRefusal(ctx, err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("oplog: append: commit: %w", err)
+		if commitOutcomeKnown(err) {
+			return nil, fmt.Errorf("oplog: append: commit: %w", err)
+		}
+		return nil, fmt.Errorf("oplog: append: commit: %w: %w", errCommitUnanswered, err)
 	}
 	return seqs, nil
+}
+
+func commitOutcomeKnown(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.Is(err, pgx.ErrTxCommitRollback) || errors.As(err, &pgErr)
 }
 
 // prepareFunc runs inside the append transaction, after allocSeq has taken the
@@ -317,12 +326,15 @@ type prepareFunc func(ctx context.Context, tx pgx.Tx, rows []Row) error
 // consequence: under the reversed order the loser's error is SQLSTATE 23505,
 // not ErrChainBreak.
 func (a *Appender) appendTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, rows []Row, prepare prepareFunc) ([]int64, error) {
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT true FROM users WHERE id = $1 FOR KEY SHARE`, userID).Scan(&exists); err != nil {
+	var frozen bool
+	if err := tx.QueryRow(ctx, `SELECT frozen_at IS NOT NULL FROM users WHERE id = $1 FOR KEY SHARE`, userID).Scan(&frozen); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("oplog: append: no such account")
 		}
 		return nil, fmt.Errorf("oplog: append: lock the account: %w", err)
+	}
+	if frozen {
+		return nil, ErrAccountFrozen
 	}
 	if err := EnsureSeqRow(ctx, tx, userID); err != nil {
 		return nil, err

@@ -1,3 +1,4 @@
+import CoreMailbox
 import Foundation
 import HasalaDesign
 import HasalaModels
@@ -141,6 +142,63 @@ struct MailboxFlowTests: AccountSuite {
     #expect(f.signedInAgainLine
       == "Now reading maya.other@example.com. Transactions from maya.k@example.com couldn't be removed.")
     #expect(failing.removed.isEmpty && failing.mailboxes.first?.state == .connected)
+    #expect(failing.heldRemoval == MailHeldRemoval(address: "maya.k@example.com", transactions: 1))
+  }
+
+  @Test func aRemovalThatDidNotFinishIsOfferedUntilItIsDoneOrKept() async {
+    let failing = otherAddress(imported: 42)
+    failing.switchRemoveFails = true
+    let f = MailConnectCoordinator(mailbox: failing, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(await answering(f, .remove) { await f.connect(.outlook) } != nil)
+    let held = MailHeldRemoval(address: "maya.k@example.com", transactions: 42)
+    #expect(failing.heldRemoval == held)
+    #expect(BankTextsAlertsPage.heldRemoval(failing) == held)
+    #expect(BankTextsAlertsPage.heldRemoval(nil) == nil)
+    #expect(MailCopy.heldRemovalTitle(held) == "42 transactions weren't removed")
+    #expect(MailCopy.heldRemovalDetail(held) == "From maya.k@example.com, which you disconnected. They still count in your totals.")
+    let one = MailHeldRemoval(address: "maya.k@example.com", transactions: 1)
+    #expect(MailCopy.heldRemovalTitle(one) == "1 transaction wasn't removed")
+    #expect(MailCopy.heldRemovalDetail(one) == "From maya.k@example.com, which you disconnected. It still counts in your totals.")
+    #expect(MailCopy.heldRemovalTitle(MailHeldRemoval(address: "maya.k@example.com", transactions: nil))
+      == "Transactions weren't removed")
+
+    #expect(MailCopy.heldRemovalLine(.removed(42), held) == "42 transactions removed.")
+    #expect(MailCopy.heldRemovalLine(.removed(nil), held) == "The old transactions were removed.")
+    #expect(MailCopy.heldRemovalLine(.failed, held)
+      == "Transactions from maya.k@example.com couldn't be removed.")
+    #expect(MailCopy.heldRemovalLine(.readElsewhere, held) == "Your email is read on your other iPhone.")
+    #expect(MailCopy.heldRemovalLine(.ended, held) == nil)
+
+    failing.heldRemoveFails = true
+    #expect(await failing.removeHeld() == .failed)
+    #expect(failing.heldRemoval == held)
+    failing.heldRemoveFails = false
+    #expect(await failing.removeHeld() == .removed(42))
+    #expect(failing.heldRemoval == nil && failing.removed == ["outlook-1"])
+
+    let kept = otherAddress(imported: 3)
+    kept.switchRemoveFails = true
+    let k = MailConnectCoordinator(mailbox: kept, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(await answering(k, .remove) { await k.connect(.outlook) } != nil)
+    #expect(kept.heldRemoval != nil)
+    await kept.keepHeld()
+    #expect(kept.heldRemoval == nil && kept.removed.isEmpty)
+  }
+
+  @Test func theLiveRemoveThemSaysWhatTheEngineDid() {
+    #expect(LiveMailboxConnecting.heldOutcome(.removed(42)) == .removed(42))
+    #expect(LiveMailboxConnecting.heldOutcome(.removed(nil)) == .removed(nil))
+    #expect(LiveMailboxConnecting.heldOutcome(.failed) == .failed)
+    #expect(LiveMailboxConnecting.heldOutcome(.readElsewhere) == .readElsewhere)
+    #expect(LiveMailboxConnecting.heldOutcome(.ended) == .ended)
+  }
+
+  @Test func theLiveRowNamesTheMailboxAndCountOfTheKeptRemoval() {
+    let plan = MailboxRetirePlan(
+      grantID: "g/mbx-1", provider: "outlook", legacy: false, total: 42, edited: 0, address: "maya@example.net")
+    #expect(LiveMailboxConnecting.heldRemoval(plan) == MailHeldRemoval(address: "maya@example.net", transactions: 42))
+    let unknown = MailboxRetirePlan(grantID: "g/mbx-1", provider: "gmail", legacy: true, total: 0, edited: 0, countKnown: false)
+    #expect(LiveMailboxConnecting.heldRemoval(unknown) == MailHeldRemoval(address: "Gmail", transactions: nil))
   }
 
   @Test func tryAgainChangesNothingAndSaysNothing() async {
@@ -431,6 +489,30 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailConnectErrorView.otherAccountTitle(.gmail) == "Use another Google account")
   }
 
+  @Test func aPermissionNotGivenHasItsScreenFromTheProfileToo() async {
+    let lane = mailbox()
+    lane.gmailPermissionMissing = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.gmail)
+    #expect(c.errorScreen == .permissionMissing(.gmail) && c.inlineMessage == nil)
+    c.reset()
+    #expect(c.errorScreen == nil)
+    await c.retry(.gmail)
+    #expect(c.outcome == .connected(mailboxID: "gmail-1") && c.errorScreen == nil)
+  }
+
+  @Test func setupAndTheProfileGiveTheSameFailuresAScreen() {
+    let failures: [MailConnectFailure] = [
+      .cancelled, .alreadyConnected(address: "a@example.com"), .takenByOtherIPhone, .offline, .noMailbox(.gmail),
+      .noMailbox(.outlook), .permissionMissing(.gmail), .permissionMissing(.outlook), .switchDeclined, .failed("x"),
+    ]
+    for failure in failures {
+      #expect(SetupModel.showsErrorScreen(failure) == MailConnectCoordinator.hasScreen(failure, provider: .outlook), "\(failure)")
+    }
+    #expect(!MailConnectCoordinator.hasScreen(.cancelled, provider: .gmail))
+    #expect(MailConnectCoordinator.hasScreen(.permissionMissing(.gmail), provider: .gmail))
+  }
+
   /// Setup's connect screen after Back from the first scan shows the mailbox it connected
   /// (from the service, so a new screen or a relaunch shows it too) and no second sign-in;
   /// Add a mailbox never treats an earlier mailbox as this attempt's.
@@ -532,6 +614,61 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailboxMoment.pending == nil)
   }
 
+  @Test func aSecondFirstScanJoinsTheOneRunning() async throws {
+    let lane = mailbox()
+    lane.step = .milliseconds(5)
+    await MailConnectCoordinator(mailbox: lane, context: .addMailbox).connect(.gmail)
+    var opened: ScanProgress?
+    for await p in lane.firstScan() {
+      opened = p
+      break
+    }
+    let firstRead = try #require(opened).read
+    var reads: [Int] = []
+    for await p in lane.firstScan() { reads.append(p.read) }
+    #expect(try #require(reads.first) > firstRead)
+    #expect(reads == reads.sorted() && reads.last == lane.total)
+    #expect(lane.importing == nil && lane.mailboxes.first?.state == .connected)
+  }
+
+  @Test func aMomentIsHandedOnlyToABankAlertsAboutToShow() {
+    defer { MailboxMoment.discard() }
+    MailboxMoment.discard()
+    let router = AppRouter()
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pending == nil)
+    router.open(.profile, profile: [.bankAlerts])
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pending == nil)
+    router.profile = [.bankAlerts, .connectMail(.outlook)]
+    MailboxMoment.hand(.signedInAgain(mailboxID: "outlook-1"), to: router)
+    #expect(MailboxMoment.pending == .signedInAgain(mailboxID: "outlook-1"))
+    router.profile = [.connectMail(.outlook)]
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pendingAddition == "outlook-2")
+  }
+
+  @Test func aMomentGoesWithTheProfileSheet() {
+    defer { MailboxMoment.discard() }
+    let router = AppRouter()
+    router.open(.profile, profile: [.bankAlerts, .connectMail(.outlook)])
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pendingAddition == "outlook-2")
+    router.sheet = nil
+    router.sheetDismissed()
+    #expect(MailboxMoment.pending == nil)
+  }
+
+  @Test func aMomentDoesNotReachTheNextAccount() {
+    defer { MailboxMoment.discard() }
+    let router = AppRouter()
+    router.open(.profile, profile: [.connectMail(.gmail)])
+    MailboxMoment.hand(.signedInAgain(mailboxID: "gmail-1"), to: router)
+    #expect(MailboxMoment.pending != nil)
+    AppRouter().clearPresentation()
+    #expect(MailboxMoment.pending == nil)
+  }
+
   /// The success haptic waits for the motion it marks to come to rest: the celebrate
   /// spring, the Reduce Motion fade, nothing when motion is settled.
   @Test func theHapticWaitsForTheMotionToSettle() {
@@ -548,11 +685,14 @@ struct MailboxFlowTests: AccountSuite {
   /// again aimed at the first mailbox that needs it, Needs you, Not connected.
   @Test func theHeroSaysItInAWord() {
     func hero(
-      _ m: [MailboxSnapshot], _ status: MailboxHealth.Status = .working, offer: MailOffer? = nil, read: MonthRead? = nil
+      _ m: [MailboxSnapshot], _ status: MailboxHealth.Status = .working, offer: MailOffer? = nil, read: MonthRead? = nil,
+      stoppedOn day: LocalDate? = nil
     ) -> BankAlertsPage.Hero {
       let health = MailboxHealth(status: status, lastEmail: "4 min ago", banks: "Emirates NBD and DIB")
+      let reading = ReadingState(
+        source: .mail(.outlook), kind: .stopped(.accountFull, since: day), today: LocalDate(2026, 10, 10))
       return BankAlertsPage.Hero(summary: MailboxesSummary(m, health: health, offer: offer), health: health,
-                                 mailboxes: m, offer: offer, read: read)
+                                 mailboxes: m, offer: offer, read: read, reading: day == nil ? nil : reading)
     }
     var syncing = MockMailbox.outlook
     syncing.state = .syncing
@@ -570,14 +710,23 @@ struct MailboxFlowTests: AccountSuite {
     let gmail = hero([MockMailbox.needingSignIn(MockMailbox.gmail)],
                      offer: .signInAgain(mailboxID: "gmail-1", provider: .gmail))
     #expect(gmail.detail == "Google ended access to maya@example.com on Wed\u{00A0}7\u{00A0}Oct.")
-    #expect(hero([MockMailbox.gmail], .quiet).title == "Needs you")
-    #expect(hero([MockMailbox.gmail], .quiet).stoppedID == nil)
-    #expect(working.stoppedID == nil && broken.stoppedID == nil)
+    #expect(working.totalsLine == nil && broken.totalsLine == nil)
     var halted = MockMailbox.outlook
-    halted.note = "Reading your bank alerts stopped."
-    let stopped = hero([MockMailbox.gmail, halted], .reconnect)
-    #expect(stopped.kind == .needsYou && stopped.stoppedID == "outlook-1")
-    #expect(stopped.detail == "Hasala stopped reading maya.k@example.com. Your Gmail still works.")
+    halted.state = .readingStopped
+    halted.lastChecked = "Wed 7 Oct, 09:14"
+    let stopped = hero([MockMailbox.gmail, halted], .reconnect, stoppedOn: LocalDate(2026, 10, 7))
+    #expect(stopped.kind == .stopped(mailboxID: "outlook-1") && stopped.hue == .sand)
+    #expect(stopped.title == "Bank alerts stopped" && stopped.glyph?.map(\.d) == PaperGlyph.alert.map(\.d))
+    #expect(stopped.detail == "Hasala stopped reading maya.k@example.com on Wed. Your Gmail still works.")
+    #expect(hero([halted], .reconnect, stoppedOn: LocalDate(2026, 9, 20)).detail
+      == "Hasala stopped reading maya.k@example.com on 20\u{00A0}Sep.")
+    #expect(hero([halted], .reconnect, stoppedOn: LocalDate(2026, 10, 10)).detail
+      == "Hasala stopped reading maya.k@example.com today.")
+    #expect(
+      stopped.totalsLine
+        == "Payments since then aren't counted, and a new sign-in won't fix it. If Try again doesn't help, email support@hasala.app.")
+    halted.lastChecked = nil
+    #expect(hero([halted], .reconnect).detail == "Hasala stopped reading maya.k@example.com.")
     let none = hero([], .notConnected, offer: .connect)
     #expect(none.kind == .notConnected && none.detail == "Add a mailbox for your bank alerts.")
   }
@@ -782,9 +931,9 @@ struct MailboxFlowTests: AccountSuite {
     let importing = MailboxesSummary([syncing], health: MailboxHealth(status: .importing, lastEmail: "", banks: ""),
                                      offer: nil)
     #expect(importing.title == "Importing your bank alerts" && importing.detail == "Checking now" && !importing.needsYou)
-    // Reading stopped on a mailbox that still reads connected (a halt a sign-in doesn't fix).
+    // Reading stopped on a mailbox (a halt a sign-in doesn't fix).
     var halted = MockMailbox.gmail
-    halted.note = "Reading your bank alerts stopped."
+    halted.state = .readingStopped
     let stopped = MailboxesSummary(
       [halted, MockMailbox.outlook], health: MailboxHealth(status: .reconnect, lastEmail: "", banks: ""), offer: nil)
     #expect(stopped.title == "Bank alerts stopped")

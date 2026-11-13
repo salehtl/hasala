@@ -12,7 +12,7 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 12
+  public static let version = 13
 
   static let tables = [
     "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "merchant_rejection", "sender_trust", "project", "goal",
@@ -233,7 +233,8 @@ public enum ProjectionSchema {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, category_id TEXT NOT NULL,
       amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
       payday INTEGER NOT NULL CHECK (payday BETWEEN 1 AND 31),
-      active INTEGER NOT NULL CHECK (active IN (0,1))
+      active INTEGER NOT NULL CHECK (active IN (0,1)),
+      written_ms INTEGER NOT NULL
     );
 
     CREATE TABLE category_plan_role (

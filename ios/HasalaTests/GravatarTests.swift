@@ -112,6 +112,20 @@ struct GravatarTests {
     #expect(!FileManager.default.fileExists(atPath: directory.path))
   }
 
+  @Test @MainActor func leavingTheAccountDeletesTheCachedPicturesAndKeepsTheSwitch() async {
+    let directory = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let subject = loader(directory: directory)
+    _ = await subject.picture(email: "a@example.com", pixels: 72)
+    #expect(FileManager.default.fileExists(atPath: directory.path))
+
+    let preference = GravatarPreference(defaults: freshDefaults(), loader: subject)
+    LocalAccountData.forget(defaults: freshDefaults(), gravatar: preference)
+    await preference.clearing?.value
+    #expect(!FileManager.default.fileExists(atPath: directory.path))
+    #expect(preference.isOn)
+  }
+
   @Test @MainActor func turningTheSwitchOffClearsTheCacheAndStaysOff() async {
     let suite = freshSuite()
     let d = UserDefaults(suiteName: suite)!

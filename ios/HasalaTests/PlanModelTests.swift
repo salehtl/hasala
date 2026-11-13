@@ -52,6 +52,32 @@ struct PlanModelTests {
     #expect(MoveMoneySheet.footnote(assigns: moves, month: "October") == "You can undo this right after.")
   }
 
+  @Test func keepingTheEndedMovesSetsThisMonthsBudgets() {
+    var state = MayaLedger.state
+    state.plan.expiredMoves = ["dining": .aed(100_00), "travel": .aed(-100_00)]
+    let app = AppModel(store: InMemoryLedger(state: state))
+    let model = PlanViewModel(app: app)
+    #expect(model.snapshot.expiredMovesLine == "1 move from September has ended")
+    let before = model.snapshot.row("dining")?.budget.minor ?? 0
+    let travel = model.snapshot.row("travel")?.budget
+    model.keepExpiredMoves()
+    #expect(model.snapshot.row("dining")?.budget.minor == before + 100_00)
+    #expect(model.snapshot.row("travel")?.budget == travel)
+    #expect(model.snapshot.expiredMovesLine == nil)
+    model.keepExpiredMoves()
+    #expect(model.snapshot.row("dining")?.budget.minor == before + 100_00)
+  }
+
+  @Test func theLiveStoreStopsOfferingAMoveOnceThisMonthsBudgetIsSet() throws {
+    var s = MayaLedger.state
+    let month = MayaLedger.now.date.yearMonth
+    s.plan.expiredMoves = ["dining": .aed(100_00), "groceries": .aed(50_00)]
+    _ = try LiveLedgerStore.patch(.setBudget("groceries", month.next, .aed(10_00)), &s, now: MayaLedger.now)
+    #expect(s.plan.expiredMoves["groceries"] == .aed(50_00))
+    _ = try LiveLedgerStore.patch(.setBudget("dining", month, .aed(2_000_00)), &s, now: MayaLedger.now)
+    #expect(s.plan.expiredMoves == ["groceries": .aed(50_00)])
+  }
+
   @Test func moveMoneyAsksBeforeDiscardingOnlyAfterAChange() {
     func dirty(_ destination: CategoryID? = "groceries", _ draft: String = "318.00",
                _ source: CategoryID?? = nil) -> Bool {
@@ -94,6 +120,22 @@ struct PlanModelTests {
     #expect(sheet.refusal(moving: .aed(2_500_00), from: "travel") == nil)
     #expect(sheet.refusal(moving: .aed(2_500_01), from: "travel") == "Travel doesn't have that much left")
     #expect(app.toast == nil)
+  }
+
+  @Test func aSourceNoLongerOfferedIsRefusedInWordsTheSheetsAlreadyUse() {
+    let app = AppModel(store: InMemoryLedger())
+    let sheet = BudgetSheetViewModel(app: app, category: "groceries")
+    #expect(sheet.refusal(noLongerOffered: "travel") == "Travel doesn't have that much left")
+    #expect(sheet.refusal(noLongerOffered: "no-such-category") == "This category is gone")
+    #expect(app.toast == nil)
+  }
+
+  @Test func aPickThatIsNowTheDestinationLeavesNothingChosen() {
+    let app = AppModel(store: InMemoryLedger())
+    let assign = BudgetSheetViewModel(app: app, category: nil)
+    let picked: CategoryID?? = .some("shopping")
+    #expect(PlanEngine.moveSource(picked: picked, offered: assign.sources(to: nil))?.id == "shopping")
+    #expect(PlanEngine.moveSource(picked: picked, offered: assign.sources(to: "shopping")) == nil)
   }
 
   /// A rise from Ready to assign sets the budget; a rise from a category moves money from it;

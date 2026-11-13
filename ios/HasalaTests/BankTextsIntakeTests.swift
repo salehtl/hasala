@@ -89,6 +89,88 @@ nonisolated final class FakeTextAccount: BankTextAccount {
   }
 }
 
+nonisolated final class FakeMailHTTP: HTTPExchange {
+  private let sent = Mutex<[HTTPRequest]>([])
+
+  var requests: [HTTPRequest] { sent.withLock { $0 } }
+
+  func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
+    sent.withLock { $0.append(request) }
+    return HTTPResponse(status: 200, body: Data(#"{"access_token":"synthetic-access","expires_in":3600}"#.utf8))
+  }
+}
+
+nonisolated final class GatedTextAuthor: BankTextsAuthoring {
+  private let state = Mutex<(calls: Int, waiting: [CheckedContinuation<Void, Never>], open: Bool)>((0, [], false))
+
+  var calls: Int { state.withLock { $0.calls } }
+
+  func open() {
+    let waiting = state.withLock { s -> [CheckedContinuation<Void, Never>] in
+      s.open = true
+      let held = s.waiting
+      s.waiting = []
+      return held
+    }
+    waiting.forEach { $0.resume() }
+  }
+
+  func author(
+    _ text: String, sender: String?, reading: KeptBankText, arrivedAt: Date, secret: Data, link: BankTextLinkState,
+    origin: BankTextRoute
+  ) async throws(BankTextsCoreFailure) -> BankTextAuthored {
+    let second = state.withLock { s -> Bool in
+      s.calls += 1
+      return s.calls >= 2
+    }
+    if second { open() }
+    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+      let go = state.withLock { s -> Bool in
+        if s.open { return true }
+        s.waiting.append(c)
+        return false
+      }
+      if go { c.resume() }
+    }
+    return .authored(rowID: "row-1", filed: false, keptAt: arrivedAt)
+  }
+
+  func liveRows(postedFrom: Date, through: Date) async -> [PasteRow] { [] }
+}
+
+nonisolated final class IntakeEvents: Sendable {
+  private let events = Mutex<[String]>([])
+
+  var all: [String] { events.withLock { $0 } }
+
+  func add(_ event: String) { events.withLock { $0.append(event) } }
+}
+
+nonisolated final class WatchedSecretStore: SecretStore {
+  let base: any SecretStore
+  let events: IntakeEvents
+
+  init(_ base: any SecretStore, events: IntakeEvents) {
+    self.base = base
+    self.events = events
+  }
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? {
+    events.add("keychain")
+    return try base.read(item)
+  }
+
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try base.write(item, value) }
+
+  func delete(_ item: SecretItem) throws(SecretStoreError) { try base.delete(item) }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { try base.accounts(service: service) }
+}
+
+nonisolated struct NoRandom: RandomSource {
+  func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) { throw .sealFailed }
+}
+
 @MainActor
 @Suite("Bank texts: the intent, the facts and paste")
 struct BankTextsIntakeTests {
@@ -251,6 +333,32 @@ struct BankTextsIntakeTests {
     #expect(r.factsData.link?.linked == false)
   }
 
+  @Test func onlyARunSinceTheLastConnectCountsAtTheDisconnect() async throws {
+    let r = rig(answer: nil)
+    let clock = Clock(BankTextIntake.ms(Self.t0) - 120_000)
+    let k = keeper(r, clock)
+    try r.facts.update(nowMs: clock.ms) { d in
+      d.lastRunMs = clock.ms - 60_000
+      d.addIgnored(2, atMs: clock.ms - 60_000)
+    }
+    k.connected()
+    #expect(r.factsData.lastRunMs == nil && r.factsData.ignoredTotal(nowMs: clock.ms) == 2)
+    #expect(!r.factsData.sawAutomationRun(nowMs: clock.ms))
+    let l = lane(r)
+    #expect(!l.sawAutomationRun && l.ignoredLast30Days == 2)
+    clock.ms += 1
+    k.disconnected(.disconnected)
+    #expect(r.factsData.link?.linked == false && !r.factsData.chosen)
+    k.connected()
+    #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .ignored(counted: true))
+    #expect(r.factsData.sawAutomationRun(nowMs: clock.ms))
+    l.reload()
+    #expect(l.sawAutomationRun)
+    clock.ms += 1
+    k.disconnected(.disconnected)
+    #expect(r.factsData.chosen)
+  }
+
   @Test func theRuntimeWritesTheCopyOnEachServerAnswerConnectAndDisconnect() async throws {
     let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
     defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
@@ -300,6 +408,292 @@ struct BankTextsIntakeTests {
       try await mailbox.disconnect("gmail", removeTransactions: false)
     }
     #expect(rt.store.mailboxPhase == .otherDevice && r.factsData.link?.linked == true)
+    await rt.close()
+  }
+
+  @Test func aLaneStateThatCouldNotBeReadLeavesTheCopyAndTheMoveAwayAlone() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    LocalAccountData.setMailboxPhaseSeen(nil)
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    #expect(rt.store.mailboxPhase == .unlinked && rt.moveNote.lastPhase == .unlinked && r.factsData.link == nil)
+
+    rt.store.noteMailbox(MailboxEngine.stateUnread, nowMs: rt.context.clock.nowMs())
+    #expect(rt.store.mailboxPhase == nil)
+    #expect(rt.store.mailboxStatus == MailboxEngine.stateUnread)
+
+    rt.linkCopy.ownLink(rt.store.mailboxPhase)
+    await rt.checkServerLink()
+    #expect(r.factsData.link == nil)
+
+    _ = rt.readingInputs(textsChosen: false, textsLastRunMs: nil, textsTestMissed: false, backgroundRefreshOff: false)
+    #expect(rt.moveNote.lastPhase == .unlinked)
+    await rt.close()
+  }
+
+  @Test func aLaneStateThatCouldNotBeReadIsUnknownOnHomeUntilItIsRead() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    #expect(rt.lane != nil)
+
+    rt.store.noteMailbox(MailboxEngine.stateUnread, nowMs: rt.context.clock.nowMs())
+    let unread = rt.readingInputs(textsChosen: true, textsLastRunMs: nil, textsTestMissed: false, backgroundRefreshOff: false)
+    #expect(!unread.known && unread.status == nil && unread.heldElsewhere == nil)
+    #expect(LiveReading.state(unread).kind == .checking)
+
+    await rt.refreshMailbox()
+    let read = rt.readingInputs(textsChosen: true, textsLastRunMs: nil, textsTestMissed: false, backgroundRefreshOff: false)
+    #expect(read.known && read.status?.phase == .unlinked)
+    #expect(LiveReading.state(read).kind == .waitingForFirstText)
+    await rt.close()
+  }
+
+  @Test func aLaneStateThatCouldNotBeReadIsCheckingInBankAlertsAndProfileUntilItIsRead() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+
+    rt.store.noteMailbox(MailboxEngine.stateUnread, nowMs: rt.context.clock.nowMs())
+    await rt.store.reload()
+    #expect(!mailbox.mailboxesKnown && mailbox.mailboxes.isEmpty && mailbox.heldElsewhere == nil)
+    let unread = MailboxesSummary(
+      mailbox.mailboxes, health: rt.store.state.mailbox, offer: mailbox.offer, known: mailbox.mailboxesKnown)
+    #expect(unread.title == "Checking your email" && !unread.needsYou)
+    #expect(ProfileSheet.mailboxesValue(mailbox.mailboxes, known: mailbox.mailboxesKnown).text == "Checking")
+
+    await rt.refreshMailbox()
+    #expect(mailbox.mailboxesKnown && mailbox.mailboxes.isEmpty)
+    let read = MailboxesSummary(
+      mailbox.mailboxes, health: rt.store.state.mailbox, offer: mailbox.offer, known: mailbox.mailboxesKnown)
+    #expect(read.title == "Your email isn't connected")
+    await rt.close()
+  }
+
+  static func bothProviders() throws -> BuildInfo {
+    try BuildInfo(infoDictionary: [
+      "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "1", "HasalaGitCommit": "unset",
+      "HasalaEnvironment": "qa", "HasalaAPIBaseURL": "https://api.example.com",
+      "HasalaGoogleClientID": "test.apps.googleusercontent.com",
+      "HasalaGoogleRedirectScheme": "com.googleusercontent.apps.test", "HasalaGmailPubSubTopic": "unset",
+      "HasalaOutlookClientID": "00000000-0000-4000-8000-000000000000",
+      "HasalaOutlookRedirectScheme": "msauth.app.hasala.ios",
+    ])
+  }
+
+  func twoLaneRuntime() async throws -> (AccountRuntime, MiniHasalad) {
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: try Self.bothProviders(),
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    return (rt, server)
+  }
+
+  @Test func aFirstScanOnAClosedLaneEndsWithAFailureAndNotSilence() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, _) = try await twoLaneRuntime()
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+    await rt.close()
+    var seen: [ScanProgress] = []
+    for await p in mailbox.firstScan() { seen.append(p) }
+    #expect(seen.map(\.phase) == [.failed("Reading your bank alerts stopped. Try again.")])
+  }
+
+  @Test func theLinkHeldStateOpensTheLaneOfTheProviderItNames() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, _) = try await twoLaneRuntime()
+    #expect(await AccountRuntime.initialLane(rt.lanes, held: .outlook, remembered: .gmail)?.provider == .outlook)
+    #expect(await AccountRuntime.initialLane(rt.lanes, held: nil, remembered: .gmail)?.provider == .gmail)
+    await rt.close()
+  }
+
+  @Test func aLaunchAfterAnInterruptedSwitchOpensTheNewLaneAndEndsTheOldGrant() async throws {
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let enrolled = try #require(a.enrolled)
+    let binding = try #require(try env.secrets.binding())
+    let oldGrant = SecretsMailRefreshTokenStore(secrets: env.secrets, userID: enrolled.userID, provider: .gmail)
+    let newGrant = SecretsMailRefreshTokenStore(secrets: env.secrets, userID: enrolled.userID, provider: .outlook)
+    try oldGrant.write("synthetic-refresh-old")
+    try newGrant.write("synthetic-refresh-new")
+    var row = MailboxStateRow(phase: MailboxPhase.active.rawValue)
+    row.provider = MailProviderID.outlook.rawValue
+    var write = MailboxWrite()
+    write.state = row
+    try MailboxTableStore(writer: enrolled.store.db).commit(write)
+    let suite = "interrupted-switch-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    LocalAccountData.setMailboxProvider(.gmail, defaults)
+    let http = FakeMailHTTP()
+
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: enrolled, build: try Self.bothProviders(),
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: rig().facts, mailHTTP: http, providerDefaults: defaults)
+
+    #expect(rt.activeProvider == .outlook && rt.lane?.provider == .outlook)
+    #expect(rt.linkedProvider == .outlook)
+    #expect(LocalAccountData.mailboxProvider(defaults) == .outlook)
+    try await LiveLedgerMapperTests.eventually { try oldGrant.read() == nil }
+    #expect(try oldGrant.read() == nil)
+    #expect(try newGrant.read() == "synthetic-refresh-new")
+    #expect(http.requests.contains { $0.url.host() == "oauth2.googleapis.com" && $0.url.path() == "/revoke" })
+    await rt.close()
+  }
+
+  @Test func aConnectKeepsTheRunningLaneWhateverTheServerAnswers() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    server.mailboxLink = (thisDevice: false, provider: "outlook")
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+    await #expect(throws: MailConnectFailure.takenByOtherIPhone) {
+      _ = try await mailbox.connect(
+        .gmail, replacing: false, removingOld: false, pastMail: .importPast, ask: { _ in .cancel })
+    }
+    #expect(rt.activeProvider == .gmail)
+    #expect(rt.serverLink == .holder(isThisDevice: false, watchExpiresAtMs: nil))
+    _ = await rt.askServerLink()
+    #expect(rt.activeProvider == .outlook)
+    await rt.close()
+  }
+
+  @Test func aServerAnswerDuringAConnectDoesNotMoveTheLane() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    server.mailboxLink = (thisDevice: false, provider: "outlook")
+    rt.connectStarted()
+    rt.connectStarted()
+    await rt.checkServerLink()
+    #expect(rt.activeProvider == .gmail)
+    rt.connectEnded()
+    await rt.checkServerLink()
+    #expect(rt.activeProvider == .gmail)
+    rt.connectEnded()
+    await rt.checkServerLink()
+    #expect(rt.activeProvider == .outlook)
+    await rt.close()
+  }
+
+  @Test func followingTheLinkWakesALaneAnEarlierSwitchStopped() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    let outlook = try #require(rt.lanes[.outlook])
+    await outlook.stop()
+    #expect(await outlook.engine.stopped)
+    server.mailboxLink = (thisDevice: false, provider: "outlook")
+    _ = await rt.askServerLink()
+    #expect(rt.activeProvider == .outlook && rt.lane?.provider == .outlook)
+    #expect(await !outlook.engine.stopped)
+    await rt.close()
+  }
+
+  func scanningOutlook(_ rt: AccountRuntime) async throws {
+    let clock = rt.context.clock
+    let persistence = LedgerMailboxPersistence(
+      store: rt.context.store, authoring: MailboxAuthoring(observer: rt.observer), nowMs: { clock.nowMs() })
+    var state = MailboxState()
+    state.phase = .scanning
+    state.provider = .outlook
+    var commit = MailboxCommit()
+    commit.state = state
+    try await persistence.commit(commit)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func endingAHoldRestartsOnlyTheRunningLanesCutImport() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.outlook)
+    let gmail = try #require(rt.lanes[.gmail])
+    let outlook = try #require(rt.lanes[.outlook])
+    try await scanningOutlook(rt)
+    server.offline = true
+    _ = outlook.firstScan()
+    gmail.work.start { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) } }
+    #expect(outlook.work.running == 1 && gmail.work.running == 1)
+    await rt.holdWork()
+    #expect(outlook.work.running == 0 && gmail.work.running == 0)
+    await rt.resumeWork()
+    #expect(outlook.work.running == 1)
+    #expect(gmail.work.running == 0)
+    #expect(!gmail.work.takeCut())
+    #expect(await outlook.status().phase == .scanning)
+    await rt.close()
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aLaneASwitchReplacedKeepsNoCutImportToRestart() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.outlook)
+    let gmail = try #require(rt.lanes[.gmail])
+    try await scanningOutlook(rt)
+    server.offline = true
+    gmail.work.start { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) } }
+    await gmail.stop()
+    await gmail.endGrant()
+    rt.activate(.gmail)
+    await rt.holdWork()
+    await rt.resumeWork()
+    #expect(gmail.work.running == 0)
+    #expect(await gmail.status().phase == .scanning)
+    await rt.close()
+  }
+
+  @Test func holdingTheLinkReplacesTheServersEarlierAnswer() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    server.mailboxLink = (thisDevice: false, provider: "gmail")
+    _ = await rt.askServerLink()
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+    #expect(mailbox.heldElsewhere == .gmail)
+    rt.linkedHere(.gmail)
+    #expect(rt.serverLink == .holder(isThisDevice: true, watchExpiresAtMs: nil))
+    server.offline = true
+    #expect(await rt.askServerLink() == nil)
+    #expect(mailbox.heldElsewhere == nil && mailbox.offer == .connect)
     await rt.close()
   }
 
@@ -406,6 +800,124 @@ struct BankTextsIntakeTests {
     #expect(r.author.calls.count == 2)
   }
 
+  func nearTheLimit(_ r: Rig) throws {
+    let nowMs = BankTextIntake.ms(Self.t0)
+    try r.facts.update(nowMs: nowMs) {
+      $0.link = .init(linked: false, learnedAtMs: nowMs)
+      $0.authoredToday = BankTextsFactsData.DayCount(
+        day: BankTextsFactsData.day(nowMs), count: BankTextsFactsData.dailyTextLimit - 1)
+    }
+  }
+
+  func wiredIntake(
+    _ r: Rig, author: any BankTextsAuthoring, secret: TextKeySecret? = nil,
+    signIn: @escaping () -> BankTextSignIn = { .signedIn }
+  ) -> BankTextIntake {
+    let account = FakeTextAccount(author: author)
+    return BankTextIntake(
+      BankTextIntakeDeps(
+        reader: r.reader, facts: r.facts, marker: r.marker, secret: secret ?? TextKeySecret(store: r.secrets),
+        signIn: signIn, account: { account }, linkBudget: .milliseconds(200)))
+  }
+
+  @Test func twoTextsAtOnceCannotBothTakeTheLastPlaceOfTheDay() async throws {
+    let r = rig()
+    try nearTheLimit(r)
+    let author = GatedTextAuthor()
+    let i = wiredIntake(r, author: author)
+    let first = Task { await i.run(Self.payment, sender: "DIB", at: Self.t0) }
+    while author.calls < 1 { await Task.yield() }
+    let second = Task { await i.run(Self.payment, sender: "DIB", at: Self.t0) }
+    #expect(await second.value == .failed(BankTextIntake.limitMessage))
+    author.open()
+    #expect(await first.value == .authored(filed: false))
+    #expect(author.calls == 1)
+    #expect(r.factsData.authoredToday?.count == BankTextsFactsData.dailyTextLimit)
+  }
+
+  @Test func theDaysCountIsOnDiskBeforeTheTextIsAuthored() async throws {
+    let r = rig()
+    try nearTheLimit(r)
+    let author = GatedTextAuthor()
+    let i = wiredIntake(r, author: author)
+    let run = Task { await i.run(Self.payment, sender: "DIB", at: Self.t0) }
+    while author.calls < 1 { await Task.yield() }
+    let afterARestart = BankTextsFacts(directory: r.dir.appendingPathComponent("facts"))
+    #expect(afterARestart.read(nowMs: BankTextIntake.ms(Self.t0)).atDailyTextLimit(nowMs: BankTextIntake.ms(Self.t0)))
+    author.open()
+    #expect(await run.value == .authored(filed: false))
+  }
+
+  @Test func aTextThatIsNotAuthoredGivesItsPlaceBack() async throws {
+    let authors = [
+      FakeTextAuthor(failure: .unavailable), FakeTextAuthor(failure: .notAPayment), FakeTextAuthor(failure: .failed),
+      FakeTextAuthor(outcome: .ignoredLinked(counts: false)),
+    ]
+    for author in authors {
+      let r = rig(author: author)
+      try nearTheLimit(r)
+      _ = await intake(r).run(Self.payment, sender: "DIB", at: Self.t0)
+      #expect(author.calls.count == 1)
+      #expect(r.factsData.authoredToday?.count == BankTextsFactsData.dailyTextLimit - 1)
+    }
+  }
+
+  @Test func aSecretThatCannotBeMadeGivesThePlaceBack() async throws {
+    let r = rig()
+    try nearTheLimit(r)
+    let i = wiredIntake(r, author: r.author, secret: TextKeySecret(store: r.secrets, random: NoRandom()))
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.notOpenMessage))
+    #expect(r.author.calls.isEmpty)
+    #expect(r.factsData.authoredToday?.count == BankTextsFactsData.dailyTextLimit - 1)
+  }
+
+  @Test func aCountThatCannotBeSavedDoesNotStopTheText() async throws {
+    let r = rig()
+    setCopy(r, linked: false)
+    let factsDir = r.dir.appendingPathComponent("facts")
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: factsDir.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path) }
+    #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
+    #expect(r.author.calls.count == 1)
+  }
+
+  @Test func theDayCountGivesBackOnlyItsOwnDay() {
+    let nowMs = BankTextIntake.ms(Self.t0)
+    var d = BankTextsFactsData()
+    d.noteAuthored(atMs: nowMs)
+    d.noteAuthored(atMs: nowMs)
+    d.releaseAuthored(atMs: nowMs + 86_400_000)
+    #expect(d.authoredToday?.count == 2)
+    d.releaseAuthored(atMs: nowMs)
+    #expect(d.authoredToday?.count == 1)
+    d.releaseAuthored(atMs: nowMs)
+    #expect(d.authoredToday == nil)
+    d.releaseAuthored(atMs: nowMs)
+    #expect(d.authoredToday == nil)
+  }
+
+  @Test func theInstallCheckComesBeforeTheKeychain() async throws {
+    let r = rig()
+    setCopy(r, linked: false)
+    let events = IntakeEvents()
+    let i = wiredIntake(
+      r, author: r.author, secret: TextKeySecret(store: WatchedSecretStore(r.secrets, events: events)),
+      signIn: {
+        events.add("install check")
+        return .signedIn
+      })
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
+    #expect(events.all.first == "install check")
+  }
+
+  @Test func aLockedKeychainStillWinsOverTheSignInAnswer() async {
+    let r = rig()
+    r.secrets.locked = true
+    let i = intake(r, signedIn: false)
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.lockedMessage, marked: true))
+    #expect(r.marker.read()?.count == 1)
+  }
+
   @Test func aLinkedAccountIgnoresTextsBeforeTheDailyLimit() async throws {
     let r = rig()
     setCopy(r, linked: true)
@@ -482,6 +994,36 @@ struct BankTextsIntakeTests {
       secret: { TextKeySecret(store: secrets) }, now: { now })
   }
 
+  func gmailReader(_ r: Rig, writes linkEnded: Bool) -> (lane: CountingMailbox, base: MockMailbox) {
+    let base = MockMailbox(mailboxes: [MockMailbox.gmail])
+    base.connectDelay = .zero
+    let mailbox = CountingMailbox(base)
+    if linkEnded {
+      mailbox.afterDisconnect = { BankTextsLinkCopy.disconnected(facts: r.facts, nowMs: BankTextIntake.ms(Self.t0)) }
+    }
+    return (mailbox, base)
+  }
+
+  @Test func theSwitchToTextsSeesTheDisconnectItJustSaved() async {
+    let r = rig()
+    setCopy(r, linked: true)
+    let l = lane(r)
+    #expect(l.readsEmail)
+    let mailbox = gmailReader(r, writes: true)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox.lane, texts: l) == .switched)
+    #expect(l.usesTexts && r.factsData.chosen && r.factsData.link?.linked == false)
+    #expect(mailbox.base.mailboxes.allSatisfy { $0.state == .disconnected })
+  }
+
+  @Test func theSwitchToTextsStopsWhenTheLinkStaysAfterTheDisconnect() async {
+    let r = rig()
+    setCopy(r, linked: true)
+    let l = lane(r)
+    let mailbox = gmailReader(r, writes: false)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox.lane, texts: l) == .failed(SourceSwitch.linkRemains))
+    #expect(!r.factsData.chosen && l.source == .email)
+  }
+
   @Test func afterTheUnlockTheNoticeShowsWhenNotLinked() {
     for linked in [false, nil] as [Bool?] {
       let r = rig()
@@ -498,6 +1040,41 @@ struct BankTextsIntakeTests {
     }
   }
 
+  @Test func aMailboxLinkedWhileTheNoticeWaitsCountsTheTextsAsIgnored() {
+    let r = rig()
+    setCopy(r, linked: false)
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    let l = lane(r)
+    l.refresh()
+    #expect(l.lockedNotice == 2 && l.offersPaste)
+    setCopy(r, linked: true)
+    l.reload()
+    #expect(l.lockedNotice == nil && !l.offersPaste)
+    #expect(r.marker.read() == nil)
+    #expect(l.ignoredLast30Days == 2)
+  }
+
+  @Test func aLinkedAccountWhoseCountCannotBeSavedClearsTheNoticeAndKeepsTheMarker() throws {
+    let r = rig()
+    setCopy(r, linked: false)
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    let l = lane(r)
+    l.refresh()
+    #expect(l.lockedNotice == 1)
+    setCopy(r, linked: true)
+    let factsDir = r.dir.appendingPathComponent("facts")
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: factsDir.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path) }
+    l.reload()
+    #expect(l.lockedNotice == nil && r.marker.read()?.count == 1)
+    #expect(l.ignoredLast30Days == 0)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path)
+    l.refresh()
+    #expect(l.lockedNotice == nil && r.marker.read() == nil)
+    #expect(l.ignoredLast30Days == 1)
+  }
+
   @Test func afterTheUnlockALinkedAccountCountsTheMarkerAsIgnored() {
     let r = rig()
     setCopy(r, linked: true)
@@ -508,6 +1085,33 @@ struct BankTextsIntakeTests {
     l.refresh()
     #expect(l.lockedNotice == nil && r.marker.read() == nil)
     #expect(l.ignoredLast30Days == 3)
+  }
+
+  @Test func aRunWhileLockedCountsAsARunOnlyWhenItCameAfterTheConnect() {
+    let clock = Clock(BankTextIntake.ms(Self.t0) - 120_000)
+    let after = rig()
+    keeper(after, clock).connected()
+    after.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0) - 60_000)
+    let a = lane(after)
+    a.refresh()
+    #expect(a.lockedNotice == nil && a.ignoredLast30Days == 1 && a.sawAutomationRun)
+    #expect(after.factsData.lastRunMs == LockedTextsMarkerFile.minute(BankTextIntake.ms(Self.t0) - 60_000))
+    clock.ms += 1
+    keeper(after, clock).disconnected(.disconnected)
+    #expect(after.factsData.chosen)
+
+    let before = rig()
+    setCopy(before, linked: false)
+    before.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0) - 180_000)
+    let b = lane(before)
+    b.refresh()
+    #expect(b.lockedNotice == 1)
+    keeper(before, clock).connected()
+    b.reload()
+    #expect(b.lockedNotice == nil && b.ignoredLast30Days == 1 && !b.sawAutomationRun)
+    clock.ms += 1
+    keeper(before, clock).disconnected(.disconnected)
+    #expect(!before.factsData.chosen)
   }
 
   @Test func aLinkedAccountKeepsTheMarkerWhenTheCountCannotBeSaved() throws {
@@ -565,12 +1169,21 @@ struct BankTextsIntakeTests {
     #expect(r.facts.read(nowMs: now + 10 * 60_000).testOpenedMs == nil)
     #expect(try onDisk(r).testOpenedMs == nil)
     let l = lane(r, now: Self.t0.addingTimeInterval(60))
-    l.startTest()
+    try l.startTest()
     #expect(l.test == .waiting(since: Self.t0.addingTimeInterval(60)))
     #expect(try onDisk(r).testOpenedMs == now + 60_000)
     let closed = lane(r, now: Self.t0.addingTimeInterval(11 * 60 + 1))
     closed.reload()
     #expect(try onDisk(r).testOpenedMs == nil)
+  }
+
+  @Test func openingATestForgetsTheLastPass() throws {
+    let r = rig()
+    let now = BankTextIntake.ms(Self.t0)
+    try r.facts.update(nowMs: now) { $0.testPassedMs = now - 60_000 }
+    try r.facts.update(nowMs: now) { $0.openTest(atMs: now) }
+    let stored = try onDisk(r)
+    #expect(stored.testOpenedMs == now && stored.testPassedMs == nil)
   }
 
   @Test func aReadThatPrunesNothingWritesNothing() {
@@ -888,6 +1501,8 @@ struct BankTextsIntakeTests {
     let mock = MockBankTexts()
     #expect(!mock.sawAutomationRun)
     mock.ignoredLast30Days = 1
+    #expect(!mock.sawAutomationRun)
+    mock.lastRan = Self.t0
     #expect(mock.sawAutomationRun)
   }
 }
@@ -901,4 +1516,6 @@ nonisolated final class LockedNoSecretStore: SecretStore {
   func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { throw .notNow(status: -25308) }
 
   func delete(_ item: SecretItem) throws(SecretStoreError) { throw .notNow(status: -25308) }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { throw .notNow(status: -25308) }
 }

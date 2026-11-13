@@ -135,6 +135,101 @@ struct CategoryManagementTests {
     #expect(ledger.state.category(coffee)?.archived == false)
   }
 
+  @Test func movingRowsOutOfAnArchivedCategoryKeepsAMatchedTransferATransfer() throws {
+    let ledger = InMemoryLedger()
+    let coffee = try add(ledger, "Coffee")
+    var s = ledger.state
+    s.txns += [
+      Txn(
+        id: "matched", merchant: "Own account", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user, isRefund: true, isTransfer: true, isMatchedTransfer: true),
+      Txn(
+        id: "plain", merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user, isRefund: true),
+    ]
+    CategoriesEngine.apply(.archiveCategory(coffee, moveTo: "dining"), to: &s, month: MayaLedger.october)
+    #expect(s.txn("matched")?.categoryID == "dining" && s.txn("matched")?.isTransfer == true)
+    #expect(s.txn("plain")?.categoryID == "dining" && s.txn("plain")?.isTransfer == false && s.txn("plain")?.isRefund == true)
+  }
+
+  @Test func aRefundFlagFromABrokenRefundLinkStaysThroughAMoveAndANewParent() throws {
+    let ledger = InMemoryLedger()
+    let coffee = try add(ledger, "Coffee")
+    var s = ledger.state
+    s.txns += [
+      Txn(
+        id: "linked", merchant: "Test Store", amount: .aed(500_00), direction: .out, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user, isRefund: true, refundLinkBroken: true),
+      Txn(
+        id: "plain", merchant: "Test Store", amount: .aed(500_00), direction: .out, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user),
+    ]
+    var moved = s
+    CategoriesEngine.apply(
+      .editCategory(coffee, CategoryDraft(name: "Coffee", glyph: .tag, parent: "groceries")), to: &moved,
+      month: MayaLedger.october)
+    #expect(moved.txn("linked")?.isRefund == true && moved.txn("plain")?.isRefund == false)
+    CategoriesEngine.apply(.archiveCategory(coffee, moveTo: "dining"), to: &s, month: MayaLedger.october)
+    #expect(s.txn("linked")?.categoryID == "dining" && s.txn("linked")?.isRefund == true)
+    #expect(s.txn("plain")?.categoryID == "dining" && s.txn("plain")?.isRefund == false)
+  }
+
+  @Test func aRefundWhoseLinkBrokeStaysARefundWhenItsCategoryStopsCounting() throws {
+    let ledger = InMemoryLedger()
+    let coffee = try add(ledger, "Coffee")
+    var s = ledger.state
+    s.txns += [
+      Txn(
+        id: "linked", merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user, isRefund: true, refundLinkBroken: true),
+      Txn(
+        id: "counted", merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+        categoryID: coffee, categorySource: .user, isRefund: true),
+    ]
+    for parent in ["salary", "savings"] {
+      var moved = s
+      CategoriesEngine.apply(
+        .editCategory(coffee, CategoryDraft(name: "Coffee", glyph: .tag, parent: parent)), to: &moved,
+        month: MayaLedger.october)
+      #expect(!Spending.counts(moved.category(coffee)))
+      #expect(moved.txn("linked")?.isRefund == true && moved.txn("counted")?.isRefund == false)
+    }
+    for target in ["salary", "savings", "transfer"] {
+      var moved = s
+      CategoriesEngine.apply(.archiveCategory(coffee, moveTo: target), to: &moved, month: MayaLedger.october)
+      #expect(moved.txn("linked")?.categoryID == target && moved.txn("linked")?.isRefund == true)
+      #expect(moved.txn("counted")?.categoryID == target && moved.txn("counted")?.isRefund == false)
+    }
+  }
+
+  @Test func aRefundFilingEndsABrokenRefundLink() throws {
+    var s = MayaLedger.state
+    s.txns.append(
+      Txn(
+        id: "linked", merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+        categoryID: "dining", categorySource: .user, isRefund: true, refundLinkBroken: true))
+    var t = try #require(s.txn("linked"))
+    try RefundEdit.mark(t, in: s).apply(to: &t)
+    #expect(!t.isRefund && !t.refundLinkBroken)
+    var filed = try #require(s.txn("linked"))
+    try RefundEdit.file(filed, into: "dining", of: nil, in: s).apply(to: &filed)
+    #expect(filed.isRefund && !filed.refundLinkBroken)
+  }
+
+  @Test func archivingEndsNextMonthsBudgetAndLeavesLaterMonthsSetByHand() throws {
+    let ledger = InMemoryLedger()
+    let coffee = try add(ledger, "Coffee")
+    let november = MayaLedger.october.next
+    let december = november.next
+    try ledger.apply(.setBudget(coffee, november, .aed(50_00)))
+    try ledger.apply(.setBudget(coffee, december, .aed(70_00)))
+    #expect(ledger.state.plan.budget(coffee, MayaLedger.october) == .aed(0))
+    try ledger.apply(.archiveCategory(coffee, moveTo: "dining"))
+    #expect(ledger.state.plan.budget(coffee, november) == .aed(0))
+    #expect(ledger.state.plan.budget("dining", november) == MayaLedger.state.plan.budget("dining", november))
+    #expect(ledger.state.plan.budget(coffee, december) == .aed(70_00))
+  }
+
   @Test func countsAsOffersTheThreeBuckets() {
     let s = MayaLedger.state
     let fresh = CategoriesEngine.countsAsOptions(s, keeping: [nil])

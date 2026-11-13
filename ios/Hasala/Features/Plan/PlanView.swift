@@ -59,6 +59,21 @@ struct PlanContent: View {
               .padding(.horizontal, HSpacing.insetPage + 4)
               .accessibilityIdentifier("plan.outsidePlan")
           }
+          if let ended = snap.expiredMovesLine {
+            ReflowingRow(alignment: .firstTextBaseline) {
+              Text(ended).hType(.footnote).foregroundStyle(HColor.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("plan.movesEnded")
+            } trailing: {
+              Button("Keep them") { model.keepExpiredMoves() }
+                .buttonStyle(.plain)
+                .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textLink)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("plan.keepMoves")
+            }
+            .padding(.horizontal, HSpacing.insetPage + 4)
+          }
         }
         SplitSection(snap: snap)
       }

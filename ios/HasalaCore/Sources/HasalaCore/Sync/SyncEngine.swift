@@ -21,6 +21,8 @@ public enum SyncTrigger: String, Sendable, Hashable, CaseIterable {
   /// `authored` run follows the user's own edit and keeps the pinned roster
   /// (R1 still re-fetches it for an unknown writer).
   public var refreshesRoster: Bool { self != .authored }
+
+  public var retestsALatch: Bool { self == .launch || self == .foreground || self == .refresh }
 }
 
 public struct RunOutcome: Sendable, Hashable {
@@ -33,15 +35,27 @@ public struct RunOutcome: Sendable, Hashable {
 }
 
 public actor SyncEngine {
+  private struct Rerun {
+    var trigger: SyncTrigger
+    var deadline: ContinuousClock.Instant?
+
+    mutating func widen(by asked: SyncTrigger, until limit: ContinuousClock.Instant?) {
+      if asked.refreshesRoster { trigger = asked }
+      deadline = deadline.flatMap { current in limit.map { max(current, $0) } }
+    }
+  }
+
   public let context: SyncContext
   let observer: (any PageObserver)?
   public private(set) var status = SyncStatus()
   private var inFlight: Task<RunOutcome, Never>?
   /// The trailing rerun asked for while a run was in flight, if any.
-  private var rerun: SyncTrigger?
+  private var rerun: Rerun?
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
-  private var offlineAttempts = 0
   private var accountFullAtMs: Int64?
+  private var latchThisRun: OutboxLatch?
+  private var uploadRefusedThisRun = false
+  private var stopped = false
   public static let accountFullPauseMs: Int64 = 15 * 60_000
 
   public init(context: SyncContext, observer: (any PageObserver)? = nil) {
@@ -70,28 +84,32 @@ public actor SyncEngine {
     publish()
   }
 
+  public func stop() {
+    stopped = true
+    rerun = nil
+    inFlight?.cancel()
+  }
+
   /// The app acknowledged the integrity-alarm sheet (§5.7).
   public func acknowledgeAlarms() {
     status.integrityAlarms = 0
+    status.rowAlarms = 0
     publish()
-  }
-
-  /// The suggested wait before the next automatic retry after `offline`: 2 s ×
-  /// 2ⁿ, capped at 5 min, ±20 % jitter (§5.5).
-  public func retryDelaySeconds() -> Double {
-    let base = min(300.0, 2.0 * pow(2.0, Double(max(0, offlineAttempts - 1))))
-    let r = (try? context.random.bytes(1)[0]) ?? 128
-    return base * (0.8 + 0.4 * Double(r) / 255.0)
   }
 
   /// Runs once, coalescing with a run in flight: a call while a run is in
   /// flight asks for one trailing rerun and returns the merged outcome.
   @discardableResult
   public func run(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant? = nil) async -> RunOutcome {
+    if stopped { return RunOutcome(stop: .cancelled) }
     if let t = inFlight {
       // The rerun keeps the strongest trigger asked for: one that re-verifies
       // the roster wins over `authored`.
-      if rerun == nil || trigger.refreshesRoster { rerun = trigger }
+      if rerun == nil {
+        rerun = Rerun(trigger: trigger, deadline: deadline)
+      } else {
+        rerun?.widen(by: trigger, until: deadline)
+      }
       return await t.value
     }
     let task = Task { await self.loop(trigger, deadline: deadline) }
@@ -107,7 +125,7 @@ public actor SyncEngine {
     while let next = rerun {
       rerun = nil
       if out.stop != nil { break }
-      let again = await once(next, deadline: deadline)
+      let again = await once(next.trigger, deadline: next.deadline)
       out.newData = out.newData || again.newData
       out.pulled.rowsStored += again.pulled.rowsStored
       out.pulled.opsOpened += again.pulled.opsOpened
@@ -120,8 +138,11 @@ public actor SyncEngine {
 
   private func once(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = RunOutcome()
+    latchThisRun = nil
+    uploadRefusedThisRun = false
     do {
-      try resumeAfterAccountFull(trigger)
+      try resumeAfterLatch(trigger)
+      await recordLogGenerationIfUnknown()
       // Reconcile: an in-flight batch goes first, byte-identical.
       set(.reconciling)
       let hasInflight = !(try context.storeCall { () throws(StoreError) in try context.store.inflight() }).isEmpty
@@ -134,6 +155,7 @@ public actor SyncEngine {
       if trigger.refreshesRoster { try await refreshRoster() }
       out.pulled = try await Puller.pull(context, observer: observer)
       status.integrityAlarms += out.pulled.alarms
+      status.rowAlarms += out.pulled.alarms
       set(.pushing)
       await observer?.willPush()
       let pushed = try await latchAware { () async throws(SyncStop) in
@@ -146,20 +168,31 @@ public actor SyncEngine {
         out.pulled.rowsStored += again.rowsStored
         out.pulled.opsOpened += again.opsOpened
         status.integrityAlarms += again.alarms
+        status.rowAlarms += again.alarms
       }
-      offlineAttempts = 0
-      status.lastSuccessAt = context.clock.nowMs()
-      status.retryAfterSeconds = nil
-      status.suspended = false
       status.phase = .idle
     } catch {
       out.stop = await apply(await context.settled(error))
     }
+    recordEnd(of: out.stop)
     out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
     status.pendingCount = (try? context.store.pendingCount()) ?? status.pendingCount
-    status.latch = (try? context.store.syncState().latch) ?? status.latch
+    do {
+      status.latch = try context.store.syncState().latch ?? latchThisRun
+    } catch {
+      status.latch = latchThisRun ?? status.latch
+    }
     publish()
     return out
+  }
+
+  private func recordEnd(of stop: SyncStop?) {
+    if case .rateLimited(let after) = stop {
+      status.retryAfterSeconds = min(after ?? 60, 300)
+    } else {
+      status.retryAfterSeconds = nil
+    }
+    if stop == nil, !uploadRefusedThisRun { status.lastSuccessAt = context.clock.nowMs() }
   }
 
   /// 01 §10.13: the key history is verified again on every launch, unlock and
@@ -173,31 +206,51 @@ public actor SyncEngine {
     if fresh != pinned { try context.storeCall { () throws(StoreError) in try context.store.setRoster(fresh.encoded()) } }
   }
 
-  private func resumeAfterAccountFull(_ trigger: SyncTrigger) throws(SyncStop) {
+  private func resumeAfterLatch(_ trigger: SyncTrigger) throws(SyncStop) {
     let state = try context.storeCall { () throws(StoreError) in try context.store.syncState() }
-    guard state.latch == .accountFull else { return }
-    let asked = trigger == .launch || trigger == .foreground || trigger == .refresh
-    if !asked, let at = accountFullAtMs, context.clock.nowMs() - at < Self.accountFullPauseMs { return }
+    let asked = trigger.retestsALatch
+    switch state.latch {
+    case .accountFull:
+      if !asked, let at = accountFullAtMs, context.clock.nowMs() - at < Self.accountFullPauseMs { return }
+    case .chainBreak:
+      guard asked else { return }
+    case .hardStop, .sealerFault:
+      guard let build = context.build, state.latchBuild != build else { return }
+    case nil:
+      return
+    }
     try context.storeCall { () throws(StoreError) in try context.store.setLatch(nil) }
     accountFullAtMs = nil
     status.latch = nil
   }
 
+  private func recordLogGenerationIfUnknown() async {
+    guard let state = try? context.store.syncState(), state.logGeneration == nil,
+      let generation = try? await context.client.meta().log_generation, generation >= 1
+    else { return }
+    try? context.store.recordLogGenerationIfUnknown(generation)
+  }
+
   /// A latch stops the flush but not the pull (§5.4: reads continue).
   private func latchAware(_ push: () async throws(SyncStop) -> PushSummary) async throws(SyncStop) -> PushSummary {
     do {
-      return try await push()
+      let pushed = try await push()
+      if pushed.batches > 0 { status.suspended = false }
+      return pushed
     } catch {
       if case .latched(let l, let alarm) = error {
         status.latch = l
+        latchThisRun = l
         if alarm { status.integrityAlarms += 1 }
-        if l == .accountFull { accountFullAtMs = context.clock.nowMs() }
+        if l == .accountFull, accountFullAtMs == nil { accountFullAtMs = context.clock.nowMs() }
         if l == .accountFull || l == .sealerFault || l == .chainBreak || l == .hardStop {
+          uploadRefusedThisRun = true
           return PushSummary()
         }
       }
       if error == .suspended {
         status.suspended = true
+        uploadRefusedThisRun = true
         return PushSummary()
       }
       throw error
@@ -208,15 +261,11 @@ public actor SyncEngine {
   private func apply(_ stop: SyncStop) async -> SyncStop {
     switch stop {
     case .offline, .protocolError:
-      offlineAttempts += 1
       if case .offline(let since) = status.phase {
         status.phase = .offline(sinceMs: since)
       } else {
         status.phase = .offline(sinceMs: context.clock.nowMs())
       }
-    case .rateLimited(let r):
-      status.retryAfterSeconds = min(r ?? 60, 300)
-      status.phase = .idle
     case .halted(let h):
       status.phase = .halted(await restoredOr(h))
     case .latched(let l, let alarm):
@@ -232,8 +281,7 @@ public actor SyncEngine {
     case .suspended:
       status.suspended = true
       status.phase = .idle
-    case .notNow, .cancelled: status.phase = .idle
-    case .store: status.phase = .halted(.inconsistent("store"))
+    case .rateLimited, .notNow, .cancelled, .store: status.phase = .idle
     }
     return stop
   }

@@ -98,6 +98,42 @@ struct RecurringEngineTests {
     #expect(BillsEngine.pastPayments(state, for: bill).map(\.id) == ["gym-b", "gym-usd"])
   }
 
+  @Test func anEndedBillOffersOnlyPaymentsItCanStillLink() throws {
+    var state = MayaHistory.state
+    let i = try #require(state.bills.firstIndex { $0.id == "netflix" })
+    state.bills[i].keys = ["netflix"]
+    state.bills[i].state = .ended
+    state.bills[i].endedOn = LocalDate(2026, 8, 6)
+    let offered = BillsEngine.pastPayments(state, for: state.bills[i]).map(\.id)
+    #expect(offered.contains("h-netflix-8"))
+    #expect(!offered.contains("h-netflix-9"))
+    let ledger = InMemoryLedger(state: state)
+    try ledger.apply(.linkBillPayments("netflix", offered))
+    #expect(offered.allSatisfy { ledger.state.txn($0)?.billID == "netflix" })
+  }
+
+  @Test func eachDueIsOfferedOnceByThePaymentNearestIt() throws {
+    var state = MayaHistory.state
+    let i = try #require(state.bills.firstIndex { $0.id == "netflix" })
+    state.bills[i].keys = ["netflix"]
+    state.txns.append(Txn(id: "netflix-sep-again", merchant: "Netflix", amount: .aed(56_00),
+                          postedAt: LocalDateTime(2026, 9, 7, 9, 0), accountID: "dib", merchantKey: "netflix"))
+    let offered = BillsEngine.pastPayments(state, for: state.bills[i])
+    #expect(offered.filter { $0.due == LocalDate(2026, 9, 6) }.map(\.id) == ["h-netflix-9"])
+    #expect(Set(offered.map(\.due)).count == offered.count)
+    #expect(offered.map(\.date) == offered.map(\.date).sorted(by: >))
+    let ledger = InMemoryLedger(state: state)
+    try ledger.apply(.linkBillPayments("netflix", offered.map(\.id)))
+    #expect(offered.allSatisfy { ledger.state.txn($0.id)?.billID == "netflix" })
+
+    var gyms = s
+    gyms.txns += [gym("gym-oct2", LocalDate(2026, 10, 2)), gym("gym-sep30", LocalDate(2026, 9, 30))]
+    let draft = BillDraft(name: "Gym", keys: ["gym"], amount: .aed(300_00), firstDue: LocalDate(2026, 11, 1),
+                          categoryID: "subscriptions")
+    #expect(BillsEngine.pastPayments(gyms, for: draft).map(\.id) == ["gym-sep30"])
+    #expect(BillsEngine.pastPayments(gyms, for: draft, limit: 1).map(\.id) == ["gym-sep30"])
+  }
+
   @Test func aPaymentPrefillsTheDraft() throws {
     let d = try #require(BillsEngine.draft(from: "apple", s, now: now))
     #expect(d.name == "Apple.com")

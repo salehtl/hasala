@@ -63,6 +63,7 @@ final class PasteBankTextModel {
   func add(replacing: Bool = true) async -> Bool {
     guard canAdd, let text else { return false }
     adding = true
+    failure = nil
     defer { adding = false }
     do {
       try await lane.addToReview(text, replacing: replacing && match?.kind == .unreadText ? match : nil)

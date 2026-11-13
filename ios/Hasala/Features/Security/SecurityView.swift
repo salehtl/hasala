@@ -29,6 +29,7 @@ struct SecurityView: View {
   enum PendingAlert: Identifiable {
     case removePasskey(PasskeyRow)
     case removeDevice(DeviceRow)
+    case removeThisIPhone
     case removePassword
     case signOut
     case signOutEverywhere
@@ -38,6 +39,7 @@ struct SecurityView: View {
       switch self {
       case .removePasskey(let p): "pk.\(p.id)"
       case .removeDevice(let d): "dev.\(d.id)"
+      case .removeThisIPhone: "thisIPhone"
       case .removePassword: "pw"
       case .signOut: "out"
       case .signOutEverywhere: "outAll"
@@ -86,7 +88,7 @@ struct SecurityView: View {
     .navigationTitle("Sign-in & security")
     .navigationBarTitleDisplayMode(.inline)
     .task {
-      await model.load()
+      await model.keepLoading()
       #if HASALA_MOCKS
         await ScreenLaunch.applySecurityLaunch(model, alert: $alert, lockingDown: $lockingDown)
       #endif
@@ -349,7 +351,7 @@ struct SecurityView: View {
         if s.frozen == nil {
           TextLink(title: "Delete your account", identifier: "security.delete", destructive: true) { deleting = true }
         } else {
-          Text("Unfreeze to delete your account")
+          Text(AccountCopy.unfreezeToDelete)
             .hType(.subheadline.weight(.semibold))
             .foregroundStyle(HColor.textSecondary)
             .multilineTextAlignment(.center)
@@ -372,10 +374,16 @@ struct SecurityView: View {
 
   // MARK: Alerts
 
+  static let removeThisIPhoneTitle = "Remove this iPhone?"
+
+  static let removeThisIPhoneMessage =
+    "Changes that can't upload are lost for good. Everything you uploaded stays in your account."
+
   private var alertTitle: String {
     switch alert {
     case .removePasskey(let p): "Remove the \(p.provider) passkey?"
     case .removeDevice(let d): "Remove \(d.title)?"
+    case .removeThisIPhone: Self.removeThisIPhoneTitle
     case .removePassword: "Remove your password?"
     case .signOut: "Sign out of this iPhone?"
     case .signOutEverywhere: "Sign out everywhere?"
@@ -391,6 +399,8 @@ struct SecurityView: View {
       return "It can't sign in after this. You'll confirm with \(confirmWith) next."
     case .removeDevice:
       return "It's signed out now. Its copy of your data is erased when it next opens Hasala."
+    case .removeThisIPhone:
+      return Self.removeThisIPhoneMessage
     case .removePassword:
       return "You'll sign in with your passkey only. You'll confirm with \(biometry.noun) next."
     case .signOut:
@@ -411,6 +421,9 @@ struct SecurityView: View {
       Button("Remove", role: .destructive) { Task { await model.request(.removePasskey(id: p.id)) } }
     case .removeDevice(let d):
       Button("Remove", role: .destructive) { Task { await model.request(.removeDevice(id: d.id)) } }
+    case .removeThisIPhone:
+      Button("Remove", role: .destructive) { Task { await model.request(.removeThisIPhoneLosingUnsent) } }
+        .accessibilityIdentifier("security.removeThisIPhone.confirm")
     case .removePassword:
       Button("Remove", role: .destructive) { Task { await model.request(.removePassword) } }
     case .signOut:
@@ -637,15 +650,5 @@ struct PasswordEditPage: View {
     }
     .confirmSheet(model, host: .passwordEditor,
                   onEnterWords: BuildSurface.showsUnfinished ? { model.enterWordsToUnlock() } : nil)
-  }
-}
-
-/// The password page as a sheet, for a host that isn't a navigation stack ("Let's lock it
-/// down" after "No, that's not me").
-struct PasswordEditSheet: View {
-  @Bindable var model: SecurityModel
-
-  var body: some View {
-    NavigationStack { PasswordEditPage(model: model) }
   }
 }

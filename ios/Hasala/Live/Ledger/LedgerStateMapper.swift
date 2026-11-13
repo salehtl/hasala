@@ -143,7 +143,9 @@ nonisolated enum LedgerStateMapper {
     for info in taxonomy.ordered where info.kind == .spending {
       guard let row = engine.plan.cells[info.id] else { continue }
       if row[month.wire]?.latestSet == 0 { zeroSet.insert(HasalaModels.PlanState.key(info.id, YearMonth(month.year, month.month))) }
-      if let p = previous, let moved = row[p.wire]?.movesAll, moved != 0 { expiredMoves[info.id] = .aed(moved) }
+      if let p = previous, let moved = row[p.wire]?.movesAll, moved != 0, row[month.wire]?.latestSet == nil {
+        expiredMoves[info.id] = .aed(moved)
+      }
     }
     let sources = engine.plan.incomeSources.values.filter(\.active)
     let split = try r.budgetTemplate()
@@ -326,14 +328,16 @@ nonisolated enum LedgerStateMapper {
       categoryID: row.category, categorySource: source, needsReview: row.needsReview, isNewMerchant: row.isNewMerchant,
       suggestion: nil, note: row.note ?? "", splits: splits,
       isRefund: row.category == "refunds" || row.refundState != nil,
-      isTransfer: row.category == "transfer" || row.transferState != nil, archived: row.archived != nil,
+      isTransfer: row.category == "transfer" || row.transferState != nil, isMatchedTransfer: row.transferState != nil,
+      archived: row.archived != nil,
       projectID: row.projectID, billID: billID, provenance: provenance,
       detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
       heldCopy: try heldCopy(row, r: r),
       senderUnverified: row.senderUnverified, merchantKey: row.merchantKey,
       merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
       ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil,
-      refundOf: row.refundState == "ok" ? row.refundTarget : nil, isReversal: isReversal(row))
+      refundOf: row.refundState == "ok" ? row.refundTarget : nil, refundLinkBroken: row.refundState == "broken",
+      isReversal: isReversal(row))
   }
 
   static let reversalTemplates = Set(MessageDisposer.refundTemplates.filter { $0.contains("reversal") })

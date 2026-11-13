@@ -27,6 +27,8 @@ const (
 
 var ErrNotWritten = errors.New("purgeledger: nothing was written")
 
+var writeEntries = (*os.File).Write
+
 type Kind string
 
 const (
@@ -43,6 +45,9 @@ const (
 	KindEmail          Kind = "email"
 	KindInviteRevoked  Kind = "invite-revoked"
 	KindPurgeCancelled Kind = "purge-cancelled"
+	KindWrap           Kind = "wrap"
+	KindSuspend        Kind = "suspend"
+	KindUnsuspend      Kind = "unsuspend"
 )
 
 type Entry struct {
@@ -106,9 +111,15 @@ func appendLocked(path string, line []byte) error {
 	if err != nil {
 		return fmt.Errorf("%w: open %s: %w", ErrNotWritten, path, err)
 	}
-	if n, err := f.Write(line); err != nil {
+	size, _, err := trimTail(f, path)
+	if err != nil {
 		_ = f.Close()
-		if n == 0 {
+		return fmt.Errorf("%w: %w", ErrNotWritten, err)
+	}
+	if n, err := writeEntries(f, line); err != nil {
+		undone := n == 0 || undoWrite(f, size) == nil
+		_ = f.Close()
+		if undone {
 			return fmt.Errorf("%w: write %s: %w", ErrNotWritten, path, err)
 		}
 		return fmt.Errorf("purgeledger: write %s: %w", path, err)
@@ -218,6 +229,65 @@ func pruneLocked(path string, cutoff time.Time) (int, error) {
 	return dropped, syncDir(path)
 }
 
+func TrimTornTail(path string) (int64, error) {
+	if path == "" {
+		return 0, errors.New("purgeledger: no ledger path")
+	}
+	unlock, err := lock(path)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("purgeledger: open %s: %w", path, err)
+	}
+	defer f.Close()
+	_, dropped, err := trimTail(f, path)
+	return dropped, err
+}
+
+func trimTail(f *os.File, path string) (size, dropped int64, err error) {
+	st, err := f.Stat()
+	if err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: stat %s: %w", path, err)
+	}
+	size = st.Size()
+	if size == 0 {
+		return 0, 0, nil
+	}
+	var last [1]byte
+	if _, err := f.ReadAt(last[:], size-1); err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: read %s: %w", path, err)
+	}
+	if last[0] == '\n' {
+		return size, 0, nil
+	}
+	raw := make([]byte, size)
+	if _, err := f.ReadAt(raw, 0); err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: read %s: %w", path, err)
+	}
+	keep := int64(bytes.LastIndexByte(raw, '\n') + 1)
+	if _, whole := parseLine(string(raw[keep:])); whole {
+		return 0, 0, fmt.Errorf("purgeledger: %s ends in a whole entry with no newline: add the newline or remove the line", path)
+	}
+	if err := undoWrite(f, keep); err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: cut the incomplete last line of %s: %w", path, err)
+	}
+	slog.Warn("purgeledger: cut an incomplete last line", "path", path, "bytes", size-keep)
+	return keep, size - keep, nil
+}
+
+func undoWrite(f *os.File, size int64) error {
+	if err := f.Truncate(size); err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
 func IDs(entries []Entry) []uuid.UUID {
 	armed := make(map[uuid.UUID]bool, len(entries))
 	for _, e := range entries {
@@ -242,18 +312,18 @@ func check(e Entry) error {
 	if e.ID == uuid.Nil {
 		return errors.New("purgeledger: zero id")
 	}
-	if e.Kind != KindPasskey && e.Credential != nil {
+	if e.Kind != KindPasskey && e.Kind != KindWrap && e.Credential != nil {
 		return fmt.Errorf("purgeledger: a %q entry carries no credential", e.Kind)
 	}
 	switch e.Kind {
 	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindSuspend, KindUnsuspend:
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
 		}
-	case KindPasskey:
+	case KindPasskey, KindWrap:
 		if !e.Trigger.IsZero() || e.Device != nil || keyproto.CheckCredentialID(e.Credential) != nil {
-			return errors.New("purgeledger: a passkey entry carries a credential id and no trigger or device")
+			return fmt.Errorf("purgeledger: a %q entry carries a credential id and no trigger or device", e.Kind)
 		}
 	case KindFreeze:
 		if e.Trigger.IsZero() || e.Device != nil {
@@ -282,10 +352,10 @@ func formatEntry(e Entry) string {
 		line += " " + string(e.Kind) + " " + d.WriterID + " " + d.SignerWriterID + " " +
 			strconv.FormatInt(d.FinalCounter, 10) + " " + hex.EncodeToString(d.FinalHead) + " " +
 			hex.EncodeToString(d.Nonce) + " " + hex.EncodeToString(d.Sig)
-	case KindPasskey:
+	case KindPasskey, KindWrap:
 		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
 	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindSuspend, KindUnsuspend:
 		line += " " + string(e.Kind)
 	}
 	return line + "\n"
@@ -307,7 +377,7 @@ func parseHex(s string, n int) ([]byte, bool) {
 func unknownKind(k Kind) bool {
 	switch k {
 	case KindPurge, KindFreeze, KindDevice, KindPassword, KindUnfreeze, KindWaitlistLeave, KindPasskey, KindWaitlistUnsent,
-		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindWrap, KindSuspend, KindUnsuspend:
 		return false
 	}
 	for _, r := range string(k) {
@@ -366,11 +436,11 @@ func parseLine(text string) (Entry, bool) {
 	e.Kind = Kind(f[2])
 	switch e.Kind {
 	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindSuspend, KindUnsuspend:
 		if len(f) != 3 {
 			return Entry{}, false
 		}
-	case KindPasskey:
+	case KindPasskey, KindWrap:
 		if len(f) != 4 || len(f[3]) < 2*keyproto.MinCredentialID || len(f[3]) > 2*keyproto.MaxCredentialID {
 			return Entry{}, false
 		}
@@ -433,7 +503,7 @@ func parse(path string, raw []byte) ([]line, error) {
 }
 
 func openAppend(path string) (*os.File, bool, error) {
-	return openShared(path, os.O_WRONLY|os.O_APPEND)
+	return openShared(path, os.O_RDWR|os.O_APPEND)
 }
 
 func openShared(path string, flag int) (*os.File, bool, error) {
@@ -477,4 +547,63 @@ func syncDir(path string) error {
 		return fmt.Errorf("purgeledger: sync directory of %s: %w", path, err)
 	}
 	return nil
+}
+
+func EnsureEntry(path string, e Entry, cutoff time.Time) (bool, error) {
+	if path == "" {
+		return false, errors.New("purgeledger: no ledger path")
+	}
+	if err := check(e); err != nil {
+		return false, fmt.Errorf("%w: %w", ErrNotWritten, err)
+	}
+	if e.At.Before(cutoff) {
+		return false, nil
+	}
+	unlock, err := lock(path)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", ErrNotWritten, err)
+	}
+	defer unlock()
+	held, err := holdsLocked(path, e)
+	if err != nil || held {
+		return false, err
+	}
+	if err := appendLocked(path, []byte(formatEntry(e))); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func Missing(path string, e Entry, cutoff time.Time) (bool, error) {
+	if path == "" {
+		return false, errors.New("purgeledger: no ledger path")
+	}
+	if e.At.Before(cutoff) {
+		return false, nil
+	}
+	unlock, err := lock(path)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	held, err := holdsLocked(path, e)
+	return !held && err == nil, err
+}
+
+func holdsLocked(path string, e Entry) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("purgeledger: read %s: %w", path, err)
+	}
+	lines, err := parse(path, raw)
+	if err != nil {
+		return false, err
+	}
+	at := e.At.Truncate(time.Second)
+	for _, l := range lines {
+		if !l.unknown && l.e.ID == e.ID && l.e.Kind == e.Kind && !l.e.At.Before(at) {
+			return true, nil
+		}
+	}
+	return false, nil
 }

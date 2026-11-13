@@ -292,6 +292,9 @@ public enum CategoriesEngine {
         (c.kind, c.bucket, c.role) = classOf(parent)
         c.parent = p
         place(c, in: &s)
+        for k in s.txns.indices where s.txns[k].categoryID == id && s.txns[k].splits.isEmpty {
+          s.txns[k].isRefund = RefundEdit.filedAsRefund(s.txns[k], in: s)
+        }
       } else if let i = s.categories.firstIndex(where: { $0.id == id }) {
         s.categories[i] = c
       }
@@ -306,12 +309,13 @@ public enum CategoriesEngine {
           s.plan.budgets[PlanState.key(t, month)] = .aed(s.plan.budget(t, month).minor + assigned.minor)
         }
       }
+      s.plan.budgets[PlanState.key(id, month.next)] = nil
       if let t = moveTo {
         for k in s.txns.indices where s.txns[k].categoryID == id && s.txns[k].splits.isEmpty && !s.txns[k].archived {
           s.txns[k].categoryID = t
           s.txns[k].categorySource = .user
-          s.txns[k].isTransfer = t == "transfer"
-          s.txns[k].isRefund = t == "refunds"
+          s.txns[k].isTransfer = RefundEdit.filedAsTransfer(s.txns[k])
+          s.txns[k].isRefund = RefundEdit.filedAsRefund(s.txns[k], in: s)
         }
       }
     case .restoreCategory(let id):

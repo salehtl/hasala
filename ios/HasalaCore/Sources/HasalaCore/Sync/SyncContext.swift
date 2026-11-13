@@ -17,10 +17,11 @@ public final class SyncContext: Sendable {
   public let client: AuthClient
   public let clock: any CoreTime.Clock
   public let random: any RandomSource
+  public let build: String?
 
   public init(
     userID: UserID, writerID: WriterID, store: LedgerStore, secrets: Secrets, client: AuthClient, clock: any CoreTime.Clock,
-    random: any RandomSource
+    random: any RandomSource, build: String? = nil
   ) {
     self.userID = userID
     self.writerID = writerID
@@ -29,14 +30,15 @@ public final class SyncContext: Sendable {
     self.client = client
     self.clock = clock
     self.random = random
+    self.build = build
   }
 
   /// The bearer token; no session → `needsSignIn`; a pending logout is
   /// treated as signed out (§4.7 row 1).
   func bearer() throws(SyncStop) -> String {
     let s: SessionRecord?
-    do { s = try secrets.session() } catch { throw .notNow }
-    guard let s, !s.pending_logout else { throw .needsSignIn }
+    do { s = try secrets.activeSession() } catch { throw .notNow }
+    guard let s else { throw .needsSignIn }
     return s.token
   }
 
@@ -65,7 +67,7 @@ public final class SyncContext: Sendable {
       let state = try storeCall { () throws(StoreError) in try store.syncState() }
       guard let pinned = PinnedRoster.decode(state.rosterJSON) else { return .halted(.rosterInvalid) }
       let fresh = try await RosterService.refetch(client: client, bearer: try bearer(), pinned: pinned)
-      return fresh.writers[writerID.string]?.final_counter != nil ? .wipe : stop
+      return fresh.writers[writerID.string]?.isLive == false ? .wipe : stop
     } catch {
       return error
     }

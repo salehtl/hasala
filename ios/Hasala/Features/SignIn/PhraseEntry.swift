@@ -100,6 +100,15 @@ struct PhraseEntryState: Equatable {
     return Self.normalised(ws.joined(separator: " ") + (endsWithSpace ? " " : ""))
   }
 
+  static let pasteBlockWords = wordCount / 2
+
+  @MainActor
+  static func pasteChangeCount(before: String, raw: String, on board: PhrasePasteboard = .system) -> Int? {
+    guard PhraseEntryState(raw).words.count - PhraseEntryState(before).words.count >= pasteBlockWords, board.hasStrings()
+    else { return nil }
+    return board.changeCount()
+  }
+
   func drawn(masked: Bool) -> [String] {
     masked ? words.map { _ in "•••••" } : words
   }
@@ -187,6 +196,10 @@ struct PhraseEntryGrid: View {
       focused.wrappedValue = true
       captured = screenIsCaptured()
     }
+    .onDisappear { forgetPaste() }
+    .onChange(of: scenePhase) { _, now in
+      if now != .active { forgetPaste() }
+    }
     .onChange(of: editFocused) { _, now in
       if !now, edit.wrappedValue != nil { commitEdit(refocus: false) }
     }
@@ -208,13 +221,16 @@ struct PhraseEntryGrid: View {
     }
   }
 
+  private func forgetPaste() {
+    clearPastedPhrase(changeCount: pastedChangeCount)
+    pastedChangeCount = nil
+  }
+
   private var field: some View {
     TextField("", text: Binding(get: { text }, set: { new in
       let before = text
       text = PhraseEntryState.normalised(new)
-      // A jump of many letters at once is a paste. Only `changeCount` is read: reading the
-      // contents would show iOS's paste prompt.
-      if new.count - before.count >= 12 { pastedChangeCount = UIPasteboard.general.changeCount }
+      if let pasted = PhraseEntryState.pasteChangeCount(before: before, raw: new) { pastedChangeCount = pasted }
     }))
     .textContentType(nil)
     .keyboardType(.asciiCapable)
@@ -405,7 +421,7 @@ struct PhraseEntryGrid: View {
   /// "Paste": fills from the first cell (page 11 §05).
   private func paste(_ pasted: String) {
     text = PhraseEntryState.normalised(pasted)
-    pastedChangeCount = UIPasteboard.general.changeCount
+    pastedChangeCount = PhrasePasteboard.system.changeCount()
     focused.wrappedValue = true
   }
 }
@@ -568,8 +584,19 @@ private struct SuggestionBar: View {
 /// contents, and writing never shows iOS's paste prompt. A typed phrase leaves the
 /// pasteboard alone.
 @MainActor
-func clearPastedPhrase(changeCount: Int?) {
-  guard let changeCount else { return }
-  let pb = UIPasteboard.general
-  if pb.changeCount == changeCount { pb.items = [] }
+func clearPastedPhrase(changeCount: Int?, on board: PhrasePasteboard = .system) {
+  guard let changeCount, board.changeCount() == changeCount else { return }
+  board.empty()
+}
+
+@MainActor
+struct PhrasePasteboard {
+  var changeCount: @MainActor () -> Int
+  var hasStrings: @MainActor () -> Bool
+  var empty: @MainActor () -> Void
+
+  static let system = PhrasePasteboard(
+    changeCount: { UIPasteboard.general.changeCount },
+    hasStrings: { UIPasteboard.general.hasStrings },
+    empty: { UIPasteboard.general.items = [] })
 }

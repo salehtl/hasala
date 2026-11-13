@@ -34,8 +34,15 @@ struct LiveGateTests {
     check(.restoring, .signedOut, .restoring)
     check(.onboardingKeys, .checking, nil)
     check(.needsUnlock, .checking, nil)
-    check(.opening(Self.binding()), .onboarding(.bank), nil)
+    check(.opening(Self.binding()), .onboarding, nil)
     check(.opening(Self.binding()), finished: true, .ready, nil)
+  }
+
+  @Test func closingTheAccountTakesTheUpdateWallWithItAndLeavesTheOthers() {
+    #expect(BootController.wallAfterClosing(.updateRequired) == nil)
+    #expect(BootController.wallAfterClosing(nil) == nil)
+    let kept: [BootController.Wall] = [.otherAccount(email: "maya@example.com"), .foreignData, .unenrolled, .restoring, .openFailed]
+    for wall in kept { #expect(BootController.wallAfterClosing(wall) == wall) }
   }
 
   @Test func theGmailStepResumesFromTheLane() {
@@ -84,6 +91,27 @@ struct LiveGateTests {
     #expect(LedgerStateMapper.skipped(MayaFixture.txns(["txn-1", "txn-123"]), c) == ["txn-123"])
   }
 
+  @Test func reachingTheAppByAnyRouteKeepsSetupFinishedThroughARelaunch() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let before: [AccountSession.Phase] = [.signedOut, .checking, .onboarding, .needsKeys, .frozen(holder),
+                                          .needsUnlock(passkeyCanUnlock: false)]
+    let d = Self.defaults()
+    for phase in before {
+      BootController.noteReached(phase, defaults: d)
+      #expect(!LocalAccountData.setupFinished(d), "\(phase)")
+    }
+    let session = AccountSession(services: AccountServices(
+      account: MockAccountService(existing: .passkey), mailbox: MockMailbox(), setup: MockSetupAuthoring(),
+      notifications: MockNotificationPermission()), phase: .signedOut)
+    let recovery = SignInModel(account: session.account) { session.signedIn($0) }
+    recovery.recoveryDone()
+    #expect(session.phase == .ready)
+    BootController.noteReached(session.phase, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    let (relaunched, wall) = BootController.initialPhase(.opening(Self.binding()), finished: LocalAccountData.setupFinished(d))
+    #expect(relaunched == .ready && wall == nil)
+  }
+
   @Test func theFaceIDLockIsOffUntilTheAppLockExists() {
     #expect(DevicePrefsStore(defaults: Self.defaults()).prefs.faceIDLock == false)
   }
@@ -98,23 +126,43 @@ struct LiveGateTests {
     let d = Self.defaults()
     LocalAccountData.markSetupFinished(d)
     DevicePrefsStore(defaults: d).skip("txn-1", on: LocalDate(2026, 10, 12))
+    d.set(["phrase"], forKey: FinishSetupRows.key)
     d.set("x", forKey: "push.apns.registered.v2")
     d.set("x", forKey: "push.apns.registered.v1")
     d.set(Data([1]), forKey: "debug.simulatorApprovalKey.u:w")
     LocalAccountData.setMailboxProvider(.outlook, d)
     #expect(LocalAccountData.mailboxProvider(d) == .outlook)
+    LocalAccountData.setAmountsHidden(true, d)
     SearchHistory.shared.add("Carrefour")
     LocalAccountData.forget(defaults: d)
+    #expect(!LocalAccountData.amountsHidden(d))
     // What was searched (merchant names) never shows to the next account in this process.
     #expect(SearchHistory.shared.recent.isEmpty)
     // The provider this iPhone read the account's mail through goes with the account.
     #expect(d.object(forKey: "app.hasala.prefs.mailbox.provider") == nil)
     #expect(!LocalAccountData.setupFinished(d))
     #expect(d.object(forKey: "prefs.review.skipped.v2") == nil)
+    #expect(d.object(forKey: FinishSetupRows.key) == nil)
     #expect(d.object(forKey: "push.apns.registered.v2") == nil && d.object(forKey: "push.apns.registered.v1") == nil)
     #if targetEnvironment(simulator)
       #expect(d.object(forKey: "debug.simulatorApprovalKey.u:w") == nil)
     #endif
+    #expect(d.string(forKey: "app.hasala.installID") == "install-a")
+  }
+
+  struct UnreadableKeychain: Error {}
+
+  @Test func aWipeCutShortIsFinishedOnceTheKeychainHoldsNoAccount() {
+    let d = Self.defaults()
+    LocalAccountData.markSetupFinished(d)
+    LocalAccountData.setMailboxProvider(.outlook, d)
+    LocalAccountData.forgetIfNoAccount(binding: { Self.binding() }, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    LocalAccountData.forgetIfNoAccount(binding: { throw UnreadableKeychain() }, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    LocalAccountData.forgetIfNoAccount(binding: { nil }, defaults: d)
+    #expect(!LocalAccountData.setupFinished(d))
+    #expect(LocalAccountData.mailboxProvider(d) == nil)
     #expect(d.string(forKey: "app.hasala.installID") == "install-a")
   }
 

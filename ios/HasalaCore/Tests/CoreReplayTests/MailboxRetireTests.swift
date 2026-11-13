@@ -89,6 +89,152 @@ struct MailboxRetireTests {
     #expect(s.mailboxRetirements.first?.txnIDs == [Ids.t1])
   }
 
+  @Test("an edit of a row its mailbox's removal retired still applies, with a notice")
+  func editAfterRetire() throws {
+    var log = Log()
+    try log.blob(ingest(1, id: Ids.t1, extra: Mbx.prov(Mbx.a, message: "m1")))
+    try log.blob(ingest(2, id: Ids.t2, merchant: "ENOC", extra: Mbx.prov(Mbx.b, message: "m2")))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    try log.blob(
+      op(
+        "txn_categorized", #"{"category":"transport","needs_review":false,"source":{"kind":"user"}}"#, id: 61,
+        entity: ("txn", Ids.t1), parent: 1),
+      op(
+        "txn_categorized", #"{"category":"transport","needs_review":false,"source":{"kind":"user"}}"#, id: 62,
+        entity: ("txn", Ids.t2), parent: 1),
+      as: Log.w2)
+    try log.blob(op("txn_edited", #"{"merchant_raw":"CARREFOUR"}"#, id: 63, entity: ("txn", Ids.t1), parent: 2))
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.category == "transport" && s.txns[Ids.t1]?.version == 3)
+    #expect(s.txns[Ids.t1]?.merchantRaw == "CARREFOUR" && s.txns[Ids.t1]?.retiredBy == "op-60")
+    #expect(s.txns[Ids.t2]?.category == "transport" && s.txns[Ids.t2]?.version == 2)
+    #expect(s.anomalies.map(\.kind) == ["edit_of_retired", "edit_of_retired"])
+    #expect(s.anomalies.map(\.atSeq) == [4, 5])
+    #expect(!s.byFingerprint.values.contains { $0.contains(Ids.t1) })
+  }
+
+  @Test("when nothing of the row a notice names survives the remove, an open notice or a same answer clears and a different answer stays")
+  func noticeOnRetiredRowClears() throws {
+    var log = Log()
+    try log.blob(ingest(1, id: Ids.t1, extra: Mbx.prov(Mbx.a, message: "m1")))
+    try log.blob(ingest(2, id: Ids.t2, extra: #","entry_method":"manual""#))
+    try log.blob(ingest(3, id: Ids.t3, extra: Mbx.prov(Mbx.b, message: "m3")))
+    try log.blob(ingest(4, id: Ids.ulid(9), merchant: "ENOC", extra: Mbx.prov(Mbx.a, message: "m4")))
+    try log.blob(ingest(5, id: Ids.ulid(10), merchant: "ENOC", extra: #","entry_method":"manual""#))
+    try log.blob(ingest(6, id: Ids.ulid(11), merchant: "IKEA", extra: Mbx.prov(Mbx.a, message: "m6")))
+    try log.blob(ingest(7, id: Ids.ulid(12), merchant: "IKEA", extra: #","entry_method":"manual""#))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t1)","disposition":"same"}"#, id: 50, entity: ("txn", Ids.t2),
+        parent: 1))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.ulid(11))","disposition":"different"}"#, id: 51,
+        entity: ("txn", Ids.ulid(12)), parent: 1))
+    #expect(log.state.txns[Ids.t2]?.possibleDuplicateOf == Ids.t1 && log.state.txns[Ids.t2]?.duplicateDisposition == "same")
+    #expect(log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    #expect(log.state.txns[Ids.ulid(10)]?.possibleDuplicateOf == Ids.ulid(9))
+    try log.blob(Mbx.retire(Mbx.b, id: 59))
+    #expect(log.state.txns[Ids.t2]?.possibleDuplicateOf == Ids.t1 && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.possibleDuplicateOf == nil && s.txns[Ids.t2]?.duplicateDisposition == nil)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == nil && s.txns[Ids.t3]?.retiredBy == "op-59")
+    #expect(s.txns[Ids.ulid(10)]?.possibleDuplicateOf == nil)
+    #expect(s.txns[Ids.ulid(11)]?.retiredBy == "op-60")
+    #expect(s.txns[Ids.ulid(12)]?.possibleDuplicateOf == Ids.ulid(11) && s.txns[Ids.ulid(12)]?.duplicateDisposition == "different")
+    #expect(s.txns[Ids.t2]?.version == 2 && s.txns[Ids.t2]?.isLive == true)
+    #expect(log.kinds == ["possible_duplicate", "possible_duplicate", "possible_duplicate", "possible_duplicate"])
+  }
+
+  @Test("when the remove promotes a merged copy of the row a notice names, the notice moves to that copy with its answer")
+  func noticeMovesToPromotedCopy() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, mid: Copy.mid))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.alert(4, id: Ids.ulid(7), grant: Mbx.a, merchant: "ENOC", mid: "fedcba9876543210fedcba9876543210"))
+    try log.blob(Copy.alert(5, id: Ids.ulid(8), grant: Mbx.b, merchant: "ENOC", mid: "fedcba9876543210fedcba9876543210"))
+    try log.blob(ingest(6, id: Ids.ulid(9), amount: "2700", merchant: "ENOC", extra: #","entry_method":"manual""#))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.ulid(7))","disposition":"different"}"#, id: 50,
+        entity: ("txn", Ids.ulid(9)), parent: 1))
+    #expect(log.state.txns[Ids.t2]?.mergedInto == Ids.t1 && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    #expect(log.state.txns[Ids.ulid(8)]?.mergedInto == Ids.ulid(7) && log.state.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(7))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.isLive == true && s.txns[Ids.ulid(8)]?.isLive == true)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2 && s.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(s.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(8) && s.txns[Ids.ulid(9)]?.duplicateDisposition == "different")
+    #expect(s.txns.values.allSatisfy { $0.possibleDuplicateMovedFrom.isEmpty })
+    #expect(log.kinds == ["possible_duplicate", "possible_duplicate"])
+  }
+
+  @Test("a notice that a merge moved goes back to the copy the remove promotes")
+  func noticeReturnsToPromotedCopy() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid, gates: Copy.fail))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-04T08:00:00.000Z", mid: Copy.mid, gates: Copy.pass))
+    #expect(log.state.txns[Ids.t1]?.mergedInto == Ids.t2 && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    try log.blob(Mbx.retire(Mbx.b, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.isLive == true && s.txns[Ids.t2]?.retiredBy == "op-60")
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && s.txns[Ids.t3]?.possibleDuplicateMovedFrom.isEmpty == true)
+  }
+
+  @Test("when the remove releases a held copy of the row a notice names, the notice moves to that copy with its answer")
+  func noticeMovesToReleasedCopy() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.alert(4, id: Ids.ulid(7), grant: Mbx.a, merchant: "ENOC"))
+    try log.blob(Copy.alert(5, id: Ids.ulid(8), grant: Mbx.b, merchant: "ENOC", at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(6, id: Ids.ulid(9), amount: "2700", merchant: "ENOC", extra: #","entry_method":"manual""#))
+    try log.blob(
+      op(
+        "txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.ulid(7))","disposition":"different"}"#, id: 50,
+        entity: ("txn", Ids.ulid(9)), parent: 1))
+    #expect(log.state.txns[Ids.t2]?.isHeldCopy == true && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1)
+    #expect(log.state.txns[Ids.ulid(8)]?.isHeldCopy == true && log.state.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(7))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.isLive == true && s.txns[Ids.t2]?.isHeldCopy == false && s.txns[Ids.t2]?.possibleDuplicateOf == nil)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2 && s.txns[Ids.t3]?.duplicateDisposition == nil)
+    #expect(s.txns[Ids.ulid(8)]?.isHeldCopy == false && s.txns[Ids.ulid(8)]?.possibleDuplicateOf == nil)
+    #expect(s.txns[Ids.ulid(9)]?.possibleDuplicateOf == Ids.ulid(8) && s.txns[Ids.ulid(9)]?.duplicateDisposition == "different")
+    #expect(s.txns.values.allSatisfy { $0.possibleDuplicateMovedFrom.isEmpty })
+  }
+
+  @Test("when the remove retires a held copy that a notice names, the notice moves to the row the copy was held against")
+  func noticeOnRetiredHeldCopyMoves() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, merchant: "starbucks difc", at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "starbucks difc", extra: #","entry_method":"manual""#))
+    try log.blob(op("txn_duplicate_disposition", #"{"other_txn_id":"\#(Ids.t2)","disposition":"same"}"#, id: 50, entity: ("txn", Ids.t3), parent: 1))
+    #expect(log.state.txns[Ids.t2]?.isHeldCopy == true && log.state.txns[Ids.t3]?.possibleDuplicateOf == Ids.t2)
+    try log.blob(Mbx.retire(Mbx.b, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.retiredBy == "op-60" && s.txns[Ids.t1]?.isLive == true)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == Ids.t1 && s.txns[Ids.t3]?.duplicateDisposition == "same")
+  }
+
+  @Test("a copy the person kept apart is not the purchase's copy, so the remove does not move the notice to it")
+  func keptCopyIsNotTheSurvivor() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, at: "2026-10-03T08:06:00.000Z"))
+    try log.blob(ingest(3, id: Ids.t3, amount: "2700", merchant: "STARBUCKS DIFC", extra: #","entry_method":"manual""#))
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 1, op: 50))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.copyDecision == "keep_both" && s.txns[Ids.t2]?.isLive == true)
+    #expect(s.txns[Ids.t3]?.possibleDuplicateOf == nil && s.txns[Ids.t2]?.possibleDuplicateOf == nil)
+  }
+
   @Test("legacy rows join only when the op says so, and only for the same provider")
   func legacy() throws {
     func fold(legacy: Bool) throws -> State {

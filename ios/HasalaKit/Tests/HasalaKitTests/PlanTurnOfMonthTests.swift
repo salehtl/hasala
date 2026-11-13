@@ -104,6 +104,37 @@ struct PlanAssignTests {
     #expect(plan.expiredMovesLine == "2 moves from May have ended")
     #expect(plan.keepExpiredMoves(s) == [.setBudget("2", PlanTurnOfMonthTests.june, .aed(318_00)), .setBudget("4", PlanTurnOfMonthTests.june, .aed(100_00))])
   }
+
+  @MainActor @Test func keptMovesAreNotOfferedAgain() throws {
+    var s = PlanTurnOfMonthTests.ledger()
+    s.plan.expiredMoves = ["2": .aed(318_00), "4": .aed(100_00)]
+    let now = LocalDateTime(2026, 6, 1, 9, 0)
+    let ledger = InMemoryLedger(state: s, now: now)
+    for edit in PlanEngine.snapshot(ledger.state, now: now).keepExpiredMoves(ledger.state) { try ledger.apply(edit) }
+    let kept = PlanEngine.snapshot(ledger.state, now: now)
+    #expect(kept.expiredMovesLine == nil)
+    #expect(kept.keepExpiredMoves(ledger.state).isEmpty)
+    #expect(ledger.state.plan.budget("2", PlanTurnOfMonthTests.june) == .aed(318_00))
+    #expect(ledger.state.plan.budget("4", PlanTurnOfMonthTests.june) == .aed(100_00))
+
+    var plan = s.plan
+    plan.setBudget("2", PlanTurnOfMonthTests.june.next, to: .aed(50_00), thisMonth: PlanTurnOfMonthTests.june)
+    #expect(plan.expiredMoves["2"] == .aed(318_00))
+    plan.setBudget("2", PlanTurnOfMonthTests.june, to: .aed(0), thisMonth: PlanTurnOfMonthTests.june)
+    #expect(plan.expiredMoves["2"] == nil && plan.expiredMoves["4"] == .aed(100_00))
+  }
+
+  @Test func onlyTheMovesKeepCanKeepAreNamed() {
+    var s = PlanTurnOfMonthTests.ledger()
+    s.plan.expiredMoves = ["2": .aed(318_00), "3": .aed(-318_00)]
+    let plan = PlanEngine.snapshot(s, now: LocalDateTime(2026, 6, 1, 9, 0))
+    #expect(plan.expiredMovesLine == "1 move from May has ended")
+    #expect(plan.keepExpiredMoves(s) == [.setBudget("2", PlanTurnOfMonthTests.june, .aed(318_00))])
+    s.plan.expiredMoves = ["3": .aed(-318_00)]
+    #expect(PlanEngine.snapshot(s, now: LocalDateTime(2026, 6, 1, 9, 0)).expiredMovesLine == nil)
+    s.plan.expiredMoves = ["2": .aed(318_00)]
+    #expect(PlanEngine.snapshot(s, now: LocalDateTime(2026, 7, 1, 9, 0), month: PlanTurnOfMonthTests.june).expiredMovesLine == nil)
+  }
 }
 
 @Suite("Pace · fewer false alarms")

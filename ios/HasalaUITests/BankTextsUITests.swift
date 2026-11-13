@@ -228,7 +228,7 @@ final class BankTextsUITests: XCTestCase {
     XCTAssertTrue(el(app, "mailbox.disconnectPage").waitForExistence(timeout: 30), "the disconnect page did not open")
     let note = el(app, "mailbox.disconnect.textsNote")
     XCTAssertTrue(note.waitForExistence(timeout: uiWait), "the automation sentence is missing")
-    XCTAssertTrue(note.label.contains("Your Shortcuts automation stays"), note.label)
+    XCTAssertTrue(note.label.contains("If your Shortcuts automation is still there"), note.label)
     attach(app, "Disconnect this mailbox · Automation still there")
   }
 

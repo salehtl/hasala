@@ -178,6 +178,9 @@ extension State {
     }
     if let v = t.copyOf { o["copy_of"] = .string(v) }
     if let v = t.copyDecision { o["copy_decision"] = .string(v) }
+    if !t.possibleDuplicateMovedFrom.isEmpty {
+      o["possible_duplicate_moved_from"] = .array(t.possibleDuplicateMovedFrom.map(JSONValue.string))
+    }
     if !t.annotations.isEmpty {
       o["annotations"] = pairs(t.annotations) { k in obj(["op_id": .string(k.opID), "value": str(k.value)]) }
     }

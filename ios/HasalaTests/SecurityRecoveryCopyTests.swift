@@ -1,3 +1,4 @@
+import CoreAuth
 import Foundation
 import HasalaModels
 import SwiftUI
@@ -32,12 +33,12 @@ struct SecurityRecoveryCopyTests {
   }
 
   @Test func theAccountSaysWhetherTheHolderCanLiftTheFreeze() throws {
-    let json = #"{"frozen":true,"frozen_by":"holder","holder_can_lift":false,"has_password":false}"#
-    let a = try JSONDecoder().decode(LiveAccountFields.self, from: Data(json.utf8))
+    let json = #"{"user_id":"u","frozen":true,"frozen_by":"holder","holder_can_lift":false,"has_password":false}"#
+    let a = try JSONDecoder().decode(AccountInfo.self, from: Data(json.utf8))
     let info = try #require(LiveAccountService.freeze(a, nowMs: 1_792_000_000_000))
     #expect(!info.holderCanLift)
     #expect(info.hasPassword == false)
-    let older = try JSONDecoder().decode(LiveAccountFields.self, from: Data(#"{"frozen":true,"frozen_by":"holder"}"#.utf8))
+    let older = try JSONDecoder().decode(AccountInfo.self, from: Data(#"{"user_id":"u","frozen":true,"frozen_by":"holder"}"#.utf8))
     #expect(LiveAccountService.freeze(older, nowMs: 1_792_000_000_000)?.holderCanLift == true)
   }
 
@@ -105,6 +106,34 @@ struct SecurityRecoveryCopyTests {
     #expect(state.replacing(9, with: "orbit") == state.text)
     #expect(PhraseEntryState("absurd avoid").replacing(0, with: "orbit") == "orbit avoid")
     #expect(PhraseEntryGrid.unknownLine(2) == "Word 3 isn't on the recovery list. Tap it to fix the spelling.")
+  }
+
+  private func board(count: Int = 41, strings: Bool = true, emptied: @escaping @MainActor () -> Void = {}) -> PhrasePasteboard {
+    PhrasePasteboard(changeCount: { count }, hasStrings: { strings }, empty: emptied)
+  }
+
+  @Test func onlyABlockOfThePhraseCountsAsAPaste() {
+    let phrase = ["absurd", "avoid", "scissors", "anxiety", "gather", "lottery", "category", "door", "army", "half", "long",
+                  "camera"]
+    func recorded(_ before: String, _ raw: String, _ on: PhrasePasteboard) -> Int? {
+      PhraseEntryState.pasteChangeCount(before: before, raw: raw, on: on)
+    }
+    #expect(recorded("", phrase.joined(separator: " "), board()) == 41)
+    #expect(recorded("", phrase.enumerated().map { "\($0 + 1). \($1)" }.joined(separator: "\n"), board()) == 41)
+    #expect(recorded("", phrase.prefix(6).joined(separator: " "), board()) == 41)
+    #expect(recorded("absurd ", "absurd avoid scissors anxiety gather", board()) == nil)
+    #expect(recorded("", "the corner of the street", board()) == nil)
+    #expect(recorded("", phrase.joined(separator: " "), board(strings: false)) == nil)
+  }
+
+  @Test func aPasteIsEmptiedOnlyWhileThePasteboardStillHoldsIt() {
+    var emptied = 0
+    let held = board(count: 41) { emptied += 1 }
+    clearPastedPhrase(changeCount: nil, on: held)
+    clearPastedPhrase(changeCount: 40, on: held)
+    #expect(emptied == 0)
+    clearPastedPhrase(changeCount: 41, on: held)
+    #expect(emptied == 1)
   }
 
   @Test func entryCellsReadTheirWordOnlyWhenTheScreenIsNotCaptured() {

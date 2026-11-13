@@ -216,6 +216,7 @@ public enum PasskeyError: Error, Sendable, Hashable {
 public protocol PasskeyProvider: Sendable {
   func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration
   func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion
+  func reportUnknown(credentialID: Data) async
 }
 
 public struct BackupFlags: Sendable, Hashable {

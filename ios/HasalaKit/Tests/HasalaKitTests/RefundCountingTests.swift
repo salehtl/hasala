@@ -101,6 +101,149 @@ struct RefundEditTests {
     #expect(!t.isRefund && t.categoryID == nil && t.needsReview)
   }
 
+  @Test func filingAMarkedRefundIntoIncomeStopsItBeingARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.markRefund("c1"))
+    #expect(l.state.txn("c1")?.isRefund == true && l.state.txn("c1")?.categoryID == "refunds")
+    let token = try #require(try l.apply(.categorize("c1", "salary", learnRule: false, project: nil)))
+    #expect(l.state.txn("c1")?.isRefund == false && l.state.txn("c1")?.categoryID == "salary")
+    l.undo(token)
+    #expect(l.state.txn("c1")?.isRefund == true && l.state.txn("c1")?.categoryID == "refunds")
+  }
+
+  @Test func aMarkedRefundMadeATransferStopsBeingARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.markRefund("c1"))
+    try l.apply(.markTransfer("c1"))
+    #expect(l.state.txn("c1")?.isTransfer == true && l.state.txn("c1")?.isRefund == false)
+  }
+
+  @Test func aRefundMarkedATransferLosesItsLinkUntilTheUndo() throws {
+    let l = Self.ledger()
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    let token = try #require(try l.apply(.markTransfer("c1")))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isTransfer && !t.isRefund && t.refundOf == nil && !t.refundLinkBroken)
+    l.undo(token)
+    let back = try #require(l.state.txn("c1"))
+    #expect(back.refundOf == "p1" && back.isRefund && !back.isTransfer && back.categoryID == "shopping")
+
+    var broken = RefundCountingTests.row("c2", 500_00, .in, category: "dining")
+    broken.refundLinkBroken = true
+    broken.isRefund = true
+    let b = RefundEditTests.ledger(with: broken)
+    try b.apply(.markTransfer("c2"))
+    let marked = try #require(b.state.txn("c2"))
+    #expect(marked.isTransfer && !marked.isRefund && !marked.refundLinkBroken)
+  }
+
+  @Test func aRefundMatchedToAPurchaseStaysARefundWhenFiledElsewhere() throws {
+    let l = Self.ledger()
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    try l.apply(.categorize("c1", "salary", learnRule: false, project: nil))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.categoryID == "salary" && t.isRefund && t.refundOf == "p1")
+  }
+
+  @Test func aCreditFiledIntoASpendingCategoryIsARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == true)
+    try l.apply(.categorize("c1", "salary", learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == false)
+  }
+
+  static let splitLines = [
+    SplitLine(id: 0, categoryID: "dining", amount: .aed(300_00)),
+    SplitLine(id: 1, categoryID: "shopping", amount: .aed(200_00)),
+  ]
+
+  @Test func aSplitCreditIsNotARefundUntilTheSplitGoes() throws {
+    let l = Self.ledger()
+    try l.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == true)
+    let split = try #require(try l.apply(.split("c1", Self.splitLines)))
+    #expect(l.state.txn("c1")?.isRefund == false)
+    l.undo(split)
+    #expect(l.state.txn("c1")?.isRefund == true)
+    try l.apply(.split("c1", Self.splitLines))
+    try l.apply(.split("c1", []))
+    #expect(l.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func aSplitKeepsARefundFiledOrMatchedAsOne() throws {
+    let filed = Self.ledger()
+    try filed.apply(.markRefund("c1"))
+    try filed.apply(.split("c1", Self.splitLines))
+    #expect(filed.state.txn("c1")?.isRefund == true)
+    try filed.apply(.split("c1", Array(Self.splitLines.reversed())))
+    #expect(filed.state.txn("c1")?.isRefund == true)
+
+    let matched = Self.ledger()
+    try matched.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    try matched.apply(.split("c1", Self.splitLines))
+    #expect(matched.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func archivingACategoryKeepsACreditARefundOnlyIfItStillIsOne() throws {
+    let toSpending = Self.ledger()
+    try toSpending.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    try toSpending.apply(.archiveCategory("dining", moveTo: "groceries"))
+    #expect(toSpending.state.txn("c1")?.categoryID == "groceries" && toSpending.state.txn("c1")?.isRefund == true)
+
+    let toIncome = Self.ledger()
+    try toIncome.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    try toIncome.apply(.archiveCategory("dining", moveTo: "salary"))
+    #expect(toIncome.state.txn("c1")?.categoryID == "salary" && toIncome.state.txn("c1")?.isRefund == false)
+
+    let matched = Self.ledger()
+    try matched.apply(.fileRefund("c1", into: "dining", of: "p1"))
+    try matched.apply(.archiveCategory("dining", moveTo: "salary"))
+    #expect(matched.state.txn("c1")?.categoryID == "salary" && matched.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func movingACustomCategoryBetweenSpendingAndIncomeChangesItsCredits() throws {
+    let l = Self.ledger()
+    try l.apply(.addCategory(CategoryDraft(name: "Side jobs", glyph: .tag, parent: "dining")))
+    let c = try #require(l.state.categories.first { $0.name == "Side jobs" }?.id)
+    try l.apply(.categorize("c1", c, learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == true)
+    try l.apply(.editCategory(c, CategoryDraft(name: "Side jobs", glyph: .tag, parent: "salary")))
+    #expect(l.state.txn("c1")?.isRefund == false)
+    try l.apply(.editCategory(c, CategoryDraft(name: "Side jobs", glyph: .tag, parent: "dining")))
+    #expect(l.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func aManualCreditFiledToSpendingIsARefund() throws {
+    func added(_ direction: Direction, _ category: CategoryID?) throws -> Bool {
+      let l = InMemoryLedger()
+      try l.apply(
+        .addTransaction(
+          ManualEntryDraft(amount: .aed(50_00), direction: direction, merchant: "Test Store", categoryID: category, postedAt: l.now)))
+      return try #require(l.state.txns.last).isRefund
+    }
+    #expect(try added(.in, "dining"))
+    #expect(try added(.in, "refunds"))
+    #expect(try !added(.in, "salary"))
+    #expect(try !added(.in, nil))
+    #expect(try !added(.out, "dining"))
+  }
+
+  @Test func undoTakesBackTheMatchedPurchase() throws {
+    let l = Self.ledger()
+    let filed = try #require(try l.apply(.fileRefund("c1", into: "shopping", of: "p1")))
+    #expect(l.state.txn("c1")?.refundOf == "p1")
+    l.undo(filed)
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.refundOf == nil && !t.isRefund && t.categoryID == nil && t.needsReview)
+
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    let off = try #require(try l.apply(.markRefund("c1")))
+    #expect(l.state.txn("c1")?.refundOf == nil)
+    l.undo(off)
+    #expect(l.state.txn("c1")?.refundOf == "p1" && l.state.txn("c1")?.isRefund == true)
+  }
+
   @Test func aRefundCannotPointAtMoneyIn() {
     let l = Self.ledger()
     #expect(throws: ActionError.refused(RefundEdit.refusedTarget)) {
@@ -116,6 +259,101 @@ struct RefundEditTests {
     #expect(token.title == "No longer a transfer")
     let t = try #require(l.state.txn("p1"))
     #expect(!t.isTransfer && t.categoryID == nil && t.needsReview)
+  }
+
+  static func ledger(with row: Txn) -> InMemoryLedger {
+    var s = MayaLedger.state
+    s.txns.append(RefundCountingTests.row("p1", 800_00, .out, category: "shopping"))
+    s.txns.append(row)
+    return InMemoryLedger(state: s)
+  }
+
+  static func markedTransfer(_ id: TxnID) -> Txn {
+    var t = RefundCountingTests.row(id, 500_00, .in, category: "transfer")
+    t.isTransfer = true
+    return t
+  }
+
+  static func matchedTransfer(_ id: TxnID, category: CategoryID?) -> Txn {
+    var t = RefundCountingTests.row(id, 500_00, .in, category: category)
+    t.isTransfer = true
+    t.isMatchedTransfer = true
+    return t
+  }
+
+  static func filedByRule(_ id: TxnID, _ direction: Direction) -> Txn {
+    var t = RefundCountingTests.row(id, 500_00, direction, category: "shopping")
+    t.categorySource = .rule(pattern: "TEST STORE")
+    t.ruleID = "r"
+    t.priorFiling = PriorFiling(categoryID: nil, categorySource: nil, ruleID: nil, needsReview: true)
+    return t
+  }
+
+  @Test func aCreditMarkedATransferBecomesARefundThatCounts() throws {
+    let l = Self.ledger(with: Self.markedTransfer("c1"))
+    let before = Spending.total(l.state, in: Self.october)
+    try l.apply(.markRefund("c1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isRefund && !t.isTransfer && t.categoryID == "refunds" && t.countsInPlan)
+    #expect(Spending.total(l.state, in: Self.october) == before - 500_00)
+  }
+
+  @Test func aRefundFiledFromATransferIsNoLongerATransfer() throws {
+    let l = Self.ledger(with: Self.markedTransfer("c1"))
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isRefund && !t.isTransfer && t.categoryID == "shopping" && t.countsInPlan)
+  }
+
+  @Test func undoPutsATransferBackAfterARefund() throws {
+    let l = Self.ledger(with: Self.markedTransfer("c1"))
+    let token = try #require(try l.apply(.markRefund("c1")))
+    l.undo(token)
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isTransfer && !t.isRefund && t.categoryID == "transfer")
+  }
+
+  @Test func aMatchedTransferIsNotARefund() throws {
+    for category in ["transfer", nil] as [CategoryID?] {
+      let l = Self.ledger(with: Self.matchedTransfer("c1", category: category))
+      let before = try #require(l.state.txn("c1"))
+      #expect(throws: ActionError.refused(RefundEdit.refusedMatchedTransfer)) { try l.apply(.markRefund("c1")) }
+      #expect(throws: ActionError.refused(RefundEdit.refusedMatchedTransfer)) {
+        try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+      }
+      #expect(l.state.txn("c1") == before)
+    }
+  }
+
+  @Test func aMatchedTransferAlreadyMarkedARefundCanBeTakenBackAndStaysATransfer() throws {
+    var row = Self.matchedTransfer("c1", category: "refunds")
+    row.isRefund = true
+    let l = Self.ledger(with: row)
+    try l.apply(.markRefund("c1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(!t.isRefund && t.isTransfer && t.isMatchedTransfer && t.categoryID == nil && t.needsReview)
+  }
+
+  @Test func aRefundMarkedATransferIsNoLongerARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.markRefund("c1"))
+    try l.apply(.markTransfer("c1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isTransfer && !t.isRefund)
+  }
+
+  @Test func aRefundOrTransferFilingLeavesNoRuleFilingToPutBack() throws {
+    let edits: [(Direction, LedgerEdit)] = [
+      (.in, .markRefund("c1")), (.in, .fileRefund("c1", into: "shopping", of: "p1")), (.out, .markTransfer("c1")),
+    ]
+    for (direction, edit) in edits {
+      let row = Self.filedByRule("c1", direction)
+      let l = Self.ledger(with: row)
+      let token = try #require(try l.apply(edit))
+      #expect(l.state.txn("c1")?.priorFiling == nil, "\(edit)")
+      l.undo(token)
+      #expect(l.state.txn("c1")?.priorFiling == row.priorFiling, "\(edit)")
+    }
   }
 }
 

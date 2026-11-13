@@ -45,7 +45,11 @@ cat >"$work/stub/git" <<STUB
 if [ -n "\${STUB_GIT_FAIL:-}" ]; then echo "git stub: failing" >&2; exit 128; fi
 exec "$real_git" "\$@"
 STUB
-chmod +x "$work/stub/xcodebuild" "$work/stub/git"
+cat >"$work/stub/curl" <<'STUB'
+#!/bin/sh
+echo '{"op_version_ceiling":999}'
+STUB
+chmod +x "$work/stub/xcodebuild" "$work/stub/git" "$work/stub/curl"
 key="$work/keys/AuthKey_TESTKEY000.p8"
 echo "not a key" >"$key"
 chmod 600 "$key"
@@ -126,13 +130,18 @@ fi
 # --- the gate (13), on a small repository ------------------------------------------------
 ios="$(cd "$here/.." && pwd)"
 mini="$work/mini"
-mkdir -p "$mini/ios/scripts" "$mini/ios/Config" "$mini/ios/Hasala" "$mini/ios/HasalaCore/Sources/HasalaCore" \
+mkdir -p "$mini/ios/scripts" "$mini/ios/Config" "$mini/ios/Hasala" "$mini/ios/HasalaCore/Sources/HasalaCore/Wire" \
 	"$mini/ios/HasalaKit/Sources/HasalaDesign"
 cp "$here"/{archive.sh,asc-env.sh,release-common.sh,privacy-lint.sh,build_number.sh} "$mini/ios/scripts/"
+mkdir -p "$mini/ios/scripts/golden" "$mini/ios/HasalaCore/Sources/HasalaCore/Resources/sample"
+cp "$here/golden/maya-v1.sha256" "$mini/ios/scripts/golden/"
+cp "$ios/HasalaCore/Sources/HasalaCore/Resources/SampleManifest.swift" "$mini/ios/HasalaCore/Sources/HasalaCore/Resources/"
+cp "$ios/HasalaCore/Sources/HasalaCore/Resources/sample/maya-v1.json" "$mini/ios/HasalaCore/Sources/HasalaCore/Resources/sample/"
 cp "$ios"/Config/*.xcconfig "$mini/ios/Config/"
 cp "$ios/Hasala/PrivacyInfo.xcprivacy" "$mini/ios/Hasala/"
 echo 'struct App {}' >"$mini/ios/Hasala/App.swift"
 echo 'enum Core {}' >"$mini/ios/HasalaCore/Sources/HasalaCore/Core.swift"
+printf 'public enum SchemaVersion {\n  public static let author = 4\n}\n' >"$mini/ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift"
 echo 'enum Design {}' >"$mini/ios/HasalaKit/Sources/HasalaDesign/Design.swift"
 printf 'build/\n' >"$mini/ios/.gitignore"
 git -C "$mini" init -q
@@ -149,6 +158,41 @@ if [[ "$(archives)" == $((before + 1)) ]]; then echo "ok   ...it reached xcodebu
 fi
 
 before="$(archives)"
+builds() { find "$work/mini-build" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '; }
+claimed="$(builds)"
+seed_file="$mini/ios/HasalaCore/Sources/HasalaCore/Resources/sample/maya-v1.json"
+manifest_file="$mini/ios/HasalaCore/Sources/HasalaCore/Resources/SampleManifest.swift"
+golden_file="$mini/ios/scripts/golden/maya-v1.sha256"
+cp "$seed_file" "$work/seed.orig"
+cp "$manifest_file" "$work/manifest.orig"
+cp "$golden_file" "$work/golden.orig"
+restore_pins() {
+	cp "$work/seed.orig" "$seed_file"
+	cp "$work/manifest.orig" "$manifest_file"
+	cp "$work/golden.orig" "$golden_file"
+}
+stale_digest="$(printf '0%.0s' {1..64})"
+printf '{"format":"hasala.sample","ops":[]}\n' >"$seed_file"
+sed "s/let sha256 = \"[0-9a-f]*\"/let sha256 = \"$stale_digest\"/" "$work/manifest.orig" >"$manifest_file"
+gate "a seed regenerated with its manifest and a stale golden" 13
+said "golden/maya-v1.sha256" "refused for the stale golden"
+restore_pins
+printf '{"format":"hasala.sample","ops":[]}\n' >"$seed_file"
+gate "a seed that no pin agrees with" 13
+said "maya-v1.json" "refused for the seed"
+restore_pins
+rm "$golden_file"
+gate "no golden file" 13
+restore_pins
+rm "$manifest_file"
+gate "no SampleManifest.swift" 13
+said "cannot read SampleManifest.sha256" "refused for the manifest"
+restore_pins
+if [[ "$(archives)" == "$before" && "$(builds)" == "$claimed" ]]; then echo "ok   ...a disagreeing seed never reached xcodebuild archive or claimed a build directory"; else
+	echo "FAIL a disagreeing seed reached xcodebuild archive or claimed a build directory"
+	fail=1
+fi
+
 printf 'func later() throws -> Int { throw IntegrationStub.notYet }\n' >"$mini/ios/HasalaCore/Sources/HasalaCore/Glue.swift"
 gate "an IntegrationStub left in an untracked file" 13
 said "IntegrationStub is still used under ios/" "refused for the stub"

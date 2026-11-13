@@ -26,12 +26,13 @@ public enum SamePurchase {
     public var possibleDuplicateOf: String?
     public var duplicateDisposition: String?
     public var heldCopy: Bool
+    public var note: String?
 
     public init(
       id: String, live: Bool = true, unparsed: Bool = false, archived: Bool = false, manual: Bool = false, amountMinor: Int64,
       currency: String, amountHomeMinor: Int64?, homeStated: Bool = false, direction: String, bank: String?, last4: String,
       postedMs: Int64, merchantKey: String, possibleDuplicateOf: String? = nil, duplicateDisposition: String? = nil,
-      heldCopy: Bool = false
+      heldCopy: Bool = false, note: String? = nil
     ) {
       self.id = id
       self.live = live
@@ -50,6 +51,7 @@ public enum SamePurchase {
       self.possibleDuplicateOf = possibleDuplicateOf
       self.duplicateDisposition = duplicateDisposition
       self.heldCopy = heldCopy
+      self.note = note
     }
   }
 
@@ -103,9 +105,10 @@ public enum SamePurchase {
 
   public static func pairs(_ rows: [Row], home: String) -> [Pair] {
     let foreign = rows.filter { isForeign($0, home: home) }
+    let settled = Set(rows.compactMap { mergedForeign(of: $0, note: $0.note, among: foreign, home: home) })
     let postings = rows.filter { isPosting($0, home: home) }
     var candidates: [(f: Row, a: Row)] = []
-    for f in foreign {
+    for f in foreign where !settled.contains(f.id) {
       for a in postings where qualifies(f, a, home: home) { candidates.append((f, a)) }
     }
     candidates.sort { closer($0.f, $0.a, than: $1.f, $1.a) }

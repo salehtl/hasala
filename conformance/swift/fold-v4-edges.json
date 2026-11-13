@@ -1,5 +1,5 @@
 {
-  "note": "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists: on a create, absent, null and [] are the same record; on an edit, an absent key keeps the head's list and a present one replaces it, and the merged record must pass the grammar. A refused list consumes no version, created_at stays the create's, and a second create of a bill is a fork (or nothing, when it is the same record). Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
+  "note": "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, a declined same-purchase pair across a merge and a remove, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists: on a create, absent, null and [] are the same record; on an edit, an absent key keeps the head's list and a present one replaces it, and the merged record must pass the grammar. A refused list consumes no version, created_at stays the create's, and a second create of a bill is a fork (or nothing, when it is the same record). Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
   "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
   "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
   "cases": [
@@ -1296,6 +1296,197 @@
           "unreadable": []
         },
         "state_sha256": "b128e5edb28380205b103a0c5e23c6e032e832e86415a2de554f3aeabb5d0aeb",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "move-undo-after-a-newer-set",
+      "group": "fold_v4",
+      "note": "Dining has 500.00 and moves 200.00 to groceries. Another iPhone then sets dining to 300.00, and the Undo of the move lands after it: dining reads 300.00 as typed (the newer set already absorbed the move), dining's moves for October, which count whether or not a set came after them, net to zero, groceries gives the 200.00 back, and the move is undone with no notice.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-dining",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "dining",
+                "month": "2026-10",
+                "amount_minor": "50000",
+                "scope": "only"
+              }
+            },
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-groceries",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "groceries",
+                "month": "2026-10",
+                "amount_minor": "90000",
+                "scope": "only"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-move-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "dining",
+                "to_category_id": "groceries",
+                "amount_minor": "20000",
+                "reason": "move",
+                "batch_id": null,
+                "undoes": null
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-dining-again",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "dining",
+                "month": "2026-10",
+                "amount_minor": "30000",
+                "scope": "only"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": "dining",
+                "amount_minor": "20000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-move-1"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [],
+          "homeCurrency": null,
+          "liveByIngestID": [],
+          "pendingByCurrency": [],
+          "plan": {
+            "cells": [
+              {
+                "category_id": "dining",
+                "latest_set_minor": "30000",
+                "month": "2026-10",
+                "moves_all_minor": "0",
+                "moves_since_set_minor": "0",
+                "onward_set_minor": null,
+                "write": {
+                  "at_ms": "1790841600000",
+                  "op_id": "op-set-dining-again",
+                  "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+                }
+              },
+              {
+                "category_id": "groceries",
+                "latest_set_minor": "90000",
+                "month": "2026-10",
+                "moves_all_minor": "0",
+                "moves_since_set_minor": "0",
+                "onward_set_minor": null,
+                "write": {
+                  "at_ms": "1790841600000",
+                  "op_id": "op-set-groceries",
+                  "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+                }
+              }
+            ],
+            "income_sources": [],
+            "moves": [
+              {
+                "amount_minor": "20000",
+                "batch_id": null,
+                "from": "dining",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-move-1",
+                "reason": "move",
+                "seq": "2",
+                "to": "groceries",
+                "undoes": null,
+                "undone": true
+              },
+              {
+                "amount_minor": "20000",
+                "batch_id": null,
+                "from": "groceries",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-undo-1",
+                "reason": "undo",
+                "seq": "4",
+                "to": "dining",
+                "undoes": "op-move-1",
+                "undone": false
+              }
+            ],
+            "roles": []
+          },
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [],
+          "unreadable": []
+        },
+        "state_sha256": "4202c9c1ff7254c6db0c2cef5ebcbf9dca94515f5009aaf9caa3d98c8dae7385",
         "anomaly_kinds": []
       }
     },
@@ -2842,6 +3033,915 @@
           "unreadable": []
         },
         "state_sha256": "4ff9323c60b4b2ee42c880dfbe6a3bbe707ef0e8808a2b7118f91f9e216eec5b",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "declined-pair-stays-declined-across-a-merge",
+      "group": "fold_v4",
+      "note": "The person said the AED posting is not the USD purchase (possible_duplicate_of with the answer different). The purchase's verified copy then arrives from mailbox B and the earlier alert merges into it: the posting's notice and its answer move to the copy that stays, and the pair is not offered again.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-usd",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "3672500"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_edited",
+              "op_id": "op-decline-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "possible_duplicate_of": "01JC0000000000000000000001"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_duplicate_disposition",
+              "op_id": "op-different-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 2,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "disposition": "different"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byDedupeKey": [
+            [
+              "mid:5d41402abc4b2a76b9719d911017c592",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "byFingerprint": [
+            [
+              "4412|2500|debit|AMAZON|2026-10-09",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ],
+            [
+              "4412|9300|debit|AMAZON MKTPLACE|2026-10-11",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-different-2",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [
+            [
+              "USD",
+              "2026-10-01T08:00:00.000Z"
+            ]
+          ],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ],
+            [
+              "USD",
+              "3672500"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "AMAZON",
+                "merge_kind": "certain",
+                "merge_op": "op-ingest-3",
+                "merged_into": "01JC0000000000000000000003",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": "different",
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_moved_from": [
+                  "01JC0000000000000000000001"
+                ],
+                "possible_duplicate_of": "01JC0000000000000000000003",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                    "kind": "certain",
+                    "mailbox_message_id": "msg-1",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000001"
+                  }
+                ],
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "af46724aad04a2309b034319a7d0053c74a67ecb02d5211202c7c7b190fd5cdb",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "declined-pair-stays-declined-after-a-remove",
+      "group": "fold_v4",
+      "note": "The same answer, then mailbox A is removed: the copy from mailbox B comes back as the purchase's row, the posting's notice and its answer move to it, and the pair is not offered again.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-usd",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "3672500"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_edited",
+              "op_id": "op-decline-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "possible_duplicate_of": "01JC0000000000000000000001"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_duplicate_disposition",
+              "op_id": "op-different-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 2,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "disposition": "different"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-a",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "gmail",
+                "legacy": false
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byDedupeKey": [
+            [
+              "mid:5d41402abc4b2a76b9719d911017c592",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "byFingerprint": [
+            [
+              "4412|2500|debit|AMAZON|2026-10-09",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ],
+            [
+              "4412|9300|debit|AMAZON MKTPLACE|2026-10-11",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-different-2",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "4",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+              "legacy": false,
+              "op_id": "op-retire-a",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000001"
+              ]
+            }
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [
+            [
+              "USD",
+              "2026-10-01T08:00:00.000Z"
+            ]
+          ],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ],
+            [
+              "USD",
+              "3672500"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": "different",
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": "01JC0000000000000000000003",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "ea4d0f3dd3bd38780f5224483fc84199c568a2f9016648f6f90d6e882cc4790f",
         "anomaly_kinds": []
       }
     },

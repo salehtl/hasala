@@ -22,7 +22,7 @@ struct BankStep: View {
       title: "Connect your bank alerts",
       subtitle: model.bankStepSubtitle,
       back: model.offersBankTexts && !connectBusy && !model.busy ? .action(model.backToSourceChoice) : .none,
-      trailing: skip(connected)
+      trailing: skip(connected, busy: connectBusy)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         YourBanksRow(summary: SetupModel.banksSummary(model.chosenBanks.count)) { choosingBanks = true }
@@ -97,8 +97,8 @@ struct BankStep: View {
     return model.connectable.first { $0 != provider }
   }
 
-  private func skip(_ connected: MailboxSnapshot?) -> (title: String, action: () -> Void)? {
-    guard connected == nil else { return nil }
+  private func skip(_ connected: MailboxSnapshot?, busy connectBusy: Bool) -> (title: String, action: () -> Void)? {
+    guard connected == nil, !connectBusy, !model.busy else { return nil }
     return ("Skip", model.skipBanks)
   }
 

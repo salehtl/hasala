@@ -68,7 +68,7 @@ struct TransactionSheet: View {
           }
         case .reviewReason(let reason):
           ReviewReasonPage(
-            reason: reason, sort: { app.router.transaction.removeAll() },
+            reason: reason, sort: { model.resolve(reason, merge: false) },
             archive: { model.setArchived(true) },
             merge: { model.resolve(reason, merge: true) },
             keepBoth: { model.resolve(reason, merge: false) })
@@ -234,15 +234,20 @@ struct TransactionSheet: View {
       KeyValueRow("Account", value: d.account ?? "Not set", placeholder: d.account == nil)
 
       HDivider(inset: .none)
-      Button { push(.note) } label: {
-        KeyValueRow("Note", value: d.note.isEmpty ? "Add a note" : d.note, chevron: true, placeholder: d.note.isEmpty)
-          .contentShape(Rectangle())
+      if d.canEditNote {
+        Button { push(.note) } label: {
+          KeyValueRow("Note", value: d.note.isEmpty ? "Add a note" : d.note, chevron: true, placeholder: d.note.isEmpty)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(d.note.isEmpty ? "Note, Add a note" : "Note, \(d.note)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("txn.note")
+      } else {
+        KeyValueRow("Note", value: d.note)
+          .accessibilityIdentifier("txn.note")
       }
-      .buttonStyle(.plain)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel(d.note.isEmpty ? "Note, Add a note" : "Note, \(d.note)")
-      .accessibilityAddTraits(.isButton)
-      .accessibilityIdentifier("txn.note")
 
       if d.project != nil || !model.projects.isEmpty {
         HDivider(inset: .none)
@@ -345,6 +350,8 @@ struct TransactionSheet: View {
     s.title != "Sorted by you" && s.title != "Added by you"
   }
 
+  static func offersSplit(_ d: TransactionDetail) -> Bool { !d.isTransfer }
+
   @ViewBuilder private func sortedRow(_ s: SortedBy, opensRules: Bool) -> some View {
     let row = HStack(spacing: 14) {
       HIconView(.rule, size: 22, color: HColor.iconPrimary)
@@ -416,9 +423,11 @@ struct TransactionSheet: View {
 
   private func actions(_ d: TransactionDetail) -> some View {
     VStack(spacing: 0) {
-      ActionRow(icon: .split, title: "Split across categories", pushes: true) { push(.split) }
-        .accessibilityIdentifier("txn.split")
-      HDivider(inset: .icon52)
+      if Self.offersSplit(d) {
+        ActionRow(icon: .split, title: "Split across categories", pushes: true) { push(.split) }
+          .accessibilityIdentifier("txn.split")
+        HDivider(inset: .icon52)
+      }
       ActionRow(icon: .pencil, title: "Rename merchant", pushes: true) { push(.rename) }
         .accessibilityIdentifier("txn.rename")
       HDivider(inset: .icon52)

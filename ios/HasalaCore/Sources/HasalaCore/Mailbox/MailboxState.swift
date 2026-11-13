@@ -18,6 +18,8 @@ public enum MailboxPhase: String, Sendable, Codable, CaseIterable {
   case otherDevice = "other_device"
   case reconnectRequired = "reconnect_required"
   case halted
+
+  public var isImporting: Bool { self == .scanning || self == .authoringBackfill }
 }
 
 /// Content-free error codes (spec 04 §7.11).
@@ -57,7 +59,15 @@ public struct MailboxState: Sendable, Equatable, Codable {
   public var lastCycleAtMs: Int64?
   public var lastSuccessAtMs: Int64?
   public var lastHolderCheckAtMs: Int64?
+  public var provider: MailProviderID?
   public init() {}
+
+  public var heldProvider: MailProviderID? {
+    switch phase {
+    case .unlinked, .otherDevice: nil
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted: provider
+    }
+  }
 }
 
 public enum AccountedOutcome: String, Sendable, Codable {
@@ -107,6 +117,17 @@ public struct PendingImport: Sendable, Equatable, Codable {
   }
 }
 
+public struct MessageStrike: Sendable, Equatable, Codable {
+  public var messageID: String
+  public var count: Int
+  public var atMs: Int64
+  public init(messageID: String, count: Int, atMs: Int64) {
+    self.messageID = messageID
+    self.count = count
+    self.atMs = atMs
+  }
+}
+
 public struct UnparsedSenderRecord: Sendable, Equatable, Codable {
   public var messageID: String
   public var domain: String
@@ -143,9 +164,14 @@ public struct MailboxCommit: Sendable {
   public var healthBumps: [(domain: String, internalDateMs: Int64)] = []
   /// Adds pending imports; a domain already pending keeps the earlier start.
   public var addImports: [PendingImport] = []
+  public var senderAddresses: [String] = []
   /// Ends the pending imports of these domains.
   public var doneImports: [String] = []
   public var unparsedSenders: [UnparsedSenderRecord] = []
+  public var strikes: [MessageStrike] = []
+  public var beginRetire: MailboxRetirePlan?
+  public var holdRetire: MailboxRetirePlan?
+  public var endRetire: MailboxRetirePlan?
   public var reader: MailReaderState?
   /// Replaces the state row when set.
   public var state: MailboxState?
@@ -156,8 +182,8 @@ public struct MailboxCommit: Sendable {
   public init() {}
   public var isEmpty: Bool {
     drafts.isEmpty && accounted.isEmpty && setAside.isEmpty && unreadable.isEmpty && stage.isEmpty
-      && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && doneImports.isEmpty
-      && unparsedSenders.isEmpty && reader == nil && state == nil && !clearAll && !clearReader
+      && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && senderAddresses.isEmpty && doneImports.isEmpty
+      && unparsedSenders.isEmpty && strikes.isEmpty && beginRetire == nil && holdRetire == nil && endRetire == nil && reader == nil && state == nil && !clearAll && !clearReader
   }
 }
 
@@ -183,6 +209,9 @@ public protocol MailboxPersistence: Sendable {
   func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool
   func markParsing(_ messageID: String) async throws(MailboxPersistenceError)
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError)
+  func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int
+  func pendingRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan]
+  func heldRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan]
   func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport]
   func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String]
   func loadReader() async throws(MailboxPersistenceError) -> MailReaderState?
@@ -208,6 +237,9 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
 
   public private(set) var addresses: [String] = []
   public private(set) var parsing: Set<String> = []
+  public private(set) var messageStrikes: [String: MessageStrike] = [:]
+  public private(set) var retires: [MailboxRetirePlan] = []
+  public private(set) var held: [MailboxRetirePlan] = []
   public private(set) var imports: [String: Int64] = [:]
   public private(set) var senders: [String: UnparsedSenderRecord] = [:]
   public static let unparsedSenderRing = 1_000
@@ -219,7 +251,9 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
 
   public func senderAddresses() async throws(MailboxPersistenceError) -> [String] { addresses }
 
-  public func addSenderAddress(_ address: String) async throws(MailboxPersistenceError) {
+  public func addSenderAddress(_ address: String) async throws(MailboxPersistenceError) { keep(address) }
+
+  private func keep(_ address: String) {
     if !addresses.contains(where: { $0.lowercased() == address.lowercased() }) { addresses.append(address) }
   }
 
@@ -232,6 +266,12 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public func markParsing(_ messageID: String) async throws(MailboxPersistenceError) { parsing.insert(messageID) }
 
   public func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { parsing.remove(messageID) }
+
+  public func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int { messageStrikes[messageID]?.count ?? 0 }
+
+  public func pendingRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan] { retires }
+
+  public func heldRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan] { held }
 
   public func loadState() async throws(MailboxPersistenceError) -> MailboxState { state }
 
@@ -266,12 +306,27 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       staging = [:]
       health = [:]
       parsing = []
+      messageStrikes = [:]
       imports = [:]
       reader = nil
     }
     if c.clearReader { reader = nil }
+    if let e = c.endRetire {
+      retires.removeAll { $0.grantID == e.grantID && $0.provider == e.provider }
+      held.removeAll { $0.grantID == e.grantID && $0.provider == e.provider }
+    }
+    for (b, keep) in [(c.beginRetire, false), (c.holdRetire, true)] {
+      guard let b else { continue }
+      retires.removeAll { $0.grantID == b.grantID && $0.provider == b.provider }
+      held.removeAll { $0.grantID == b.grantID && $0.provider == b.provider }
+      if keep { held.append(b) } else { retires.append(b) }
+    }
     enqueued.append(contentsOf: c.drafts)
-    for a in c.accounted { accountedRows[a.messageID] = a }
+    for a in c.accounted {
+      accountedRows[a.messageID] = a
+      messageStrikes[a.messageID] = nil
+    }
+    for s in c.strikes { messageStrikes[s.messageID] = s }
     for s in c.setAside where !setAside.contains(where: { $0.messageID == s.messageID }) { setAside.append(s) }
     setAside = Array(setAside.sorted { $0.internalDateMs > $1.internalDateMs }.prefix(Self.setAsideRing))
     for u in c.unreadable {
@@ -281,7 +336,10 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
     unreadable = Array(unreadable.sorted { $0.atMs > $1.atMs }.prefix(Self.unreadableRing))
     for s in c.stage { staging[s.messageID] = s }
     for id in c.unstage { staging[id] = nil }
-    if let below = c.pruneAccountedBelowMs { accountedRows = accountedRows.filter { $0.value.internalDateMs >= below } }
+    if let below = c.pruneAccountedBelowMs {
+      accountedRows = accountedRows.filter { $0.value.internalDateMs >= below }
+      messageStrikes = messageStrikes.filter { $0.value.atMs >= below }
+    }
     for b in c.healthBumps {
       let month = MailboxClock.localMonth(b.internalDateMs)
       var row = health[b.domain] ?? BankHealthRow(domain: b.domain, lastEmailAtMs: nil, month: month, readThisMonth: 0)
@@ -296,6 +354,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       health[b.domain] = row
     }
     for i in c.addImports { imports[i.domain] = min(imports[i.domain] ?? i.sinceMs, i.sinceMs) }
+    for a in c.senderAddresses { keep(a) }
     for d in c.doneImports { imports[d] = nil }
     for u in c.unparsedSenders { senders[u.messageID] = u }
     if senders.count > Self.unparsedSenderRing {
@@ -312,6 +371,35 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public func unreadableRecords() async throws(MailboxPersistenceError) -> [UnreadableRecord] { unreadable }
   public func bankHealth() async throws(MailboxPersistenceError) -> [BankHealthRow] {
     health.values.sorted { $0.domain < $1.domain }
+  }
+}
+
+public struct MailboxMoveNote: Sendable, Equatable {
+  public private(set) var lastPhase: MailboxPhase?
+  public private(set) var movedAwayMs: Int64?
+
+  public init(kept: MailboxPhase?, movedAwayMs: Int64?, current: MailboxPhase?) {
+    lastPhase = kept ?? current
+    self.movedAwayMs = movedAwayMs
+  }
+
+  public mutating func see(_ phase: MailboxPhase, nowMs: Int64) {
+    guard phase != lastPhase else { return }
+    let old = lastPhase
+    lastPhase = phase
+    if Self.movedAway(from: old, to: phase) {
+      movedAwayMs = nowMs
+    } else if phase != .otherDevice {
+      movedAwayMs = nil
+    }
+  }
+
+  public static func movedAway(from old: MailboxPhase?, to new: MailboxPhase) -> Bool {
+    guard new == .otherDevice, let old else { return false }
+    switch old {
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted: return true
+    case .unlinked, .otherDevice: return false
+    }
   }
 }
 

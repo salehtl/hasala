@@ -18,6 +18,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 // EmailChangeTTL is an email-change ceremony's lifetime.
@@ -200,6 +201,16 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 	if st.hasPassword() != (hash != nil) || (st.PasswordSetAt != nil && st.PasswordSetAt.After(begunAt)) {
 		return fmt.Errorf("%w: the password changed meanwhile", ErrCodeRejected)
 	}
+	var open bool
+	if err := tx.QueryRow(ctx,
+		`WITH ended AS (
+		   UPDATE email_change_ceremonies SET consumed_at = $3 WHERE user_id = $2 AND consumed_at IS NULL RETURNING id)
+		 SELECT EXISTS (SELECT 1 FROM ended WHERE id = $1)`, changeID, st.ID, now).Scan(&open); err != nil {
+		return err
+	}
+	if !open {
+		return fmt.Errorf("%w: another change finished first", ErrCodeRejected)
+	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE users SET email_norm = $2, email_verified_at = $3, email_undeliverable_at = NULL, reverify_requested_at = NULL,
 		        password_hash = coalesce($4, password_hash), password_salt = coalesce($5, password_salt)
@@ -209,15 +220,23 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 		}
 		return err
 	}
+	if err := waitlist.OnAddressTakenTx(ctx, tx, st.ID, a.Keys.EmailTag(newAddr)); err != nil {
+		return err
+	}
+	for _, q := range []string{
+		`DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`,
+		`DELETE FROM recovery_ceremonies WHERE user_id = $1`,
+	} {
+		if _, err := tx.Exec(ctx, q, st.ID); err != nil {
+			return fmt.Errorf("auth: email change: end outstanding ceremonies: %w", err)
+		}
+	}
 	if hash != nil {
 		if _, err := tx.Exec(ctx, `UPDATE users SET password_version = $2 WHERE id = $1`, st.ID, a.Keys.Current()); err != nil {
 			return err
 		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE freeze_tokens SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL`, st.ID, now); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE email_change_ceremonies SET consumed_at = $2 WHERE id = $1`, changeID, now); err != nil {
 		return err
 	}
 	if err := recordEventTx(ctx, tx, a.Mail, st.ID, AuthEvent{Kind: EventEmailChanged}, now); err != nil {
@@ -229,10 +248,14 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 	if err := a.Mail.enqueueAlertTx(ctx, tx, st.ID, "email_changed_old", st.EmailNorm, now); err != nil {
 		return err
 	}
+	held, err := a.Hold.Tx(ctx, tx, emailEntry(st.ID, now))
+	if err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	a.recordEmail(st.ID, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return nil
 }

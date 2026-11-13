@@ -1,5 +1,6 @@
 import CoreJSON
 import CoreMailbox
+import CoreStore
 import CoreTestSupport
 import CoreTime
 import Foundation
@@ -147,9 +148,14 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
   @Test func aSwitchThatFailsRetiresNothing() async throws {
     let locked = Rig()
     await signedOutWithImports(locked)
+    let before = await seen(locked)
     locked.keychain.locked = true
     #expect(await connect(locked, SwitchAsks(.remove)) == .failed(.keychain))
     locked.keychain.locked = false
+    var after = await seen(locked)
+    #expect(after.stepUps == before.stepUps + ["mailbox.link"])
+    after.stepUps = before.stepUps
+    #expect(after == before)
     #expect(await locked.ledger.retired.isEmpty)
 
     let refused = Rig()
@@ -190,6 +196,22 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
     #expect(await rig.ledger.retired.isEmpty)
     let done = await rig.engine.runCycle(trigger: .launch)
     #expect(done.phase == .active && done.ops == 1)
+  }
+
+  @Test func switchingBackEndsTheRemovalKeptForThatMailbox() async throws {
+    let rig = Rig()
+    await signedOutWithImports(rig)
+    await rig.ledger.setRetireFails(true)
+    #expect(await connect(rig, SwitchAsks(.remove)) == .connected(address: other, anotherAddress: true, retired: .failed))
+    await rig.ledger.setRetireFails(false)
+    #expect(try await rig.store.heldRetires().map(\.grantID) == [oldGrant])
+    #expect(await rig.engine.status().heldRetires.map(\.address) == [old])
+    _ = await rig.engine.runCycle(trigger: .launch)
+    rig.gmail.email = old
+    #expect(await connect(rig, SwitchAsks(.keep)) == .connected(address: old, anotherAddress: true))
+    #expect(try await rig.store.heldRetires().isEmpty)
+    #expect(await rig.engine.status().heldRetires.isEmpty)
+    #expect(await rig.ledger.retired.isEmpty)
   }
 
   @Test func theSameAddressAsksNothing() async throws {
@@ -257,7 +279,9 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
     ])
     #expect(await rig.state().address == old)
     #expect(await connect(rig, SwitchAsks(.remove)) == .connected(address: other, anotherAddress: true, retired: .removed(nil)))
-    #expect(await rig.ledger.retired == [unknown])
+    var named = unknown
+    named.address = old
+    #expect(await rig.ledger.retired == [named])
   }
 
   @Test func aDeclinedSwitchFreesTheLaneForTheNextCycle() async throws {
@@ -414,5 +438,88 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
     #expect(await rig.connect(confirm: asks.confirm) == .connected(address: "Synthetic.User@Outlook.Example"))
     #expect(asks.questions.isEmpty)
     #expect(await rig.state().watermarkMs == OutlookRig.t0)
+  }
+}
+
+@Suite struct LinkProviderTests {
+  let outlookAddress = "synthetic.user@outlook.example"
+
+  @Test func aNewLinkSavesItsProviderWithItsState() async {
+    for backend in [Backend.sqlite, .memory] {
+      let rig = Rig(backend: backend)
+      _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+      let s = await rig.state()
+      #expect(s.phase == .scanning && s.provider == .gmail && s.heldProvider == .gmail)
+    }
+  }
+
+  func gmailLane(_ rig: OutlookRig) async throws {
+    var s = MailboxState()
+    s.phase = .active
+    s.address = "synthetic.user@example.com"
+    s.watermarkMs = OutlookRig.t0
+    s.provider = .gmail
+    var c = MailboxCommit()
+    c.state = s
+    try await rig.store.commit(c)
+  }
+
+  @Test func aSwitchSavesTheNewProviderInTheCommitThatClearsTheOldLane() async throws {
+    let rig = OutlookRig()
+    try await gmailLane(rig)
+    let r = await rig.engine.connect(presenter: OutlookPresenter(graph: rig.graph), backfillDays: 30, replacing: true)
+    #expect(r == .connected(address: outlookAddress))
+    #expect(await rig.state().heldProvider == .outlook)
+  }
+
+  @Test func aCancelledSwitchLeavesTheOldProvider() async throws {
+    let rig = OutlookRig()
+    try await gmailLane(rig)
+    var cancelled = OutlookPresenter(graph: rig.graph)
+    cancelled.cancel = true
+    #expect(await rig.engine.connect(presenter: cancelled, backfillDays: 90, replacing: true) == .cancelled)
+    #expect(await rig.state().heldProvider == .gmail)
+  }
+
+  @Test func aSignInAgainWritesTheProviderOnARowThatHadNone() async throws {
+    let rig = OutlookRig()
+    await rig.connectAndActivate()
+    var s = await rig.state()
+    s.provider = nil
+    s.phase = .reconnectRequired
+    var c = MailboxCommit()
+    c.state = s
+    try await rig.store.commit(c)
+    _ = await rig.engine.connect(presenter: OutlookPresenter(graph: rig.graph), backfillDays: 90)
+    #expect(await rig.state().heldProvider == .outlook)
+  }
+
+  @Test func theProviderSurvivesACycleAndGoesWithTheLink() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    _ = await rig.engine.runCycle(trigger: .launch)
+    #expect(await rig.state().heldProvider == .gmail)
+    #expect(await rig.engine.disconnect())
+    let s = await rig.state()
+    #expect(s.phase == .unlinked && s.provider == nil && s.heldProvider == nil)
+  }
+
+  @Test func onlyAPhaseThatHoldsTheLinkNamesItsProvider() {
+    for phase in MailboxPhase.allCases {
+      var s = MailboxState()
+      s.phase = phase
+      s.provider = .outlook
+      #expect(s.heldProvider == ((phase == .unlinked || phase == .otherDevice) ? nil : .outlook))
+    }
+  }
+
+  @Test func aRowFromAnEarlierBuildNamesNoProvider() async throws {
+    let tables = try MailboxTableStore.inMemory()
+    let store = LedgerMailboxPersistence(tables: tables, author: { _, _ in [] }, nowMs: { 1 })
+    var w = MailboxWrite()
+    w.state = MailboxStateRow(phase: "active")
+    try tables.commit(w)
+    let s = try await store.loadState()
+    #expect(s.phase == .active && s.provider == nil && s.heldProvider == nil)
   }
 }

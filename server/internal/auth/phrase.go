@@ -3,12 +3,13 @@ package auth
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // ViewPhrase is #67 (spec 02 §10.14, spec 01 §10.19): step-up phrase.view with
@@ -21,8 +22,8 @@ func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *Step
 		return nil, err
 	}
 	var (
-		box       []byte
-		firstSeen time.Time
+		box  []byte
+		held purgeledger.Held
 	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		var wrapped bool
@@ -55,16 +56,16 @@ func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *Step
 			return fmt.Errorf("auth: phrase view: mark seen: %w", err)
 		}
 		if tag.RowsAffected() == 1 {
-			firstSeen = now
+			if held, err = a.Hold.Tx(ctx, tx, phraseSeenEntry(session.UserID, now)); err != nil {
+				return err
+			}
 		}
 		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventPhraseViewed, CredentialID: p.CredentialID}, now)
 	})
 	if err != nil {
 		return nil, err
 	}
-	if !firstSeen.IsZero() {
-		a.recordPhraseSeen(session.UserID, firstSeen)
-	}
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return box, nil
 }
@@ -83,27 +84,41 @@ func (a *Accounts) SetDisplayName(ctx context.Context, userID uuid.UUID, name st
 // LogoutAll is #16: step-up session.logout_all, then every session of the
 // account (this one included) revoked and every APNs token deleted, with
 // sessions_revoked recorded. Writers are not revoked.
-func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepUpObject) error {
+func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepUpObject) ([]pushv2.Target, error) {
 	g, err := guardFor(session, keyproto.ActionSessionLogoutAll, su)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var at time.Time
+	var (
+		held    purgeledger.Held
+		revoked []pushv2.Target
+	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		now := a.now()
-		if _, err := RevokeOtherSessionsTx(ctx, tx, session.UserID, nil, now); err != nil {
+		var err error
+		if held, err = a.Hold.Tx(ctx, tx, sessionsEntry(session.UserID, now)); err != nil {
 			return err
 		}
-		if err := forgetPushTokens(ctx, tx, `user_id = $1`, session.UserID); err != nil {
+		if revoked, err = takeAccountPushTokens(ctx, tx, session.UserID, session.WriterID); err != nil {
 			return err
 		}
-		at = now
-		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventSessionsRevoked, WriterID: p.WriterID,
-			CredentialID: p.CredentialID}, now)
+		if err := revokeSessionRowsTx(ctx, tx, session.UserID, [][]byte{}, now); err != nil {
+			return err
+		}
+		if err := recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventSessionsRevoked, WriterID: session.WriterID,
+			CredentialID: p.CredentialID}, now); err != nil {
+			return err
+		}
+		late, err := takeAccountPushTokens(ctx, tx, session.UserID, session.WriterID)
+		if err != nil {
+			return err
+		}
+		revoked = append(revoked, late...)
+		return nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	a.recordSessions(session.UserID, at)
-	return nil
+	held.Release(a.Record)
+	return revoked, nil
 }

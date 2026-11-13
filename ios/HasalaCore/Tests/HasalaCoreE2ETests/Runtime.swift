@@ -58,7 +58,7 @@ final class Runtime: Sendable {
   }
 
   /// "Use sample data" as the app runs it: a live `GET /account` for the gate,
-  /// the observer's gated batches, then the outbox, blob by blob.
+  /// the observer's gated batches, then the outbox in one transaction.
   func loadSample(account: AccountInfo? = nil) async throws -> Int {
     let info: AccountInfo
     if let account {
@@ -67,7 +67,7 @@ final class Runtime: Sendable {
       info = try await context.client.account(bearer: try #require(try context.secrets.session()).token)
     }
     let blobs = try await observer.sampleBatches(account: info)
-    for b in blobs { try await outbox.enqueue(b.ops) }
+    try await outbox.enqueue(blobs.flatMap(\.ops))
     try await observer.reproject()
     return blobs.reduce(0) { $0 + $1.ops.count }
   }

@@ -313,6 +313,49 @@ struct BacklogSorterTests {
     #expect(saved.value.filedHere == ["a": 2])
   }
 
+  func failing(_ script: Script, _ saved: Saved, sleeps: Sleeps, clock: Clock = Clock()) -> BacklogSorter {
+    BacklogSorter(
+      pass: { memo, left in
+        guard var r = await script.run(memo, left) else { return nil }
+        if let stop = r.pass.stop { r.pass = .failed(r.pass.memo, calls: r.pass.calls, stop: stop) }
+        return r
+      }, store: saved.store, nowMs: clock.now, appActive: { true }, importRunning: { false }, enabled: { true }, network: Net(),
+      sleep: sleeps.sleep)
+  }
+
+  @Test func aRateLimitedPassThatCouldNotWriteWaitsOutTheLimit() async {
+    let saved = Saved()
+    let script = Script([(3, 1, BacklogSort.Stop.rateLimited), (0, 1, nil)])
+    let sleeps = Sleeps()
+    let s = failing(script, saved, sleeps: sleeps)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(script.passes == 2 && saved.run?.phase == .done && saved.run?.reason == nil)
+    #expect(sleeps.all == [.milliseconds(BacklogSort.backoffMs[0])])
+  }
+
+  @Test func aBusyPassThatCouldNotWritePausesForTheService() async {
+    let saved = Saved()
+    let clock = Clock()
+    let script = Script([(3, 1, BacklogSort.Stop.busy)])
+    let s = failing(script, saved, sleeps: Sleeps(), clock: clock)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(script.passes == 1 && saved.run?.phase == .paused && saved.run?.reason == .busy)
+    #expect(saved.run?.untilMs == clock.now() + BacklogSort.busyPauseMs)
+  }
+
+  @Test func limitedPassesThatKeepFailingToWriteStillEndTheRun() async {
+    let saved = Saved()
+    let script = Script(Array(repeating: (3, 1, BacklogSort.Stop.rateLimited), count: 5))
+    let sleeps = Sleeps()
+    let s = failing(script, saved, sleeps: sleeps)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(script.passes == BacklogSorter.maxFailures && saved.run?.reason == .failed)
+    #expect(sleeps.all == BacklogSort.backoffMs.prefix(2).map { .milliseconds($0) })
+  }
+
   @Test func theForegroundSweepSharesTheDayLedgerAndStopsAtTheCaps() async {
     let clock = Clock()
     let saved = Saved(BacklogRunRecord(day: Array(repeating: BacklogSorterTests.start - 10, count: 390)))
@@ -352,6 +395,71 @@ struct BacklogSorterTests {
     } == 3)
     #expect(given.withLock { $0 } == ["a": 2, "b": 3, "c": 4] && saved.value.filedHere.isEmpty)
     #expect(await s.sendAllBack { _ in 9 } == 0)
+  }
+
+  nonisolated final class Seen: Sendable {
+    let value = Mutex<[String: Int64]?>(nil)
+    var filed: [String: Int64]? { value.withLock { $0 } }
+  }
+
+  func filing(
+    _ saved: Saved, link: BacklogLink, tell: [String: Int64], seen: Seen = Seen(),
+    result: @escaping @Sendable (BacklogSort.Memo) -> BacklogSorter.PassResult
+  ) -> BacklogSorter {
+    BacklogSorter(
+      pass: { memo, _ in
+        await link.willFile(BacklogSort.Filing(filed: tell))
+        seen.value.withLock { $0 = saved.value.filedHere }
+        return result(memo)
+      }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false }, enabled: { true }, network: Net(),
+      sleep: Sleeps().sleep)
+  }
+
+  @Test func aFilingIsSavedBeforeItsWriteSoAKillCannotHideItFromSendingBack() async {
+    let saved = Saved()
+    let link = BacklogLink()
+    let seen = Seen()
+    let s = filing(saved, link: link, tell: ["a": 2], seen: seen) {
+      BacklogSorter.PassResult(
+        pass: BacklogSort.Pass(suggestions: [], memo: $0, pending: 0, calls: 1, stop: nil), filing: BacklogSort.Filing(filed: ["a": 2]))
+    }
+    link.set(s)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(seen.filed == ["a": 2])
+    let relaunched = sorter(Script([Step?]()), Saved(BacklogRunRecord(filedHere: seen.filed ?? [:])))
+    let given = Mutex<[String: Int64]?>(nil)
+    #expect(await relaunched.sendAllBack { m in
+      given.withLock { $0 = m }
+      return m.count
+    } == 1)
+    #expect(given.withLock { $0 } == ["a": 2])
+  }
+
+  @Test func aFilingWhoseWriteFailedIsNotKept() async {
+    let saved = Saved()
+    let link = BacklogLink()
+    let seen = Seen()
+    let s = filing(saved, link: link, tell: ["a": 2, "b": 2, "c": 2], seen: seen) {
+      BacklogSorter.PassResult(pass: .failed($0, calls: 1), filing: BacklogSort.Filing(filed: ["a": 2]))
+    }
+    link.set(s)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(seen.filed == ["a": 2, "b": 2, "c": 2])
+    #expect(saved.value.filedHere == ["a": 2] && saved.run?.reason == .failed)
+  }
+
+  @Test func aFailedWriteLeavesOnlyTheRowsItDidNotTouch() async {
+    let saved = Saved(BacklogRunRecord(filedHere: ["a": 2, "z": 9]))
+    let link = BacklogLink()
+    let s = filing(saved, link: link, tell: ["a": 4]) {
+      BacklogSorter.PassResult(pass: .failed($0, calls: 1), filing: BacklogSort.Filing())
+    }
+    link.set(s)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(saved.value.filedHere == ["z": 9])
   }
 
   @Test func aRateLimitWaitsThreeTimesThenPausesUntilALaterForeground() async {
@@ -440,6 +548,25 @@ struct BacklogSorterTests {
     await s.ensure()
     await s.finished()
     #expect(script.passes == 1 && script.dayLefts.first.map { $0 > 0 && $0 <= 11 } == true)
+  }
+
+  @Test func theForegroundSweepGetsItsBudgetBackWhenTheWindowReopensBeforeTheRunResumes() async {
+    let hour: Int64 = 3_600_000
+    let full = (0..<BacklogSort.dayNames).map { BacklogSorterTests.start - 2 * hour + Int64($0) }
+    let saved = Saved.running(day: full)
+    let clock = Clock()
+    let s = sorter(Script([Step?]()), saved, clock: clock)
+    await s.ensure()
+    await s.finished()
+    #expect(saved.run?.reason == .dayCap)
+    #expect(await s.cloudBudget() == 0)
+    clock.advance(22 * hour - 1)
+    #expect(await s.cloudBudget() == 0)
+    clock.advance(1)
+    #expect(await s.cloudBudget() == 1)
+    #expect(saved.run?.phase == .paused && saved.run?.reason == .dayCap)
+    let relaunched = sorter(Script([Step?]()), saved, clock: clock)
+    #expect(await relaunched.cloudBudget() == 1)
   }
 
   @Test func aNewRunOnASpentDayPausesWithoutAPass() async {
@@ -621,6 +748,76 @@ struct BacklogSorterTests {
     await t.suspend()
     await t.ensure(retry: true)
     #expect(await !t.isRunning && running.run?.phase == .running && script.passes == 0)
+  }
+
+  nonisolated final class SlowPass: Sendable {
+    let log = Mutex<[String]>([])
+    var all: [String] { log.withLock { $0 } }
+
+    func run() async -> BacklogSorter.PassResult? {
+      log.withLock { $0.append("pass.start") }
+      let ended = ContinuousClock.now + .milliseconds(150)
+      while ContinuousClock.now < ended { await Task.yield() }
+      log.withLock { $0.append("pass.end") }
+      return BacklogSorter.PassResult(pass: BacklogSort.Pass(suggestions: [], memo: BacklogSort.Memo(), pending: 1, calls: 1, stop: nil, settled: 1))
+    }
+  }
+
+  func slowSorter(_ slow: SlowPass, _ saved: Saved, mayRun: Bool = true) -> BacklogSorter {
+    BacklogSorter(
+      pass: { _, _ in await slow.run() }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false }, enabled: { true },
+      network: Net(), mayRun: mayRun, sleep: Sleeps().sleep)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aHoldWaitsForThePassInFlightAndNothingStartsUntilItIsReleased() async {
+    let saved = Saved.running()
+    let slow = SlowPass()
+    let s = slowSorter(slow, saved)
+    await s.resume()
+    await waitFor { slow.all.contains("pass.start") }
+    await s.holdRuns()
+    #expect(slow.all == ["pass.start", "pass.end"])
+    #expect(await !s.isRunning)
+    await s.ensure(retry: true)
+    await s.resume()
+    #expect(await !s.isRunning)
+    #expect(saved.run?.phase == .running)
+    await s.releaseRuns()
+    #expect(await s.isRunning)
+    await s.suspend()
+    await s.settled()
+  }
+
+  @Test func releasingAHoldLeavesARunTheGateStoppedStopped() async {
+    let saved = Saved.running()
+    let script = Script([(0, 1, nil)])
+    let s = sorter(script, saved, mayRun: false)
+    await s.holdRuns()
+    await s.releaseRuns()
+    #expect(await !s.isRunning && script.passes == 0)
+    await s.allowRuns(true)
+    await s.finished()
+    #expect(script.passes == 1)
+  }
+
+  @Test func theGateAllowingRunsDoesNotLiftAHold() async {
+    let saved = Saved.running()
+    let script = Script([(0, 1, nil)])
+    let s = sorter(script, saved, mayRun: false)
+    await s.holdRuns()
+    await s.allowRuns(true)
+    #expect(await !s.isRunning && script.passes == 0)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func afterSuspendingSettledWaitsForThePassInFlight() async {
+    let saved = Saved.running()
+    let slow = SlowPass()
+    let s = slowSorter(slow, saved)
+    await s.resume()
+    await waitFor { slow.all.contains("pass.start") }
+    await s.suspend()
+    await s.settled()
+    #expect(slow.all == ["pass.start", "pass.end"])
   }
 
   @Test func nothingStartsOrResumesWhileTheAccountIsStoppedAndWorkGoesOnOnceItClears() async {
@@ -829,6 +1026,27 @@ struct CloudSortStatusTests {
     for _ in 0..<400 where c.status.phase != .done { try? await Task.sleep(for: .milliseconds(5)) }
     #expect(c.status.phase == .done)
     #expect(await c.sendAllBack() == 5)
+  }
+
+  @Test(arguments: [BacklogSorterTests.Saved(), BacklogSorterTests.Saved.ended(nil), BacklogSorterTests.Saved.ended(.failed)])
+  func theSwitchIsReadWhenItChangesWithNoRunGoing(_ saved: BacklogSorterTests.Saved) async {
+    let enabled = BacklogSorterTests.Flag()
+    let sorter = BacklogSorter(
+      pass: { _, _ in nil }, waiting: { _ in false }, store: saved.store, nowMs: { BacklogSorterTests.start }, appActive: { true },
+      importRunning: { false }, enabled: { enabled.value }, network: BacklogSorterTests.Net(), sleep: { _ in })
+    let c = LiveCloudSortController(sorter: sorter, view: { _ in Self.view(2) }, sendBack: { 0 }, enabled: { enabled.value })
+    for _ in 0..<400 where c.status.cloudSortedCount != 2 { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.cloudSortedCount == 2)
+    let before = c.status.phase
+    #expect(before != .off)
+    enabled.set(false)
+    await sorter.switchedOff()
+    for _ in 0..<400 where c.status.phase != .off { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.phase == .off)
+    enabled.set(true)
+    await sorter.switchedOn()
+    for _ in 0..<400 where c.status.phase == .off { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.phase == before)
   }
 
   @Test func aRecountAskedForWhileOneRunsRunsOnceMore() async {

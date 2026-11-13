@@ -708,6 +708,9 @@ table {
     transition-delay: calc(var(--i, 0) * var(--reveal-stagger));
   }
 }
+.js [data-no-script] {
+  display: none;
+}
 /* For one style flush, while motion.ts shows what is already on screen. */
 .reveal-instant *,
 .reveal-instant *::before,

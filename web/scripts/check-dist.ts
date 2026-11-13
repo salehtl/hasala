@@ -181,6 +181,12 @@ for (const path of privatePaths) {
 }
 console.log(`Web Analytics: kept off ${privatePaths.length} paths (${privatePaths.join(', ')})`);
 
+if ([...pages.values()].some((html) => html.includes('data-sitekey='))) {
+  const joined = pages.get('joined.html') ?? '';
+  const shown = (attr: string) => !/\shidden[\s=>]/.test(new RegExp(`<[^>]*\\s${attr}(?:\\s[^>]*)?>`).exec(joined)?.[0] ?? ' hidden>');
+  if (shown('data-joined-ok') || !shown('data-joined-error')) problems.push('joined.html: a post without script has no Turnstile token and is refused, so the page must start on its error card');
+}
+
 // JS budget.
 for (const [page, html] of pages) {
   const todo = [...html.matchAll(MODULE_SRC)].map((m) => m[1]);

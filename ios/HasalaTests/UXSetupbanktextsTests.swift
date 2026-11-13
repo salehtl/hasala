@@ -17,6 +17,7 @@ struct UXSetupbanktextsTests {
   }
 
   struct Rig {
+    let dir: URL
     let facts: BankTextsFacts
     let lane: LiveBankTexts
     let clock: Clock
@@ -32,7 +33,7 @@ struct UXSetupbanktextsTests {
       facts: facts, marker: LockedTextsMarkerFile(directory: dir.appendingPathComponent("marker")),
       reader: FakeTextReader([:]), author: { author }, secret: { TextKeySecret(store: store) },
       now: { clock.now }, hintDelay: hintDelay)
-    return Rig(facts: facts, lane: lane, clock: clock)
+    return Rig(dir: dir, facts: facts, lane: lane, clock: clock)
   }
 
   func waitForHints(_ lane: LiveBankTexts) async throws {
@@ -41,7 +42,7 @@ struct UXSetupbanktextsTests {
 
   @Test func theTestShowsWhatToCheckAfterAMinuteWhileTheWindowStaysOpen() async throws {
     let r = rig(hintDelay: .milliseconds(20))
-    r.lane.startTest()
+    try r.lane.startTest()
     #expect(r.lane.test == .waiting(since: Self.t0) && r.lane.testWindowOpen)
     try await waitForHints(r.lane)
     #expect(r.lane.test == .nothingYet && r.lane.testWindowOpen)
@@ -52,7 +53,7 @@ struct UXSetupbanktextsTests {
 
   @Test func aLateTestTextStillPassesAfterTheHints() async throws {
     let r = rig(hintDelay: .milliseconds(20))
-    r.lane.startTest()
+    try r.lane.startTest()
     try await waitForHints(r.lane)
     let passed = BankTextIntake.ms(Self.t0.addingTimeInterval(120))
     _ = try r.facts.update(nowMs: passed) {
@@ -63,13 +64,126 @@ struct UXSetupbanktextsTests {
     #expect(r.lane.test == .received(at: Self.t0.addingTimeInterval(120)))
   }
 
-  @Test func afterTheWindowClosesHasalaSaysItStoppedWatching() {
+  @Test func afterTheWindowClosesHasalaSaysItStoppedWatching() throws {
     let r = rig(hintDelay: .seconds(60))
-    r.lane.startTest()
+    try r.lane.startTest()
     r.clock.now = Self.t0.addingTimeInterval(11 * 60)
     r.lane.reload()
     #expect(r.lane.test == .nothingYet && !r.lane.testWindowOpen)
     #expect(BankTextsTestScreen.nothingYetNote(windowOpen: false) == "Hasala stopped watching. Tap Send the test again.")
+  }
+
+  @Test func aMissedTestStaysKnownToTheReadingStateUntilTheNextTest() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    #expect(!r.facts.testMissed)
+    r.clock.now = Self.t0.addingTimeInterval(11 * 60)
+    r.lane.reload()
+    #expect(r.facts.testMissed)
+    try r.lane.startTest()
+    #expect(!r.facts.testMissed)
+    r.clock.now = Self.t0.addingTimeInterval(22 * 60)
+    r.lane.reload()
+    #expect(r.facts.testMissed)
+    r.facts.forget()
+    #expect(!r.facts.testMissed)
+  }
+
+  @Test func aPassedTestIsNotMissed() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    let passed = BankTextIntake.ms(Self.t0.addingTimeInterval(120))
+    _ = try r.facts.update(nowMs: passed) {
+      $0.testPassedMs = passed
+      $0.testOpenedMs = nil
+    }
+    r.lane.reload()
+    #expect(!r.facts.testMissed)
+  }
+
+  func relaunched(_ r: Rig) -> LiveBankTexts {
+    let store = MemorySecretStore()
+    let author = FakeTextAuthor()
+    return LiveBankTexts(
+      facts: BankTextsFacts(directory: r.dir.appendingPathComponent("facts")),
+      marker: LockedTextsMarkerFile(directory: r.dir.appendingPathComponent("marker")),
+      reader: FakeTextReader([:]), author: { author }, secret: { TextKeySecret(store: store) },
+      now: { r.clock.now })
+  }
+
+  func passTest(_ r: Rig, at date: Date) throws {
+    let passed = BankTextIntake.ms(date)
+    _ = try r.facts.update(nowMs: passed) {
+      $0.testPassedMs = passed
+      $0.testOpenedMs = nil
+    }
+    r.lane.reload()
+  }
+
+  @Test func aMissedSecondTestDoesNotReadAsPassedAfterARelaunch() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    try passTest(r, at: Self.t0.addingTimeInterval(120))
+    #expect(r.lane.test == .received(at: Self.t0.addingTimeInterval(120)))
+    r.clock.now = Self.t0.addingTimeInterval(3600)
+    try r.lane.startTest()
+    r.clock.now = Self.t0.addingTimeInterval(3600 + 11 * 60)
+    r.lane.reload()
+    #expect(r.lane.test == .nothingYet)
+    #expect(relaunched(r).test == .idle)
+  }
+
+  @Test func aRelaunchDuringASecondTestDoesNotBringBackTheEarlierPass() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    try passTest(r, at: Self.t0.addingTimeInterval(120))
+    let second = Self.t0.addingTimeInterval(3600)
+    r.clock.now = second
+    try r.lane.startTest()
+    let during = relaunched(r)
+    #expect(during.test == .waiting(since: second) && during.testWindowOpen)
+    r.clock.now = second.addingTimeInterval(11 * 60)
+    during.reload()
+    #expect(during.test == .idle && !during.testWindowOpen)
+  }
+
+  @Test func aPassKeepsAfterARelaunchAndARelaunchedTestCanStillPass() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    try passTest(r, at: Self.t0.addingTimeInterval(120))
+    #expect(relaunched(r).test == .received(at: Self.t0.addingTimeInterval(120)))
+    let second = Self.t0.addingTimeInterval(3600)
+    r.clock.now = second
+    try r.lane.startTest()
+    try passTest(r, at: second.addingTimeInterval(30))
+    #expect(relaunched(r).test == .received(at: second.addingTimeInterval(30)))
+  }
+
+  func blockSaving(_ r: Rig) throws {
+    let facts = r.dir.appendingPathComponent("facts")
+    try? FileManager.default.removeItem(at: facts)
+    try FileManager.default.createDirectory(at: r.dir, withIntermediateDirectories: true)
+    try Data().write(to: facts)
+  }
+
+  @Test func aTestThatCannotBeSavedSaysSoAndIsNotAMiss() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try blockSaving(r)
+    #expect(throws: BankTextsFailure.failed(LiveBankTexts.saveFailed)) { try r.lane.startTest() }
+    #expect(r.lane.test == .idle && !r.lane.testWindowOpen)
+    r.lane.reload()
+    r.lane.returnedToForeground()
+    #expect(r.lane.test == .idle && !r.lane.testWindowOpen)
+  }
+
+  @Test func aRestartThatCannotBeSavedLeavesTheRunningTestAlone() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    try blockSaving(r)
+    r.clock.now = Self.t0.addingTimeInterval(60)
+    #expect(throws: BankTextsFailure.failed(LiveBankTexts.saveFailed)) { try r.lane.startTest() }
+    r.lane.reload()
+    #expect(r.lane.test == .waiting(since: Self.t0) && r.lane.testWindowOpen)
   }
 
   @Test func theAutomationStepsSayAlmostEveryTextReachesHasala() throws {

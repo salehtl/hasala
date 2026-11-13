@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,6 +24,8 @@ var ErrBadSlug = errors.New("banks: not a bank slug")
 var ErrNoSuchBank = errors.New("banks: no such bank")
 
 const MaxNote = 500
+
+const maxAliases = 32
 
 var Statuses = []string{"new", "planned", "in_progress", "supported", "wont_do"}
 
@@ -135,6 +138,31 @@ func SetStatus(ctx context.Context, tx pgx.Tx, slug, status, note string, now ti
 	return old, nil
 }
 
+func aliasListedBank(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
+	var listed string
+	var aliases []string
+	if err := tx.QueryRow(ctx, `SELECT name, aliases FROM banks WHERE slug = $1 FOR UPDATE`, slug).Scan(&listed, &aliases); err != nil {
+		return fmt.Errorf("banks: add: %w", err)
+	}
+	typed, err := Key(name)
+	if err != nil {
+		return ErrBadSlug
+	}
+	if k, err := Key(listed); (err != nil || k != typed) && !slices.Contains(aliases, typed) {
+		return ErrBadSlug
+	}
+	if slices.Contains(aliases, key) {
+		return nil
+	}
+	if len(aliases) >= maxAliases {
+		return ErrBadSlug
+	}
+	if _, err := tx.Exec(ctx, `UPDATE banks SET aliases = array_append(aliases, $2) WHERE slug = $1`, slug, key); err != nil {
+		return fmt.Errorf("banks: add: %w", err)
+	}
+	return nil
+}
+
 func AddFromKey(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
 	slug, err := Slug(slug)
 	if err != nil {
@@ -161,7 +189,12 @@ func AddFromKey(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
 		return fmt.Errorf("banks: add: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrBadSlug
+		if key == "" {
+			return ErrBadSlug
+		}
+		if err := aliasListedBank(ctx, tx, slug, name, key); err != nil {
+			return err
+		}
 	}
 	if key == "" {
 		return nil
@@ -185,13 +218,17 @@ func AddFromKey(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
 	return nil
 }
 
+const ToldSQL = `(r.notified_at IS NOT NULL AND NOT coalesce((SELECT bool_and(m.status = 'failed') FROM mail_log m
+	 WHERE m.kind = 'bank_supported' AND m.bank_slug = r.bank_slug
+	   AND (m.user_id = r.user_id OR m.waitlist_entry_id = r.waitlist_entry_id)), false))`
+
 func NotifySupported(ctx context.Context, tx pgx.Tx, q *mailq.Queue, slug string, now time.Time) (int, error) {
 	rows, err := tx.Query(ctx,
 		`SELECT r.id, r.user_id, r.waitlist_entry_id, coalesce(u.email_norm, e.email_norm)
 		   FROM bank_requests r
 		   LEFT JOIN users u ON u.id = r.user_id
 		   LEFT JOIN waitlist_entries e ON e.id = r.waitlist_entry_id AND e.state IN ('confirmed', 'invited')
-		  WHERE r.bank_slug = $1 AND r.notified_at IS NULL
+		  WHERE r.bank_slug = $1 AND NOT `+ToldSQL+`
 		    AND (r.user_id IS NOT NULL OR r.waitlist_entry_id IS NOT NULL)
 		  ORDER BY r.id
 		  FOR UPDATE OF r`, slug)
@@ -214,27 +251,28 @@ func NotifySupported(ctx context.Context, tx pgx.Tx, q *mailq.Queue, slug string
 	}
 	sent := 0
 	for _, t := range targets {
-		if t.to != nil && *t.to != "" {
-			var already bool
-			if err := tx.QueryRow(ctx,
-				`SELECT EXISTS (SELECT 1 FROM mail_log WHERE kind = 'bank_supported' AND recipient = $1
-				                   AND bank_slug = $2 AND status <> 'failed')`, *t.to, slug).Scan(&already); err != nil {
-				return 0, fmt.Errorf("banks: notify: %w", err)
+		if t.to == nil || *t.to == "" {
+			continue
+		}
+		var already bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM mail_log WHERE kind = 'bank_supported' AND recipient = $1
+			                   AND bank_slug = $2 AND status <> 'failed')`, *t.to, slug).Scan(&already); err != nil {
+			return 0, fmt.Errorf("banks: notify: %w", err)
+		}
+		if !already {
+			audience := "account"
+			lane := mailq.LaneBulk
+			if t.user == nil {
+				audience, lane = "waitlist", mailq.LaneWaitlist
 			}
-			if !already {
-				audience := "account"
-				lane := mailq.LaneBulk
-				if t.user == nil {
-					audience, lane = "waitlist", mailq.LaneWaitlist
-				}
-				s := slug
-				if _, err := q.EnqueueTx(ctx, tx, mailq.Enqueue{Kind: "bank_supported", Lane: lane, To: *t.to,
-					UserID: t.user, EntryID: t.entry, BankSlug: &s,
-					Params: map[string]any{"audience": audience}}); err != nil {
-					return 0, err
-				}
-				sent++
+			s := slug
+			if _, err := q.EnqueueTx(ctx, tx, mailq.Enqueue{Kind: "bank_supported", Lane: lane, To: *t.to,
+				UserID: t.user, EntryID: t.entry, BankSlug: &s,
+				Params: map[string]any{"audience": audience}}); err != nil {
+				return 0, err
 			}
+			sent++
 		}
 		if _, err := tx.Exec(ctx, `UPDATE bank_requests SET notified_at = $2 WHERE id = $1`, t.id, now); err != nil {
 			return 0, fmt.Errorf("banks: notify: %w", err)

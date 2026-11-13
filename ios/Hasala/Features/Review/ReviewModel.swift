@@ -32,6 +32,8 @@ protocol ReviewDeckModel: AnyObject, Observable {
   var periodTitle: String { get }
   var isThisMonth: Bool { get }
   var elsewhere: ReviewElsewhere? { get }
+  var repeatAnswers: ReviewRepeatAnswers { get }
+  func keepText(_ card: TxnID)
   func periodChanged()
   func showElsewhere()
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption]
@@ -63,7 +65,7 @@ final class ReviewViewModel: ReviewDeckModel {
   private let app: AppModel
   private var sortedIDs: [TxnID] = []
   private var learned: Set<TxnID> = []
-  private(set) var reached = 0
+  private var reachTally = ReviewReachTally()
   private var lastUndo: (card: TxnID, tokens: [UndoToken])?
   /// The order this session reads the queue in: the Review tab's, or from the row that opened it.
   private var order: [TxnID]
@@ -124,6 +126,9 @@ final class ReviewViewModel: ReviewDeckModel {
   var periodTitle: String { app.period.title }
   var isThisMonth: Bool { app.period == .month(app.store.now.date.yearMonth) }
   var elsewhere: ReviewElsewhere? { app.reviewElsewhere }
+  var repeatAnswers: ReviewRepeatAnswers { app.repeatAnswers }
+
+  func keepText(_ card: TxnID) { app.repeatAnswers.keep(card) }
 
   func periodChanged() {
     restart()
@@ -180,17 +185,18 @@ final class ReviewViewModel: ReviewDeckModel {
     let name = app.store.state.category(category)?.name
     let others = alwaysUse ? reachable(card, outside: category) : []
     guard app.perform(settle + [.categorize(card, category, learnRule: alwaysUse, project: project)],
-                      title: Self.keptBothTitle(settling: settle, category: name, alwaysUse: alwaysUse))
+                      title: Self.keptBothTitle(keptBoth: keepsBoth(card, settle), category: name, alwaysUse: alwaysUse))
     else {
       return false
     }
-    count(others, now: category)
+    let s = app.store.state
+    reachTally.record(card, into: category, others: others.filter { s.txn($0)?.categoryID == category })
     filed(card, learnedRule: alwaysUse)
     return true
   }
 
-  nonisolated static func keptBothTitle(settling: [LedgerEdit], category: String?, alwaysUse: Bool) -> String? {
-    guard !settling.isEmpty, !alwaysUse, let category else { return nil }
+  nonisolated static func keptBothTitle(keptBoth: Bool, category: String?, alwaysUse: Bool) -> String? {
+    guard keptBoth, !alwaysUse, let category else { return nil }
     return "Kept both, sorted into \(category)"
   }
 
@@ -206,10 +212,7 @@ final class ReviewViewModel: ReviewDeckModel {
     return s.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card && $0.categoryID != category }.map(\.id)
   }
 
-  private func count(_ others: [TxnID], now category: CategoryID?) {
-    let s = app.store.state
-    reached += others.filter { s.txn($0)?.categoryID == category && category != nil }.count
-  }
+  var reached: Int { reachTally.count(app.store.state) }
 
   var skipped: Int {
     let s = app.store.state
@@ -267,7 +270,7 @@ final class ReviewViewModel: ReviewDeckModel {
       return false
     case .success(let edit):
       let settle = settling(card)
-      guard app.perform(settle + [edit], title: Self.keptBothTitle(settling: settle, category: name, alwaysUse: alwaysUse))
+      guard app.perform(settle + [edit], title: Self.keptBothTitle(keptBoth: keepsBoth(card, settle), category: name, alwaysUse: alwaysUse))
       else { return false }
       filed(card, learnedRule: alwaysUse)
       return true
@@ -298,6 +301,10 @@ final class ReviewViewModel: ReviewDeckModel {
     if t?.isHeldCopy == true { edits.append(.resolveCopy(card, merge: false)) }
     if t?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
     return edits
+  }
+
+  private func keepsBoth(_ card: TxnID, _ settling: [LedgerEdit]) -> Bool {
+    !settling.isEmpty || app.store.state.txn(card)?.activeReviewReason == .mayRepeat
   }
 
   private func filed(_ card: TxnID, learnedRule: Bool) {
@@ -390,14 +397,20 @@ enum ReviewEntry {
 
   /// Opens the deck, at `card` when given, in the app's period.
   static func open(_ app: AppModel, at card: TxnID?) {
-    request(app, at: card)
     app.startReview()
+    request(app, at: card)
   }
 
   /// The next session for `app` starts at `card` (the cover opens it).
   static func request(_ app: AppModel, at card: TxnID?) {
     requester = app
     start = card
+  }
+
+  static func forget(_ app: AppModel) {
+    guard requester === app else { return }
+    requester = nil
+    start = nil
   }
 
   /// The card a new session for `app` starts at; the request is used up.

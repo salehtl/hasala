@@ -113,7 +113,11 @@ var ErrAddressGone = errors.New("invites: the invite's email address is no longe
 
 // ErrStale is a queued invite email whose invite is no longer sendable, or
 // that a newer email for the invite has replaced.
-var ErrStale = errors.New("invites: the invite is closed")
+var ErrStale error = mailq.Stale("invites: the invite is closed")
+
+var ErrMintLimit = errors.New("invites: the invite has been resent as many times as it can be; revoke it and mint a new invite")
+
+const inviteSendable = `(i.state = 'queued' OR (i.state = 'active' AND i.expires_at > now()))`
 
 // Render mints the code and link key, stores their hashes, and renders the
 // email. A resend (an active invite) re-mints: the earlier code dies.
@@ -126,12 +130,14 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		entry                   *uuid.UUID
 		state                   string
 		expires                 *time.Time
+		mints                   int16
+		sendable                bool
 	)
 	err := tx.QueryRow(ctx,
-		`SELECT email_tag, waitlist_entry_id, state, code_hash, link_key_hash, expires_at
-		   FROM invite_codes WHERE id = $1 FOR UPDATE`, *row.InviteID).
-		Scan(&tag, &entry, &state, &codeHash, &linkHash, &expires)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && state != "queued" && state != "active") {
+		`SELECT i.email_tag, i.waitlist_entry_id, i.state, i.code_hash, i.link_key_hash, i.expires_at, i.mint_count, `+inviteSendable+`
+		   FROM invite_codes i WHERE i.id = $1 FOR UPDATE`, *row.InviteID).
+		Scan(&tag, &entry, &state, &codeHash, &linkHash, &expires, &mints, &sendable)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !sendable) {
 		return mail.Message{}, ErrStale
 	}
 	if err != nil {
@@ -141,7 +147,9 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		return mail.Message{}, errors.New("invites: the invite has no email_tag yet")
 	}
 	var superseded bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND id > $2)`,
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM mail_log n WHERE n.invite_id = $1 AND n.id > $2
+		   AND (n.status IN ('queued','sending','sent')
+		        OR EXISTS (SELECT 1 FROM mail_log d WHERE d.invite_id = $1 AND d.status = 'sent')))`,
 		*row.InviteID, row.ID).Scan(&superseded); err != nil {
 		return mail.Message{}, err
 	}
@@ -155,6 +163,9 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 	reuse := r.Minter != nil && state == "active" && expires != nil &&
 		bytes.Equal(codeHash, CodeHash(code)) && bytes.Equal(linkHash, newLinkHash)
 	if !reuse {
+		if mints >= MaxMints {
+			return mail.Message{}, ErrMintLimit
+		}
 		if err := tx.QueryRow(ctx,
 			`UPDATE invite_codes SET state = 'active', code_hash = $2, link_key_hash = $3, minted_at = now(),
 			        expires_at = now() + ttl, mint_count = mint_count + 1
@@ -203,22 +214,26 @@ func (r Renderer) secrets(inviteID uuid.UUID, mailID int64) (code, linkKey strin
 // re-mints, so the code the person had stops working.
 func Resend(ctx context.Context, tx pgx.Tx, q *mailq.Queue, id uuid.UUID) error {
 	var (
-		entry *uuid.UUID
-		tag   []byte
-		state string
-		to    *string
+		entry    *uuid.UUID
+		tag      []byte
+		mints    int16
+		sendable bool
+		to       *string
 	)
 	err := tx.QueryRow(ctx,
-		`SELECT i.waitlist_entry_id, i.email_tag, i.state,
+		`SELECT i.waitlist_entry_id, i.email_tag, i.mint_count, `+inviteSendable+`,
 		        coalesce(e.email_norm, (SELECT recipient FROM mail_log m WHERE m.invite_id = i.id AND m.recipient IS NOT NULL
 		                                ORDER BY m.id DESC LIMIT 1))
 		   FROM invite_codes i LEFT JOIN waitlist_entries e ON e.id = i.waitlist_entry_id
-		  WHERE i.id = $1 FOR UPDATE OF i`, id).Scan(&entry, &tag, &state, &to)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && state != "active" && state != "queued") {
+		  WHERE i.id = $1 FOR UPDATE OF i`, id).Scan(&entry, &tag, &mints, &sendable, &to)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !sendable) {
 		return ErrNoSuchInvite
 	}
 	if err != nil {
 		return err
+	}
+	if mints >= MaxMints {
+		return ErrMintLimit
 	}
 	if to == nil {
 		return ErrAddressGone

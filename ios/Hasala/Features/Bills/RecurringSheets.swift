@@ -380,6 +380,7 @@ final class AddRecurringModel {
   var keys: [String] = []
   var seed: TxnID?
   var ticked: Set<TxnID> = []
+  private var added = false
   private let decimalSeparator: String
   private let openedDue: Date
   private let openedCategory: CategoryID?
@@ -433,6 +434,13 @@ final class AddRecurringModel {
     return BillsEngine.pastPayments(state, for: d)
   }
 
+  var linkable: Set<TxnID> { ticked.intersection(suggestions.map(\.id)) }
+
+  var linkTitle: String {
+    let count = linkable.count
+    return count == 0 ? "Add without them" : "Add and link \(RecurringCopy.link(count))"
+  }
+
   func start(from txn: TxnID) {
     guard let d = BillsEngine.draft(from: txn, state, now: app.store.now) else { return }
     seed = txn
@@ -447,17 +455,12 @@ final class AddRecurringModel {
     ticked = []
   }
 
-  func clearSeed() {
-    seed = nil
-    keys = []
-  }
-
   @discardableResult
   func save() -> Bool {
-    guard var d = draft else { return false }
-    let valid = Set(suggestions.map(\.id))
-    d.linkTxns = ticked.filter { valid.contains($0) }.sorted()
-    return app.perform(.addBill(d))
+    guard !added, var d = draft else { return false }
+    d.linkTxns = linkable.sorted()
+    added = app.perform(.addBill(d))
+    return added
   }
 }
 
@@ -637,7 +640,7 @@ struct AddPastPaymentsPage: View {
     }
     .background(HColor.sheetSurfaceLarge)
     .safeAreaInset(edge: .bottom, spacing: 0) {
-      Button(model.ticked.isEmpty ? "Add without them" : "Add and link \(RecurringCopy.link(model.ticked.count))") {
+      Button(model.linkTitle) {
         if model.save() { done() }
       }
       .buttonStyle(.pill(.primary, fill: true))
@@ -942,6 +945,7 @@ struct LinkPaymentsSheet: View {
   var body: some View {
     let b = app.store.state.bill(bill)
     let payments = b.map { BillsEngine.pastPayments(app.store.state, for: $0) } ?? []
+    let linkable = payments.map(\.id).filter(ticked.contains)
     RecurringForm(title: "Link past payments", closeID: "bills.link.close", isDirty: !ticked.isEmpty) {
       if payments.isEmpty {
         EmptyNote(systemImage: "link", message: "No other payments look like \(b?.name ?? "this one").")
@@ -954,13 +958,12 @@ struct LinkPaymentsSheet: View {
         PastPaymentsList(payments: payments, ticked: $ticked, hidden: app.amountsHidden)
       }
     } dock: {
-      Button(ticked.isEmpty ? "Link payments" : "Link \(RecurringCopy.link(ticked.count))") {
-        let ids = payments.map(\.id).filter(ticked.contains)
-        if app.perform(.linkBillPayments(bill, ids)) { dismiss() }
+      Button(linkable.isEmpty ? "Link payments" : "Link \(RecurringCopy.link(linkable.count))") {
+        if app.perform(.linkBillPayments(bill, linkable)) { dismiss() }
       }
       .buttonStyle(.pill(.primary, fill: true))
       .pillHeight()
-      .disabled(ticked.isEmpty)
+      .disabled(linkable.isEmpty)
       .accessibilityIdentifier("bills.link.save")
     }
   }

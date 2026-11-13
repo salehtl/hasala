@@ -375,7 +375,20 @@ public enum HomeEngine {
     let plan = PlanEngine.snapshot(s, now: now)
     let sources = CanvasSources(s, now: now, plan: plan)
     let l = layout ?? defaultLayout(s, now: now, plan: plan)
-    return l.entries.map { HomeCanvasItem(entry: $0, widget: sources.widget(for: $0)) }
+    return l.entries.map { entry in
+      let widget = sources.widget(for: entry)
+      let sentence = widget == nil ? chooseSentence(entry, layout: l, s, now: now, plan: plan) : nil
+      return HomeCanvasItem(entry: entry, widget: widget, waitingSentence: sentence)
+    }
+  }
+
+  static func chooseSentence(
+    _ entry: HomeLayout.Entry, layout: HomeLayout, _ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot
+  ) -> String? {
+    guard let sentence = entry.kind.chooseSentence, let kind = entry.kind.configKind else { return nil }
+    let canChoose = options(kind, s, now: now, plan: plan)
+      .contains { !layout.contains(HomeLayout.Entry(entry.kind, config: $0.config).id) }
+    return canChoose ? sentence : nil
   }
 
   public static func previews(_ s: LedgerState, now: LocalDateTime) -> [HomeWidgetKind: HomeCanvasItem] {

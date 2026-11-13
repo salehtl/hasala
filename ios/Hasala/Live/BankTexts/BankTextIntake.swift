@@ -65,7 +65,8 @@ final class BankTextIntake {
   func run(_ text: String, sender rawSender: String?, at now: Date) async -> BankTextIntakeResult {
     let nowMs = Self.ms(now)
     let sender = Self.sender(rawSender)
-    let signIn = deps.secret.beforeFirstUnlock() ? .locked : deps.signIn()
+    let answer = deps.signIn()
+    let signIn: BankTextSignIn = answer != .locked && deps.secret.beforeFirstUnlock() ? .locked : answer
     if signIn == .locked {
       guard case .keep(let kept) = deps.reader.read(text, sender: sender, testWindowOpen: false) else {
         return .dropped(counted: false)
@@ -111,8 +112,11 @@ final class BankTextIntake {
       link = answer ? .linked : .notLinked
     }
     if link == .linked { return ignore(kept, nowMs: nowMs) }
-    if facts.atDailyTextLimit(nowMs: nowMs) {
-      return .failed(Self.limitMessage)
+    let claim = deps.facts.claimDailyText(nowMs: nowMs)
+    if claim == .atLimit { return .failed(Self.limitMessage) }
+    var authored = false
+    defer {
+      if claim == .claimed, !authored { note(nowMs) { $0.releaseAuthored(atMs: nowMs) } }
     }
     let secret: Data
     do { secret = try deps.secret.current() } catch { return .failed(Self.notOpenMessage) }
@@ -129,9 +133,10 @@ final class BankTextIntake {
     }
     switch outcome {
     case .authored(_, let filed, let keptAt):
+      authored = true
       note(nowMs) {
         $0.noteKept(atMs: Self.ms(keptAt))
-        $0.noteAuthored(atMs: nowMs)
+        if claim == .notSaved { $0.noteAuthored(atMs: nowMs) }
       }
       return .authored(filed: filed)
     case .ignoredLinked(let counts):
@@ -180,6 +185,13 @@ enum BankTextsLinkCopy {
 
   static func note(linked: Bool, facts: BankTextsFacts = .shared, nowMs: Int64) {
     _ = try? facts.update(nowMs: nowMs) { $0.link = BankTextsFactsData.LinkCopy(linked: linked, learnedAtMs: nowMs) }
+  }
+
+  static func connected(facts: BankTextsFacts = .shared, nowMs: Int64) {
+    _ = try? facts.update(nowMs: nowMs) { data in
+      data.link = BankTextsFactsData.LinkCopy(linked: true, learnedAtMs: nowMs)
+      data.lastRunMs = nil
+    }
   }
 
   static func disconnected(facts: BankTextsFacts = .shared, nowMs: Int64) {
@@ -242,7 +254,7 @@ struct BankTextsLinkKeeper {
   }
 
   func connected() {
-    BankTextsLinkCopy.note(linked: true, facts: facts, nowMs: nowMs())
+    BankTextsLinkCopy.connected(facts: facts, nowMs: nowMs())
   }
 
   func disconnected(_ outcome: MailboxDisconnectOutcome) {

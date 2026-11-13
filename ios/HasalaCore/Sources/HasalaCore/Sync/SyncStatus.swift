@@ -27,7 +27,6 @@ public enum SyncPhase: Sendable, Hashable {
   case idle
   case reconciling
   case pulling
-  case folding
   case pushing
   case selfPull
   case offline(sinceMs: Int64)
@@ -56,6 +55,7 @@ public struct SyncStatus: Sendable, Hashable {
   public var suspended: Bool = false
   /// New integrity-alarm occurrences since the app last acknowledged (A-32).
   public var integrityAlarms: Int = 0
+  public var rowAlarms: Int = 0
   /// `Hasala-Request-Id` of the last failing call (diagnostics, §18.2).
   /// TODO(WS-18): not set yet; `SyncStop` does not carry the failing
   /// response's request id, and the diagnostics screen is not built.
@@ -64,6 +64,8 @@ public struct SyncStatus: Sendable, Hashable {
   public var retryAfterSeconds: Int?
 
   public init() {}
+
+  public var uploadsStuck: Bool { latch?.keepsChangesFromUploading == true }
 }
 
 /// Why a stage stopped. The engine turns each into a phase.

@@ -163,6 +163,19 @@ struct BankTextsCoreWiringTests {
     #expect(r.transport.requests == 0)
   }
 
+  @Test func aTextThatArrivesWhileTheAccountIsHeldFailsAndLeavesNoOp() async throws {
+    let r = try Rig(answer: nil)
+    r.note(linked: false)
+    await r.ledger.textWrites.hold()
+    #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .failed(BankTextIntake.notOpenMessage))
+    await #expect(throws: BankTextsFailure.failed(LiveBankTexts.saveFailed)) {
+      try await r.lane().addToReview(Self.purchase, replacing: nil)
+    }
+    #expect(try r.store.pendingCount() == 0)
+    r.ledger.textWrites.releaseHold()
+    #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .authored(filed: true))
+  }
+
   @Test func aDIBTextWithNoSenderFiles() async throws {
     let r = try Rig(answer: nil)
     r.note(linked: false)

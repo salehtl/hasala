@@ -364,12 +364,12 @@ func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
 	// A head the server has moved past is 409 head_moved, and the step-up is
 	// NOT burned (the action failed after a good proof).
-	err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter-1, head, su))
+	_, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter-1, head, su))
 	if !errors.Is(err, ErrHeadMoved) {
 		t.Fatalf("stale head: %v", err)
 	}
 	su = f.reprove(su, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter, head, su)); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter, head, su)); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 	r := f.verifiedRoster()
@@ -388,7 +388,7 @@ func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
 	}
 	// Revoking again is refused: the log never revokes a writer twice.
 	su2 := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter, head, su2)); !errors.Is(err, ErrWriterRevoked) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, counter, head, su2)); !errors.Is(err, ErrWriterRevoked) {
 		t.Fatalf("second revocation: %v", err)
 	}
 }
@@ -396,7 +396,7 @@ func TestRevocationPinsTheFinalHeadAndEndsTheDevice(t *testing.T) {
 func TestAWriterMayRevokeItselfWithAnEmptyChain(t *testing.T) {
 	f := newKeyFixture(t)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(f.device.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
 		t.Fatal(err)
 	}
 	if r := f.verifiedRoster(); r[f.device.WriterID].live {
@@ -409,33 +409,33 @@ func TestRevocationRefusals(t *testing.T) {
 	other := authtest.NewDevice(t)
 	f.enrol(other)
 	zero := make([]byte, 32)
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, nil)); !errors.Is(err, ErrStepUpRequired) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, nil)); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("no step-up: %v", err)
 	}
 	// A step-up begun for another writer id fails, and burns.
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(f.device.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("step-up for another target: %v", err)
 	}
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("a burned nonce: %v", err)
 	}
 	// An assertion without UV fails.
 	f.authn.NoUV = true
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	f.authn.NoUV = false
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("UV cleared: %v", err)
 	}
 	// A signer that is not a live writer of the account.
 	stranger := authtest.NewDevice(t)
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, stranger, 0, zero, su)); !errors.Is(err, ErrBadSignature) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, stranger, 0, zero, su)); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("unenrolled signer: %v", err)
 	}
 	// The step-up survives a failed action: retry with the right signer.
 	su = f.reprove(su, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); err != nil {
 		t.Fatalf("retry after a refused signer: %v", err)
 	}
 	f.verifiedRoster()
@@ -529,7 +529,8 @@ func TestStepUpDeviceProofChecksTheDAKFirst(t *testing.T) {
 		b := f.begin(f.token, keyproto.ActionWriterRevoke, keyproto.ProofDevice, target)
 		su := &StepUpObject{Nonce: b.Nonce, Proof: StepUpProof{Kind: "device", WriterID: f.device.WriterID,
 			Sig: sign(b.Challenge), Verifier: make([]byte, 32)}}
-		return f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, make([]byte, 32), su))
+		_, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(f.device.WriterID, f.device, 0, make([]byte, 32), su))
+		return err
 	}
 	good := func(c [32]byte) []byte {
 		m, _ := keyproto.DeviceStepUpMessage(c, f.device.WriterID)
@@ -567,19 +568,19 @@ func TestAStepUpIsBoundToItsSessionAndExpires(t *testing.T) {
 	zero := make([]byte, 32)
 	// Another session's nonce.
 	su := f.stepUpPasskey(f.newSession(), keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("another session's step-up: %v", err)
 	}
 	// An expired one.
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	f.clock.advance(StepUpTTL + 1)
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("an expired step-up: %v", err)
 	}
 	// A proof kind that differs from the one begun.
 	su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
 	su.Proof.Kind = "device"
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, zero, su)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("a proof of another kind: %v", err)
 	}
 }

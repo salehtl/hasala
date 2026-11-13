@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -76,7 +78,7 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 		"deleted_account_sessions", "device_freeze_challenges", "email_change_ceremonies", "email_code_pauses",
 		"email_codes", "freeze_tokens", "goose_db_version", "invite_codes", "key_history", "mail_log",
 		"mailbox_link_challenges", "mailbox_links", "op_log", "oplog_seq", "password_login_ceremonies",
-		"password_reset_ceremonies", "rate_counters", "recovery_ceremonies", "server_meta", "sessions",
+		"password_reset_ceremonies", "rate_counters", "reapply_kept_credentials", "recovery_ceremonies", "restore_ledger_held", "server_meta", "sessions",
 		"signup_ceremonies", "step_up_challenges", "users", "waitlist_entries", "waitlist_tokens",
 		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
 	}
@@ -644,7 +646,33 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	// 00021_waitlist_invites_mail, 00022_accounts, 00023_mailbox_outlook and
 	// 00024_mailbox_one_account.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 28 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 28", latest, err)
+	if err != nil || latest != 39 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 39", latest, err)
+	}
+}
+
+func TestTheLogIdentityMovesWithARestoreAndNotOtherwise(t *testing.T) {
+	runtime, owner := pgtest.NewWithOwner(t)
+	before, err := pg.LogIdentity(bg, runtime)
+	if err != nil || before == "" {
+		t.Fatalf("identity %q, %v", before, err)
+	}
+	mustExec(t, owner, `ALTER TABLE op_log SET (fillfactor = 90)`)
+	mustExec(t, owner, `VACUUM FULL op_log`)
+	if again, err := pg.LogIdentity(bg, runtime); err != nil || again != before {
+		t.Fatalf("identity %q, %v after a rewrite, want %q", again, err, before)
+	}
+	dsn := owner.Config().ConnString()
+	dump := filepath.Join(t.TempDir(), "restore.dump")
+	if out, err := exec.Command("pg_dump", "--format=custom", "--no-password", "--file="+dump, "--dbname="+dsn).CombinedOutput(); err != nil {
+		t.Fatalf("pg_dump: %v: %s", err, out)
+	}
+	if out, err := exec.Command("pg_restore", "--no-password", "--clean", "--if-exists", "--single-transaction",
+		"--exit-on-error", "--dbname="+dsn, dump).CombinedOutput(); err != nil {
+		t.Fatalf("pg_restore: %v: %s", err, out)
+	}
+	after, err := pg.LogIdentity(bg, runtime)
+	if err != nil || after == before {
+		t.Fatalf("identity %q, %v after a restore, was %q", after, err, before)
 	}
 }

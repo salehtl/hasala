@@ -79,6 +79,7 @@ in
         };
         # The test starts hasala-health by hand (P10); its timer stays off.
         monitoring.healthCheck.enable = true;
+        monitoring.onFailure = [ "hasala-vm-alert@%n.service" ];
         # A stand-in for a neighbour's state that no Hasala unit may read.
         hardening.inaccessiblePaths = [
           "-/var/lib/postgresql"
@@ -86,6 +87,11 @@ in
           "-/run/secrets"
           "-/var/lib/neighbour"
         ];
+      };
+
+      systemd.services."hasala-vm-alert@".serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.coreutils}/bin/true";
       };
 
       systemd.timers.hasala-health.wantedBy = lib.mkForce [ ];
@@ -376,13 +382,26 @@ in
           machine.succeed("journalctl -u hasala-backup-premigrate -o cat | grep 'no pending migrations' >/dev/null")
           machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
 
+      with subtest("AT-V8b: Postgres comes back by itself and the API with it"):
+          pid = machine.succeed("systemctl show -P MainPID hasala-postgresql.service").strip()
+          pg_alerts = "journalctl -u hasala-vm-alert@hasala-postgresql.service.service -o cat | wc -l"
+          pg_alerts_before = int(machine.succeed(pg_alerts).strip())
+          machine.succeed(f"kill -9 {pid}")
+          machine.wait_until_succeeds(f"test \"$(systemctl show -P MainPID hasala-postgresql.service)\" != {pid}")
+          machine.wait_for_unit("hasala-postgresql.service")
+          machine.wait_until_succeeds(f"curl -sf {API}/api/v1/healthz")
+          machine.succeed("systemctl is-active hasalad.service")
+          machine.wait_until_succeeds(f"test \"$({pg_alerts})\" -gt {pg_alerts_before}")
+
       with subtest("AT-V9: hasala-admin runs each mode in a sandbox, as root only"):
-          for mode in ["invite", "waitlist", "account", "email", "purge-user", "verify", "version", "migrate"]:
+          for mode in ["invite", "waitlist", "account", "mailbox", "email", "purge-user", "verify", "version", "migrate"]:
               machine.succeed(f"hasala-admin {mode} --help")
           machine.succeed("hasala-admin version | grep '^hasalad ' >/dev/null")
           code = machine.succeed("hasala-admin invite mint --note vm-note-text 2>/dev/null").strip()
           assert re.fullmatch(r"[A-Z2-7]{24}", code), code
           machine.succeed("hasala-admin migrate --status | grep '^pending 0$' >/dev/null")
+          machine.succeed("hasala-admin migrate")
+          machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
           machine.succeed("journalctl -t hasala-admin -o cat | grep 'mode=invite by=root' >/dev/null")
           # Nowhere in the journal: not from the wrapper, not from systemd's
           # "Started <unit>" line, not from hasalad.
@@ -591,6 +610,9 @@ in
           print(out)
           assert f"P10 http://127.0.0.1:{CONSOLE_PORT}/" in out, out
           machine.succeed("systemctl restart firewall.service")
+          machine.succeed(f"iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport {CONSOLE_PORT} -j hasala-console-out")
+          machine.fail(f"curl -s --max-time 5 {url}")
+          machine.succeed("systemctl reload firewall.service")
           machine.succeed(f"iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport {CONSOLE_PORT} -j hasala-console-out")
           machine.fail(f"curl -s --max-time 5 {url}")
           machine.succeed("systemctl reset-failed hasala-health.service || true")

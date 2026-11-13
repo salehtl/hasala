@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/accounts"
 	"github.com/salehtl/hasala/server/internal/auth"
@@ -32,8 +33,12 @@ func runAccount(env *runEnv, args []string) error {
 	if len(positional) > 0 && positional[0] == "unfreeze" && fs.NArg() == 0 {
 		return runAccountUnfreeze(env, positional[1:], confirm)
 	}
+	if len(positional) > 0 && (positional[0] == "suspend" || positional[0] == "unsuspend") && fs.NArg() == 0 {
+		return runAccountSuspension(env, positional[0], positional[1:], confirm)
+	}
 	usage := refusal{errors.New("usage: hasalad account review <uuid> on|off --confirm <uuid>" +
-		" | hasalad account unfreeze <uuid> --confirm <uuid>")}
+		" | hasalad account unfreeze <uuid> --confirm <uuid>" +
+		" | hasalad account suspend|unsuspend <uuid> --confirm <uuid>")}
 	if len(positional) != 3 || positional[0] != "review" || fs.NArg() > 0 {
 		return usage
 	}
@@ -131,6 +136,14 @@ func runAccountUnfreeze(env *runEnv, positional []string, confirm string) error 
 		return err
 	}
 	if !frozen {
+		recorded, err := recordMissedUnfreeze(ctx, pool, cfg.Server.PurgeLedgerPath, target)
+		if err != nil {
+			return fmt.Errorf("account unfreeze: the restore ledger did not record the last unfreeze: %w", err)
+		}
+		if recorded {
+			fmt.Fprintf(env.stdout, "account %s: was not frozen; the restore ledger now records its last unfreeze\n", target)
+			return nil
+		}
 		fmt.Fprintf(env.stdout, "account %s: was not frozen; nothing changed\n", target)
 		return nil
 	}
@@ -145,4 +158,117 @@ func runAccountUnfreeze(env *runEnv, positional []string, confirm string) error 
 		return fmt.Errorf("account unfreeze: the account is unfrozen, but the restore ledger did not record it: %w", err)
 	}
 	return nil
+}
+
+func recordMissedUnfreeze(ctx context.Context, pool *pgxpool.Pool, ledger string, target uuid.UUID) (bool, error) {
+	if ledger == "" {
+		return false, nil
+	}
+	var last *time.Time
+	if err := pool.QueryRow(ctx, `SELECT max(at) FROM auth_events WHERE user_id = $1 AND kind = 'account_unfrozen'`,
+		target).Scan(&last); err != nil || last == nil {
+		return false, err
+	}
+	return purgeledger.EnsureEntry(ledger, auth.UnfreezeEntry(target, *last), time.Now().Add(-purgeledger.Retention))
+}
+
+func runAccountSuspension(env *runEnv, verb string, positional []string, confirm string) error {
+	if len(positional) != 1 {
+		return refusal{fmt.Errorf("usage: hasalad account %s <uuid> --confirm <uuid>", verb)}
+	}
+	target, err := uuid.Parse(positional[0])
+	if err != nil || target == uuid.Nil || target.String() != positional[0] {
+		return refusal{fmt.Errorf("account %s: %q is not an account id (36 lowercase characters)", verb, positional[0])}
+	}
+	if confirm != positional[0] {
+		return refusal{fmt.Errorf("account %s: --confirm must repeat the account id exactly", verb)}
+	}
+	cfg, err := env.load("account", nil)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	pool, err := openRuntime(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	suspend := verb == "suspend"
+	kind, action := purgeledger.KindUnsuspend, accounts.AuditUnsuspend
+	if suspend {
+		kind, action = purgeledger.KindSuspend, accounts.AuditSuspend
+	}
+	var (
+		at      time.Time
+		changed bool
+	)
+	err = withTx(ctx, pool, func(tx pgx.Tx) error {
+		var err error
+		if suspend {
+			at, changed, err = accounts.Suspend(ctx, tx, target)
+		} else {
+			at, changed, err = accounts.Unsuspend(ctx, tx, target)
+		}
+		if err != nil || !changed {
+			return err
+		}
+		return audit(ctx, tx, adminActor(env), action, "account", target.String(), nil)
+	})
+	if errors.Is(err, accounts.ErrNoSuchAccount) {
+		return refusal{fmt.Errorf("account %s: no account %s", verb, target)}
+	}
+	if err != nil {
+		return err
+	}
+	p := cfg.Server.PurgeLedgerPath
+	if !changed {
+		was := "was not suspended"
+		if suspend {
+			was = "was already suspended"
+		}
+		recorded, err := recordMissedSuspension(ctx, pool, p, target, kind, at)
+		if err != nil {
+			return fmt.Errorf("account %s: the restore ledger did not record the last %s: %w", verb, verb, err)
+		}
+		if recorded {
+			last := "its last unsuspend"
+			if suspend {
+				last = "its suspension"
+			}
+			fmt.Fprintf(env.stdout, "account %s: %s; the restore ledger now records %s\n", target, was, last)
+			return nil
+		}
+		fmt.Fprintf(env.stdout, "account %s: %s; nothing changed\n", target, was)
+		return nil
+	}
+	state := "no longer suspended"
+	if suspend {
+		state = "suspended"
+	}
+	fmt.Fprintf(env.stdout, "account %s: %s\n", target, state)
+	if p == "" {
+		fmt.Fprintf(env.stderr, "account %s: warning: HASALA_PURGE_LEDGER_PATH is not set, "+
+			"so restoring a backup would undo this change\n", verb)
+		return nil
+	}
+	if err := purgeledger.AppendEntries(p, purgeledger.Entry{ID: target, At: at, Kind: kind}); err != nil {
+		return fmt.Errorf("account %s: the account is %s, but the restore ledger did not record it: %w", verb, state, err)
+	}
+	return nil
+}
+
+func recordMissedSuspension(ctx context.Context, pool *pgxpool.Pool, ledger string, target uuid.UUID,
+	kind purgeledger.Kind, since time.Time) (bool, error) {
+	if ledger == "" {
+		return false, nil
+	}
+	if kind == purgeledger.KindUnsuspend {
+		last, err := accounts.LastUnsuspend(ctx, pool, target)
+		if err != nil || last == nil {
+			return false, err
+		}
+		since = *last
+	}
+	return purgeledger.EnsureEntry(ledger, purgeledger.Entry{ID: target, At: since, Kind: kind},
+		time.Now().Add(-purgeledger.Retention))
 }

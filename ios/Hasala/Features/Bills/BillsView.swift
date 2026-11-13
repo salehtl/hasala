@@ -245,14 +245,14 @@ struct BillsView: View {
   private func attentionCard(_ item: BillAttention) -> some View {
     let isLate = if case .late = item.kind { true } else { false }
     let secondary: BillCard<EmptyView>.Action? = isLate
-      ? (unfinished ? .init(title: "Remind me", id: "bills.remind.\(item.id)") { model.remind(item.id) } : nil)
-      : .init(title: "Details", id: "bills.details.\(item.id)") { open(item.id) }
+      ? (unfinished ? .init(title: "Remind me", id: "bills.remind.\(item.billID)") { model.remind(item.billID) } : nil)
+      : .init(title: "Details", id: "bills.details.\(item.billID)") { open(item.billID) }
     return BillCard(
       hue: isLate ? .rose : .sand, glyph: Self.posterGlyph(item), name: item.name, pill: item.pill,
       amount: item.amount, message: item.body, hidden: model.hidden,
       primary: isLate
-        ? .init(title: "I paid it", id: "bills.paid.\(item.id)") { model.markPaid(item.id) }
-        : .init(title: "Accept new amount", id: "bills.accept.\(item.id)") { model.acceptAmount(item.id) },
+        ? .init(title: "I paid it", id: "bills.paid.\(item.billID)") { model.markPaid(item.billID) }
+        : .init(title: "Accept new amount", id: "bills.accept.\(item.billID)") { model.acceptAmount(item.billID) },
       secondary: secondary, id: "bills.attention.\(item.id)")
   }
 

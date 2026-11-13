@@ -25,6 +25,7 @@ final class SignupModel {
   var inviteText = "" {
     didSet {
       guard oldValue != inviteText else { return }
+      invitePasted = false
       // Any edit drops a link key: a typed code is never proven by a stale key.
       if inviteFromLink, InviteCode.normalize(inviteText) != linkCode {
         linkKey = nil
@@ -75,7 +76,9 @@ final class SignupModel {
   private(set) var codeUsedUp = false
 
   // Sign-in method and password (§6.1.2)
-  var method: SignInMethod = .passkey
+  var method: SignInMethod = .passkey {
+    didSet { if passkeyRegistered, method != .passkey { method = .passkey } }
+  }
   var newPassword = ""
   var confirmPassword = ""
   /// "Show" on the new password: the person's choice stays through Back and Forward.
@@ -295,7 +298,7 @@ final class SignupModel {
 
   /// "Resend code" and "Send a new code": a fresh ceremony, a fresh code, five fresh tries.
   func resendCode() async {
-    guard let ticket else { return }
+    guard let ticket, !busy else { return }
     busy = true
     defer { busy = false }
     do {
@@ -324,14 +327,22 @@ final class SignupModel {
   /// Checked on the sixth digit (page 11). A wrong code keeps its digits on screen; an
   /// expired one empties the cells.
   func submitCode() async {
-    guard let ticket, code.count == 6 else { return }
+    guard let ticket, code.count == 6, !busy else { return }
+    if emailVerified {
+      code = ""
+      go(.method)
+      return
+    }
     busy = true
     defer { busy = false }
     do {
       try await account.verifySignupEmail(ticket, code: code)
+      guard self.ticket == ticket else { return }
       emailVerified = true
+      code = ""
       go(.method)
     } catch {
+      guard self.ticket == ticket else { return }
       if error == .codeExpired { codeUsedUp = true }
       wrongCode = error == .codeExpired ? "" : code
       failure = error
@@ -372,6 +383,7 @@ final class SignupModel {
     do {
       let made = try await account.registerPasskey(ticket)
       passkeyTicketID = ticket.id
+      method = .passkey
       passkeyPRF = made.prf
       passkeySynced = made.synced
       wordsInSignup = false
@@ -419,6 +431,12 @@ final class SignupModel {
     } catch {
       failure = error
     }
+  }
+
+  func showReplacementWords() {
+    if phrase == nil { startReplacement() }
+    guard phrase != nil else { return }
+    go(.phraseShow)
   }
 
   private func showPhraseIntro(newPhrase: Bool = false) {

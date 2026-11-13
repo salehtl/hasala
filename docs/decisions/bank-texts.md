@@ -105,10 +105,10 @@ iPhone is the check for whether it runs with no confirmation. The set-up test ca
 it stays open for 10 minutes, and a tap on the prompt passes it. Thus the steps ask the person to
 check Run Immediately, and the passed test says what to do if Shortcuts asked first.
 
-The offer ends once this iPhone saw the automation run (`sawAutomationRun`), so that a person does
-not add a second one. Two automations would run for each text, and each repeat would wait in
-Review. The app cannot see a hand-made automation that never ran, thus the offer in Profile says
-to skip it if one is already made.
+The offer ends once this iPhone saw the automation run since its last mailbox connect
+(`sawAutomationRun`), so that a person does not add a second one. Two automations would run for
+each text, and each repeat would wait in Review. The app cannot see a hand-made automation that
+never ran, thus the offer in Profile says to skip it if one is already made.
 
 The steps for iOS 27 and the hand note for iOS 27 come from published reviews, not from an import
 on a device. Check them on a real iPhone. The link can change only with a new build. The hand steps
@@ -185,8 +185,8 @@ payment cannot arrive through two channels, and no merge is needed.
   path never touches the network.
 - While the account has a mailbox link (the link copy says linked), the app offers no
   **Paste a bank text**: Review and Profile › Bank alerts hide it, and the paste sheet,
-  reached any other way, refuses with "This account reads bank email. Switch to bank texts
-  in Profile › Bank alerts to paste a text." Paste is offered when the copy says not linked
+  reached any other way, refuses with "This account reads bank email. Switch to texts in
+  Profile › Bank alerts to paste." Paste is offered when the copy says not linked
   or unknown (a pasted row always waits in Review).
 - "Add bank text" checks the account's mailbox link before it authors a row. The link state
   is not in the op log, and the app holds the server's answer only in memory
@@ -223,12 +223,18 @@ payment cannot arrive through two channels, and no merge is needed.
   device's next answer (each launch, each push). It is listed in
   [Open checks](#open-checks-for-the-beta).
 - A disconnect that leaves the account with no mailbox link (Profile › Bank alerts has this
-  today) puts the account on texts, as the source of truth says. When this device has a
-  last-run time or an ignored count from the last 30 days, and no other mailbox stays, the
-  disconnect alert says so: "Your Shortcuts automation stays, so bank texts come in from
-  now on." That disconnect also sets the texts-chosen flag on this iPhone, so
-  Bank alerts shows the texts page. A device that never saw the automation run and never
-  finished the texts path shows no source until the person picks one.
+  today) puts the account on texts, as the source of truth says. Only a run since this
+  device's last mailbox connect counts: the connect clears the last-run time, so a person
+  who deleted the automation as told is not told that it is still there. Runs before the
+  first unlock count too: when the D6 marker is added to the ignored count, its latest
+  arrival minute becomes the last-run time if it is not before the time the link copy
+  learned the link, which the connect sets. When this device
+  has a last-run time, and no other mailbox stays, the disconnect alert says: "If your
+  Shortcuts automation is still there, Hasala will add bank texts from now on." That
+  disconnect also sets the texts-chosen flag on this iPhone, so Bank alerts shows the texts
+  page. A device that saw no run since its last connect and never finished the texts path
+  shows no source until the person picks one, and offers the automation again; a person
+  who kept it proves it again with the next text.
 - **Every mailbox connect on an account that has text rows** runs the overlap check (D10),
   whatever led to it: the switch from texts to email, "Add a mailbox" after a disconnect,
   the setup's connect, or a takeover. The build applies it to every mail that the engine
@@ -248,7 +254,9 @@ payment cannot arrive through two channels, and no merge is needed.
   whatever its gates, and its Review card names the twin ("This may be the same payment as a
   bank text from DIB on 9 October", or "a bank text on …" when the text row has no bank),
   under the review reason "Same payment?" with the buttons **Same payment, archive it** and
-  **Keep both, sort it**. The op log has no field that names the twin, so the read model
+  **Keep both, sort it**. The direction pills wait while this question is open, and sorting
+  the card by swipe counts as keeping both. The same button on a transaction's alert page
+  answers the card too. The op log has no field that names the twin, so the read model
   finds it again from the live text rows; the line shows on any mail row in Review that has
   a twin, not only on rows that the check held. Twin candidates are live text rows only: a
   mail beside a text row that the person archived is authored as any mail. The twin test is
@@ -557,8 +565,10 @@ On the device, outside the synced data, and never sent:
   mailbox link on a device that saw the automation run; `BankTextsFactsData.chosen`, read as
   `OnboardingStep.Facts.textsChosen`);
 - the time the automation last ran (one value, overwritten on each run, for every text
-  handed to the action while the person is signed in and after the first unlock, because
-  the app cannot see the automation any other way);
+  handed to the action while the person is signed in and after the first unlock, or, while
+  the account reads bank email, the D6 marker's latest arrival minute once the marker is
+  counted, because the app cannot see the automation any other way, and cleared by this
+  device's mailbox connect);
 - the time of the last text that Hasala added as a row (one value for every sender, overwritten
   on each new row; a time kept for each bank by an older build is folded into it);
 - for each bank sender ID (the sender as iOS gave it, with its bank), a count for each day
@@ -574,7 +584,8 @@ On the device, outside the synced data, and never sent:
   payments, ignored for that reason (see
   [One source for each person](#one-source-for-each-person)), for the
   last 30 days only;
-- the time the last set-up test passed, and, while a test runs, the time its 10-minute
+- the time the last set-up test passed, cleared when a new test starts so that the file
+  only holds the latest test's result, and, while a test runs, the time its 10-minute
   window opened (cleared by the next read or update of the facts after the window closes,
   `BankTextsFactsData.prune`, so it can stay in the file until the next text or app open);
 - the key secret for the text keys (below), in the Keychain, this device only;
@@ -649,8 +660,8 @@ A pasted text has no sender and no arrival time, so its key uses the empty sende
 paste minute (its `received_at` is the paste minute too), and cannot match the automation's
 key. The app tells a pasted text with no date from a dated one by reading it a second time
 with a later paste time: when the posted time moves with it, the text carries no date, and
-the sheet says "This text has no date, so Hasala dates it when you paste it. Change the date
-in Review if the payment was earlier." Instead, before it adds a pasted text,
+the sheet says "The text has no date, so it's dated when you paste it. Change it in Review
+if it was earlier." Instead, before it adds a pasted text,
 the paste sheet looks for a live row, from a text or from mail, with the same bank (or no
 bank on either side), amount, currency and direction, the same card or no card on either
 side, and a `posted_at` within
@@ -670,14 +681,11 @@ person can still find the payment, it keeps what the decoder allows and what the
 `posted_at` with `posted_precision: time` (the date and time in the text when the text
 gives a time, else the arrival minute), `received_at`, `channel: "sms"`, `gates.template:
 none` and `gates.sender: untrusted` (since 2026-10-29 no `gates.card`; older builds wrote
-`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Hasala couldn't read
-this bank text. Find the text from \<bank\> at \<time\> in Messages, copy it and paste it
-here, or add the payment yourself." \<time\> is the text's `received_at`, because Messages
-lists texts by arrival, with the date added when it is not today ("at 12:00 on Fri 5 Jun");
-with no bank it says "Find the text at …"; while the account reads email (no paste), it
-drops "copy it and paste it here". Review lists these rows in a "Bank texts" page
-("Hasala couldn't turn these texts into a payment. Paste each one again, add it yourself,
-or dismiss one you don't need."), and Home's bell has an item "N bank texts we couldn't
+`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Copy it from Messages
+and paste it here, or add the payment yourself."; while the account reads email (no
+paste), it says "Find it in Messages and add the payment yourself." Review lists these
+rows in a "Bank texts" page ("Hasala couldn't read these. Paste each again, add it
+yourself, or dismiss it."), and Home's bell has an item "N bank texts we couldn't
 read" with the neutral line "Add each one by hand or dismiss it". The cards and the
 transaction sheet show only the parsed fields and this copy, never a text body (Paper's B3
 and B4 show one; the record forbids keeping it); the source title is "Bank text from DIB",
@@ -957,7 +965,7 @@ need:
 | D3 | One channel, or merge mail and texts? | **Decided (2026-10-26):** one source for each person, for the whole account (see [One source for each person](#one-source-for-each-person)). No merge. |
 | D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' payment texts go to Review. More banks follow as real texts reach `hasala-fixtures`. **Amended (2026-10-29):** ENBD follows, from the owner's ENBD export, with its private corpus pending (see [Reading happens inside Hasala, on the phone](#reading-happens-inside-hasala-on-the-phone)). |
 | D5 | Before or after the template-free readers ship in the app? | **Decided:** with them. Texts use templates first and the readers for Review. |
-| D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 4 of the reading order (the drop patterns, the templates and the payment shape), which need only bundled data. Only for a text that would be kept and that may be a bank's (a template hit, or a payment shape from a bank sender or with no sender), it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. Every text that the reading keeps then fails with "Hasala can't save texts until you unlock your iPhone. Paste this one later.", a payment-shaped text from a person's number too (it adds no marker, but the failure lets the person paste it), so that no payment is lost without a sign. A text that the reading order drops leaves no marker and succeeds silently. When the app next becomes active after the unlock, it reads the mailbox link copy. When it says not linked or unknown, the app shows a system alert, "Bank texts while locked", with "N texts that look like payments arrived after a restart. Paste them from Messages." and the buttons **Paste a text** (Review's paste sheet) and **OK**; the marker is removed when the alert is answered. (Paper's C5 Home pill shows the cut inbox design.) When the copy says linked, the app shows no notice, adds N to the ignored count of the day of the marker's latest arrival minute (see [One source for each person](#one-source-for-each-person)), so an email account is never told to paste, and removes the marker. When the app opens signed out, it removes the marker and keeps the device facts (an expired session is not a sign-out by the person). Signed out, the action stores nothing: a kept text fails with "Sign in to Hasala to add bank texts." and a dropped text succeeds silently. An install whose fresh-install check has not completed counts as signed out; a Keychain that is locked before the first unlock counts as locked. When the account cannot open for a kept text, the action fails with "Hasala couldn't add this text. Open Hasala and paste it from Messages." The privacy policy and the support page use the same words: the marker counts texts that look like payments, which, with no sender, can include a person's text. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
+| D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 4 of the reading order (the drop patterns, the templates and the payment shape), which need only bundled data. Only for a text that would be kept and that may be a bank's (a template hit, or a payment shape from a bank sender or with no sender), it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. Every text that the reading keeps then fails with "Hasala can't save texts until you unlock your iPhone. Paste this one later.", a payment-shaped text from a person's number too (it adds no marker, but the failure lets the person paste it), so that no payment is lost without a sign. A text that the reading order drops leaves no marker and succeeds silently. When the app next becomes active after the unlock, it reads the mailbox link copy. When it says not linked or unknown, the app shows a system alert, "Bank texts while locked", with "N texts that look like payments arrived after a restart. Paste them from Messages." and the buttons **Paste a text** (Review's paste sheet) and **OK**; the marker is removed when the alert is answered. (Paper's C5 Home pill shows the cut inbox design.) When the copy says linked, the app shows no notice, adds N to the ignored count of the day of the marker's latest arrival minute (see [One source for each person](#one-source-for-each-person)), so an email account is never told to paste, and removes the marker. When the link copy turns linked while the notice is still waiting, the notice is cleared and the count is added to the ignored count in the same way. When the app opens signed out, it removes the marker and keeps the device facts (an expired session is not a sign-out by the person). Signed out, the action stores nothing: a kept text fails with "Sign in to Hasala to add bank texts." and a dropped text succeeds silently. An install whose fresh-install check has not completed counts as signed out; a Keychain that is locked before the first unlock counts as locked. When the account cannot open for a kept text, the action fails with "Hasala couldn't add this text. Open Hasala and paste it from Messages." The privacy policy and the support page use the same words: the marker counts texts that look like payments, which, with no sender, can include a person's text. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
 | D7 | Build the Wallet transaction trigger (Apple Pay) too? | **Decided:** not in v1. |
 | D8 | Add to the 2026-10-11 decisions in CLAUDE.md? | **Decided:** yes. The "Transactions come from Gmail" line gains bank texts through the Shortcuts automation, read on the phone. |
 | D9 | Which filter words catch every bank text? | **Decided (revised 2026-10-27):** a single full stop. Shortcuts needs a sender or a phrase, only about 5% of DIB payment texts contain "AED", and every DIB payment text in the owner's export contains "." in its amount. |

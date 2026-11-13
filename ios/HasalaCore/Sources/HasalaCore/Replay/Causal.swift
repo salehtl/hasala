@@ -418,6 +418,9 @@ extension State {
     if let by = t.supersededBy {
       anomaly(seq, "edit_of_superseded", "\(op.opID) edits \(id), superseded by \(by)")
     }
+    if let by = t.retiredBy {
+      anomaly(seq, "edit_of_retired", "\(op.opID) edits \(id), retired by \(by)")
+    }
     txns[id]!.version = version
 
     switch payload {
@@ -444,6 +447,7 @@ extension State {
         return
       }
       txns[id]!.duplicateDisposition = disposition
+      txns[id]!.possibleDuplicateMovedFrom = []
     case .copyResolution(let other, let decision):
       resolveCopy(id, other: other, decision: decision, e)
     default:
@@ -451,8 +455,8 @@ extension State {
     }
   }
 
-  /// The one place `needs_review` is written after create: it may not be
-  /// cleared on an unparsed row (the review queue is its only surface).
+  /// `needs_review` may not be cleared on an unparsed row (the review queue is
+  /// its only surface).
   private mutating func setNeedsReview(_ id: String, _ want: Bool, seq: Int64) {
     if txns[id]!.unparsed && !want {
       anomaly(seq, "unsupported_edit_field", "\(id): needs_review cannot be cleared on an unparsed transaction")
@@ -525,6 +529,7 @@ extension State {
     if let dup = p.possibleDuplicateOf {
       txns[id]!.possibleDuplicateOf = dup
       txns[id]!.duplicateDisposition = nil
+      txns[id]!.possibleDuplicateMovedFrom = []
     }
     let t = txns[id]!
     let after = fingerprint(t)
@@ -532,6 +537,7 @@ extension State {
       unindexFingerprint(before, id)
       txns[id]!.possibleDuplicateOf = nil
       txns[id]!.duplicateDisposition = nil
+      txns[id]!.possibleDuplicateMovedFrom = []
       indexFingerprint(id, seq: seq)
     }
   }

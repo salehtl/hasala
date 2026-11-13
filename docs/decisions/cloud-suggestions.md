@@ -353,7 +353,8 @@ install): the setup screen asked it already.
 run is running or paused, the app is in the foreground, and at least one waiting name may
 be asked (`ModelSuggestionStage.backlogWaiting`: Clef is available, and a name that rules
 and the dictionary don't place is not cached, not on a row that may not leave the phone and
-not settled earlier in this session). It is called:
+not settled earlier in this session; an unknown answer settles a name only under the list it
+was asked with). It is called:
 
 - when the account opens (`AccountRuntime.open`);
 - when the app comes back to the foreground (`BootController.foreground`);
@@ -396,9 +397,11 @@ The names a session has settled are kept in memory and forgotten at the next ope
 pass first drops an answer kept in memory whose category is no longer on the list Clef is
 offered (for example a category deleted or turned off since). The name is then planned
 again under the current list (the cache, else Clef), so a run never files a row into a
-category that is gone. The record still writes the fields the run card build needs to
-read a run (an empty id, zeros and an empty manifest), so after a downgrade that build
-keeps the day ledger and the rows filed here.
+category that is gone. A name Clef answered unknown is planned again the same way once the
+list changes, because its saved answer belongs to the list it was asked with. A name given
+up after its tries stays set aside until the next open. The record still writes the fields
+the run card build needs to read a run (an empty id, zeros and an empty manifest), so after
+a downgrade that build keeps the day ledger and the rows filed here.
 
 **What it asks.**
 
@@ -409,9 +412,12 @@ keeps the day ledger and the rows filed here.
   name is not sent when it shares a subject with a row that may not leave the phone.
 - Clef only. It never runs Apple's model. While a run is running, or paused for a 429 or
   a 503, the foreground sweep waits (`backlogActive`). While the run is paused on the day
-  cap, the sweep runs Apple's model only, so it can answer names Clef was not asked about
-  that day. When the day has fewer requests left than the sweep has names, Clef is asked
-  about as many as are left and Apple's model about the rest. Once the run ends, the
+  cap and the rolling window has not reopened, the sweep runs Apple's model only, so it can
+  answer names Clef was not asked about that day. From the pause's reopen time the sweep
+  asks Clef again within the same day ledger, even while the run still reads paused; a
+  paused record with no reopen time keeps the sweep on Apple's model. When the day has
+  fewer requests left than the sweep has names, Clef is asked about as many as are left
+  and Apple's model about the rest. Once the run ends, the
   foreground sweep runs Clef and then Apple's model, as before.
 - One request per distinct canonical subject, asked in a random (shuffled) order, not by
   date. Answers are reused for rows that load later with the same subject.
@@ -427,13 +433,13 @@ keeps the day ledger and the rows filed here.
 | Pass spacing | 30 s from the start of the last pass, kept when new rows wake the run and across a relaunch (the record keeps the last pass time); at most 24 a minute, under `PER_IP` 30 per 60 s |
 | Names per run | No cap. A run goes on until nothing waits, a pause, or the day cap |
 | Names per device per day | 400, over a rolling 24 h, shared with the foreground sweep |
-| Tries per name | 3 in a session; a 429 or 503 doesn't use up a try |
+| Tries per name | 3 in a session; a 429, a 503 or a cancelled call doesn't use up a try |
 | 429 | waits of 1, 3 and 10 minutes, then the run pauses for 10 minutes and resumes on a foreground after that |
 | 503 (spend limit, or the model gone) | the run pauses for 15 minutes, and resumes on a foreground after that |
 | Offline | the run pauses, and resumes on its own when the phone is back online |
 | In the background | the run pauses, and resumes on the next foreground |
 | Day cap reached | the run pauses, and resumes on a foreground once the rolling window has room |
-| 3 failed passes in a row (the database or the outbox failed) | the run ends; it is tried again at the next open |
+| 3 failed passes in a row (the database or the outbox failed) | the run ends; it is tried again at the next open. A failed pass that also hit a 429, a 503 or the day cap follows that stop's wait or pause, and still counts as a failed pass |
 
 A 503 or 429 pauses the run, and the run resumes by itself. The run is foreground only (no
 `BGContinuedProcessingTask`), so "never in a background refresh or a push wake" still
@@ -443,12 +449,14 @@ eligible, and cached names are not asked again. Turning Sort automatically off l
 run go on, but nothing more is filed without review.
 
 **One day ledger.** Every Clef request counts toward the 400 a day: the run's, and the
-foreground sweep's (up to 40 per foreground). A request counts when it is sent, also when
+foreground sweep's (up to 40 per foreground). The foreground sweep records its requests
+every 5 and the remainder at the end, so a kill can lose up to 4. A request counts when it is sent, also when
 the pass fails afterwards (a cache write, the re-read, the outbox or the re-projection),
 and a pass that enqueued some of its blobs before a failure keeps those rows among the rows
 filed here. The foreground sweep asks Clef for at most what is left of the day. While a run
-is paused on the day cap, the foreground sweep doesn't ask Clef at all; Apple's on-device
-model still runs. A record from a build with the run card keeps its day ledger and the rows
+is paused on the day cap and its reopen time has not come, the foreground sweep doesn't ask
+Clef at all; Apple's on-device model still runs. From the reopen time it asks Clef for what
+is left of the day, before the run resumes. A record from a build with the run card keeps its day ledger and the rows
 filed here; a run it had paused at the old per-run cap, or that the person stopped, reads as
 ended, and the next `ensure()` starts a new one.
 
@@ -469,7 +477,9 @@ comes. The top card stays until the person moves on, so nothing moves under the 
 **Sending back.** Profile › Cloud suggestions shows **Send Cloudflare's sorting back to
 Review** while a row that a run on this device filed is still as the run left it, and asks
 first ("Send 104 payments back to Review?"). The device keeps the rows it filed, with the
-version it left each at, next to the run record. Sending back re-reads each row and authors
+version it left each at, next to the run record. The rows a pass will file are saved before
+its write and removed again if the write fails, so a kill after the write cannot hide them
+from Send back. Sending back re-reads each row and authors
 `txn_categorized {category: <same>, needs_review: true, source: model "cf-clef/1"}` only
 for rows still at that version (`BacklogSort.sendBack`), so they go back to Review with
 Clef's category as a suggestion. An edit on another device moves the version, and the row

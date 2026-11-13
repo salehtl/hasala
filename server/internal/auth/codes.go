@@ -32,6 +32,8 @@ const (
 	codePause           = 15 * time.Minute
 	codeVerifyWindow    = 15 * time.Minute
 	codeVerifiesPerSpan = 20
+	codeSendDeadline    = 30 * time.Second
+	codeSendWindow      = 4 * codeSendDeadline
 )
 
 // Code purposes and ceremony kinds (the closed sets of email_codes).
@@ -89,19 +91,28 @@ func newCode() (string, error) {
 // then a fresh code whose MAC alone is stored.
 func issueCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.Time, purpose, emailNorm string,
 	userID *uuid.UUID, ceremonyKind, ceremonyID string, send bool) (IssuedCode, error) {
+	return insertCodeTx(ctx, tx, keys, now, purpose, emailNorm, userID, ceremonyKind, ceremonyID, send,
+		purpose != PurposePasswordReset)
+}
+
+func insertCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.Time, purpose, emailNorm string,
+	userID *uuid.UUID, ceremonyKind, ceremonyID string, send, waitsForSend bool) (IssuedCode, error) {
 	tag := keys.EmailTag(emailNorm)
 	if ceremonyKind != CeremonyStepUp {
 		var paused bool
 		if err := tx.QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM email_code_pauses WHERE purpose = $1 AND email_tag = $2 AND paused_until > $3)`,
-			purpose, tag, now).Scan(&paused); err != nil {
+			`SELECT EXISTS (SELECT 1 FROM email_code_pauses WHERE purpose = $1 AND email_tag = $2 AND paused_until > $3)
+			     OR EXISTS (SELECT 1 FROM email_codes WHERE purpose = $1 AND email_tag = $2 AND ceremony_kind <> 'step_up'
+			                   AND used_at IS NULL AND out_of_attempts_at > $4)`,
+			purpose, tag, now, now.Add(-codePause)).Scan(&paused); err != nil {
 			return IssuedCode{}, fmt.Errorf("auth: code pause: %w", err)
 		}
 		var sends int
 		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM email_codes WHERE purpose = $1 AND email_tag = $2
-			    AND ceremony_kind <> 'step_up' AND created_at > $3`,
-			purpose, tag, now.Add(-time.Hour)).Scan(&sends); err != nil {
+			    AND ceremony_kind <> 'step_up' AND created_at > $3
+			    AND (awaiting_send_until IS NULL OR awaiting_send_until > $4)`,
+			purpose, tag, now.Add(-time.Hour), now).Scan(&sends); err != nil {
 			return IssuedCode{}, fmt.Errorf("auth: code sends: %w", err)
 		}
 		if paused || sends >= codeSendsPerHour {
@@ -117,11 +128,16 @@ func issueCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.T
 	if err != nil {
 		return IssuedCode{}, err
 	}
+	var awaitingSend *time.Time
+	if waitsForSend {
+		until := now.Add(codeSendWindow)
+		awaitingSend = &until
+	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO email_codes (code_id, purpose, email_tag, user_id, ceremony_kind, ceremony_id, code_mac, sent,
-		   created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		id, purpose, tag, userID, ceremonyKind, ceremonyID, m, send, now, now.Add(CodeTTL)); err != nil {
+		   created_at, expires_at, awaiting_send_until)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		id, purpose, tag, userID, ceremonyKind, ceremonyID, m, send, now, now.Add(CodeTTL), awaitingSend); err != nil {
 		return IssuedCode{}, fmt.Errorf("auth: insert code: %w", err)
 	}
 	return IssuedCode{ID: id, Purpose: purpose, To: emailNorm, Tag: tag, UserID: userID, Code: code, Send: send}, nil
@@ -188,10 +204,11 @@ func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, cod
 		tag           []byte
 	)
 	err = tx.QueryRow(ctx,
-		`UPDATE email_codes SET attempts = attempts + 1
+		`UPDATE email_codes SET attempts = attempts + 1,
+		        out_of_attempts_at = CASE WHEN attempts + 1 >= $2 AND expires_at > $3 THEN $3::timestamptz END
 		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL AND attempts < $2
 		 RETURNING purpose, ceremony_kind, email_tag`,
-		codeID, codeMaxAttempts).Scan(&purpose, &kind, &tag)
+		codeID, codeMaxAttempts, now).Scan(&purpose, &kind, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: no attempts left", ErrCodeRejected)
 	}

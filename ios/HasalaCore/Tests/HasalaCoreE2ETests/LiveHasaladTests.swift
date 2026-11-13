@@ -172,5 +172,6 @@ struct LiveHasaladTests {
     _ = await engine.run(.authored)
     #expect(await engine.status.latch == .hardStop)
     #expect(await engine.status.integrityAlarms == 1)
+    #expect(await engine.status.rowAlarms == 0)
   }
 }

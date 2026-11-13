@@ -4,6 +4,9 @@ import CoreStore
 import CoreSync
 import CoreTime
 import Foundation
+import Synchronization
+import HasalaKeychain
+import HasalaModels
 import Testing
 
 @testable import Hasala
@@ -29,6 +32,15 @@ struct LiveAccountServiceTests {
       client: AuthClient(transport: server), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
       approvalKeys: SoftDAK(), passkeys: passkeys, clock: SystemClock(), random: SystemRandom(),
       apiBase: "https://api.hasala.app", accountsDirectory: nil)
+  }
+
+  static func faultyPhone(_ server: MiniHasalad) -> (AccountEnvironment, FaultySecrets) {
+    let store = FaultySecrets()
+    let env = AccountEnvironment(
+      client: AuthClient(transport: server), secrets: Secrets(store: store, apiHost: "api.hasala.app"),
+      approvalKeys: SoftDAK(), passkeys: AssertingPasskeys(), clock: SystemClock(), random: SystemRandom(),
+      apiBase: "https://api.hasala.app", accountsDirectory: nil)
+    return (env, store)
   }
 
   /// C1-P through the service: invite, email code, the words, one `password/register`.
@@ -140,6 +152,9 @@ struct LiveAccountServiceTests {
     await #expect(throws: AuthFailure.refused) {
       try await b.perform(.removeDevice(id: bindingB.writer_id), password: Self.password)
     }
+    await #expect(throws: AuthFailure.refused) {
+      try await b.perform(.removeThisIPhoneLosingUnsent, password: Self.password)
+    }
     #expect(try envB.secrets.binding() != nil)
 
     // Delete on A: step-up account.delete (password + approval key), #41, then a wipe,
@@ -179,6 +194,329 @@ struct LiveAccountServiceTests {
     // Nothing of the account's mailbox stays here for the next account.
     #expect(try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).read() == nil)
     #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aDeletionEndsItsGrantWhileTheTokenIsStillHere() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let user = try #require(try env.secrets.binding()?.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    a.grantEnds = MailGrantEnds()
+    a.endGrant = { held, _ in
+      log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+    }
+    a.hooks = LiveAccountHooks(left: {})
+    try await a.perform(.deleteAccount, password: Self.password)
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aWipeEndsTheGrantWhileTheTokenIsStillHere() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { held in
+      log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+    }
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aWipeFromACancelledTaskStillEndsTheGrantBeforeTheTokenGoes() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    let departure = Task {
+      while !Task.isCancelled { await Task.yield() }
+      await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { held in
+        try? await Task.sleep(for: .milliseconds(100))
+        log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+      }
+    }
+    departure.cancel()
+    await departure.value
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aHungEndingStillLetsTheWipeFinish() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let ends = MailGrantEnds()
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: ends, within: .milliseconds(50)) { _ in
+      try? await Task.sleep(for: .seconds(1))
+    }
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+    #expect(await ends.settled(within: .seconds(10)))
+  }
+
+  @Test func theKeychainWriteCheckIsNoGrantToEnd() throws {
+    let env = Self.phone(MiniHasalad(invite: Self.invite))
+    let user = try #require(UserID("00000000-0000-4000-8000-000000000001"))
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail)
+      .write(RefreshingMailTokenProvider.writeCheckValue)
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aWipeWithNoGrantDoesNotWaitOnAnEnding() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    let log = MailGrantEndsTests.Log()
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { _ in log.add("ended") }
+    #expect(log.all.isEmpty)
+  }
+
+  @Test func aWipeThatCouldNotDeleteEverythingWaitsForThePurgeToRunAgain() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let api = InMemoryKeychainAPI()
+    api.locked = true
+    let name = "test.erase.\(UUID().uuidString)"
+    let d = try #require(UserDefaults(suiteName: name))
+    defer { d.removePersistentDomain(forName: name) }
+    d.set("install", forKey: InstallCheck.installIDKey)
+    let base = try #require(URL(string: "https://api.hasala.app"))
+    let env = AppEnvironment(
+      build: .current, apiBaseURL: base, transport: URLSessionTransport(baseURL: base, clientHeader: "ios/test"),
+      account: Self.phone(server), keychain: KeychainSecretStore(accessGroup: nil, api: api), installCheck: .done,
+      secretsInMemory: false, hasPasscode: { true })
+    await env.eraseLocalData(defaults: d)
+    guard case .notNow = env.installCheck else {
+      Issue.record("expected the purge to be owed")
+      return
+    }
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
+  }
+
+  @Test func theSampleDataAnswerReachesTheSessionToo() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    var told: [Bool] = []
+    rt.onAccount = { told.append($0.review_account == true) }
+    server.reviewAccounts = true
+    try? await rt.loadSample()
+    #expect(rt.reviewAccount)
+    #expect(told == [true])
+    await rt.close()
+  }
+
+  @Test func holdingTheRuntimeStopsEveryWriterUntilItResumes() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    await rt.holdWork()
+    #expect(await !rt.coordinator.run(.authored).ran)
+    for lane in rt.lanes.values { #expect(await lane.isStopped) }
+    await rt.backlog.ensure(retry: true)
+    #expect(await !rt.backlog.isRunning)
+    let pending = try rt.context.store.pendingCount()
+    #expect(await Self.addText(rt) == nil)
+    #expect(try rt.context.store.pendingCount() == pending)
+    await rt.resumeWork()
+    for lane in rt.lanes.values { #expect(await !lane.isStopped) }
+    #expect(await rt.coordinator.run(.authored).ran)
+    #expect(await Self.addText(rt) != nil)
+    await rt.close()
+    #expect(await Self.addText(rt) == nil)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func anImportTheHoldCutOffStartsAgainWhenTheHoldEnds() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    let lane = try #require(rt.lane)
+    await rt.holdWork()
+    await rt.resumeWork()
+    #expect(lane.work.running == 0)
+
+    let clock = rt.context.clock
+    let persistence = LedgerMailboxPersistence(
+      store: rt.context.store, authoring: MailboxAuthoring(observer: rt.observer), nowMs: { clock.nowMs() })
+    var state = MailboxState()
+    state.phase = .scanning
+    var commit = MailboxCommit()
+    commit.state = state
+    try await persistence.commit(commit)
+    server.offline = true
+    _ = lane.firstScan()
+    #expect(lane.work.running == 1)
+    await rt.holdWork()
+    #expect(lane.work.running == 0)
+    await rt.resumeWork()
+    #expect(lane.work.running == 1)
+    #expect(await lane.status().phase == .scanning)
+    await rt.close()
+    #expect(lane.work.running == 0)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func anImportAHoldCutMidCycleStartsAgainWhenTheHoldEnds() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let limited = RateLimitedSync(inner: server)
+    let env = AccountEnvironment(
+      client: AuthClient(transport: limited), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
+      approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+      apiBase: "https://api.hasala.app", accountsDirectory: nil)
+    let (a, _) = try await Self.signUp(server, env)
+    limited.limiting = true
+    let enrolled = try #require(a.enrolled)
+    let binding = try #require(try env.secrets.binding())
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: enrolled.userID, provider: .gmail)
+      .write("synthetic-refresh")
+    let suite = "held-import-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    LocalAccountData.setMailboxProvider(.gmail, defaults)
+    let http = HeldMailToken()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: enrolled, build: try BankTextsIntakeTests.bothProviders(),
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      mailHTTP: http, providerDefaults: defaults)
+    let lane = try #require(rt.lane)
+    #expect(lane.provider == .gmail)
+    server.mailboxLink = (thisDevice: true, provider: "gmail")
+    try await rt.mailboxLedger.authorSenderTrust(domain: "dib.ae", trusted: true)
+    #expect(await rt.mailboxLedger.senderTrust()["dib.ae"] == true)
+    let clock = rt.context.clock
+    let persistence = LedgerMailboxPersistence(
+      store: rt.context.store, authoring: MailboxAuthoring(observer: rt.observer), nowMs: { clock.nowMs() })
+    var state = MailboxState()
+    state.phase = .scanning
+    state.provider = .gmail
+    state.profileHistoryID = "1"
+    var commit = MailboxCommit()
+    commit.state = state
+    try await persistence.commit(commit)
+
+    _ = lane.firstScan()
+    try await ModelSuggestionStageTests.until { http.waiting == 1 }
+    #expect(http.waiting == 1)
+    let hold = Task { await rt.holdWork() }
+    try await ModelSuggestionStageTests.until { await lane.isStopped }
+    #expect(await lane.isStopped)
+    http.release()
+    await hold.value
+    #expect(lane.work.running == 0)
+    #expect(http.listings == 0)
+    #expect(await lane.status().phase == .scanning)
+
+    await rt.resumeWork()
+    try await ModelSuggestionStageTests.until { await lane.status().phase != .scanning }
+    #expect(http.listings > 0)
+    #expect(await lane.status().phase == .authoringBackfill)
+    await rt.close()
+  }
+
+  @Test(.timeLimit(.minutes(1))) func closingEndsTheSyncInFlightAtOnce() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let slow = HeldPulls(inner: server)
+    let env = AccountEnvironment(
+      client: AuthClient(transport: slow), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
+      approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+      apiBase: "https://api.hasala.app", accountsDirectory: nil)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    slow.holding = true
+    let run = Task { await rt.coordinator.run(.authored) }
+    for _ in 0..<500 where slow.waiting == 0 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(slow.waiting == 1)
+
+    let started = ContinuousClock.now
+    await rt.close()
+    #expect(ContinuousClock.now - started < .seconds(5))
+    #expect(slow.waiting == 0)
+    #expect(await rt.engine.run(.launch).stop == .cancelled)
+    _ = await run.value
+  }
+
+  static func addText(_ rt: AccountRuntime) async -> BankTextAuthored? {
+    try? await rt.bankTexts.author(
+      BankTextsCoreWiringTests.purchase, sender: nil, reading: KeptBankText(fields: BankTextFields(), mayBeBanks: true),
+      arrivedAt: BankTextsCoreWiringTests.t0, secret: Data(count: 32), link: .notLinked, origin: .automation)
+  }
+
+  @Test func endingTheSessionForMissingKeysLeavesARelaunchAtWelcomeToo() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.endSessionKeepingData()
+    #expect(try env.secrets.session() == nil)
+    #expect(try env.secrets.binding() != nil)
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+    #expect(try await a.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  @Test func endingTheSessionOfflineIsFinishedLaterAndARelaunchAgrees() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    server.offline = true
+    await a.endSessionKeepingData()
+    #expect(try env.secrets.session()?.pending_logout == true)
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+  }
+
+  @Test func onlySigningOutOnPurposeForgetsTheHomeLayout() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let log = MailGrantEndsTests.Log()
+    a.hooks = LiveAccountHooks(left: { log.add("left") }, forgetHomeLayout: { log.add("layout") })
+    await a.endSessionKeepingData()
+    #expect(log.all.isEmpty)
+    await a.signOut()
+    #expect(log.all == ["layout", "left"])
+  }
+
+  @Test func anEndedSessionLeavesTheHomeLayoutForTheNextSignIn() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let base = try #require(URL(string: "https://api.hasala.app"))
+    let boot = BootController(
+      env: AppEnvironment(
+        build: .current, apiBaseURL: base, transport: URLSessionTransport(baseURL: base, clientHeader: "ios/test"), account: env,
+        keychain: KeychainSecretStore(accessGroup: nil, api: InMemoryKeychainAPI()), installCheck: .done, secretsInMemory: false,
+        hasPasscode: { true }))
+    let layouts = HomeLayoutStore(account: "test-\(UUID().uuidString)")
+    defer { layouts.forget() }
+    layouts.save(HomeLayout([HomeLayout.Entry(.today)]))
+    boot.phaseChanged(.signedOut)
+    #expect(layouts.load()?.ids == ["today"])
   }
 
   @Test func signingInAgainOnABoundIPhoneOpensStraightAway() async throws {
@@ -254,6 +592,144 @@ struct LiveAccountServiceTests {
     #expect(try await again.signInWithPasskey() == .ready)
   }
 
+  @Test func aBindingThatCannotBeReadStopsSignupAndSignIn() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+    let binding = try #require(try env.secrets.binding())
+
+    let again = LiveAccountService(env: env)
+    var walls: [String?] = []
+    again.hooks = LiveAccountHooks(otherAccountHere: { walls.append($0) })
+    store.fault = .binding
+    await #expect(throws: AuthFailure.refused) {
+      _ = try await again.beginSignup(
+        code: try #require(InviteCode(Self.invite)), linkKey: nil, email: "omar@example.com", displayName: "Omar")
+    }
+    await #expect(throws: AuthFailure.refused) {
+      _ = try await again.signInWithPassword(email: Self.email, password: Self.password)
+    }
+    await #expect(throws: AuthFailure.refused) { _ = try await again.signInWithPasskey() }
+    #expect(walls.isEmpty)
+
+    store.fault = .none
+    #expect(try env.secrets.session() == nil)
+    #expect(try env.secrets.binding() == binding)
+    #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  @Test func anEpochKeyThatCannotBeReadDoesNotAskForAnUnlock() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+
+    let again = LiveAccountService(env: env)
+    store.fault = .epochKey
+    await #expect(throws: AuthFailure.refused) {
+      _ = try await again.signInWithPassword(email: Self.email, password: Self.password)
+    }
+    store.fault = .none
+    #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  @Test func aBindingThatCannotBeReadStopsRecoveryBeforeTheCodeIsSpent() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, words) = try await Self.signUp(server, env)
+    await a.signOut()
+
+    let again = LiveAccountService(env: env)
+    let ticket = try await again.beginRecovery(words: words)
+    let code = try #require(server.lastCode)
+    store.fault = .binding
+    await #expect(throws: AuthFailure.refused) { try await again.verifyRecovery(ticket, code: code, kind: .passkey) }
+    #expect(server.recoverVerifies == 0)
+
+    store.fault = .none
+    try await again.verifyRecovery(ticket, code: code, kind: .passkey)
+    #expect(server.recoverVerifies == 1)
+  }
+
+  @Test func anotherAccountsWordsOnABoundIPhoneAskToRemoveItsData() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, _) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+    let (_, otherWords) = try await Self.signUp(server, Self.phone(server))
+
+    let again = LiveAccountService(env: env)
+    var walls: [String?] = []
+    again.hooks = LiveAccountHooks(otherAccountHere: { walls.append($0) })
+    let ticket = try await again.beginRecovery(words: otherWords)
+    let code = try #require(server.lastCode)
+    await #expect(throws: AuthFailure.cancelled) { try await again.verifyRecovery(ticket, code: code, kind: .passkey) }
+    #expect(walls == [Self.email])
+  }
+
+  @Test func aBindingThatCannotBeReadDoesNotUnfreezeAsAnUnboundIPhone() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    server.freezeAll(byOperator: false)
+
+    store.fault = .binding
+    await #expect(throws: AuthFailure.refused) { try await a.perform(.unfreeze, password: nil) }
+    #expect(server.unfreezeCalls == 0)
+  }
+
+  @Test func aSessionThatCannotBeReadKeepsTheCheckAndTheSession() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    _ = try await Self.signUp(server, env)
+    let held = try #require(try env.secrets.session())
+    var signedOut = 0
+    let account = LiveAccountService(env: env)
+    account.hooks.left = { signedOut += 1 }
+    let session = AccountSession(
+      services: AccountServices(
+        account: account, mailbox: MockMailbox(offersSampleData: false), setup: MockSetupAuthoring(),
+        notifications: MockNotificationPermission()),
+      phase: .checking)
+
+    store.fault = .session
+    await session.resume()
+    #expect(session.phase == .checking)
+    #expect(session.resumeFailure == .offline)
+    #expect(signedOut == 0)
+
+    store.fault = .none
+    #expect(try env.secrets.session() == held)
+    _ = try await env.client.session(bearer: held.token)
+    await session.resume()
+    #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+    #expect(session.resumeFailure == nil)
+  }
+
+  @Test func aMissingOrLoggedOutSessionIsStillRefusedOnResume() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let account = LiveAccountService(env: env)
+
+    var pending = try #require(try env.secrets.session())
+    pending.pending_logout = true
+    try env.secrets.writeSession(pending)
+    await #expect(throws: AuthFailure.refused) { _ = try await account.resumeSignedIn() }
+
+    try env.secrets.deleteSession()
+    await #expect(throws: AuthFailure.refused) { _ = try await account.resumeSignedIn() }
+  }
+
+  @Test func aBindingThatCannotBeReadCountsAsKeysOnThisIPhone() {
+    let (env, store) = Self.faultyPhone(MiniHasalad(invite: Self.invite))
+    let a = LiveAccountService(env: env)
+    #expect(!a.keysOnThisIPhone)
+    store.fault = .binding
+    #expect(a.keysOnThisIPhone)
+  }
+
   /// §4.7 row 1: an offline sign-out keeps the session item marked `pending_logout`; the
   /// logout is retried later, and the item goes once the server confirms.
   @Test func anOfflineSignOutIsFinishedLater() async throws {
@@ -270,6 +746,27 @@ struct LiveAccountServiceTests {
     #expect(await LiveAccountService.retryPendingLogout(env) == nil)
     #expect(try env.secrets.session() == nil)
     await #expect(throws: (any Error).self) { _ = try await env.client.session(bearer: token) }
+  }
+
+  @Test func everyWayOutOfTheSessionForgetsTheEnrolledAccount() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    #expect(a.enrolled != nil)
+    await a.signOut()
+    #expect(a.enrolled == nil)
+    #expect(try await a.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+
+    let other = MiniHasalad(invite: Self.invite)
+    let (stopped, _) = try await Self.signUp(other, Self.phone(other))
+    let services = AccountServices(
+      account: stopped, mailbox: MockMailbox(), setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let waiting = AccountSession(services: services, phase: .signedOut)
+    waiting.signedOut()
+    #expect(stopped.enrolled != nil)
+    let session = AccountSession(services: services, phase: .ready)
+    session.signedOut()
+    #expect(stopped.enrolled == nil)
   }
 
   @Test func aSignInFinishesAPendingSignOutFirst() async throws {
@@ -344,8 +841,8 @@ struct LiveAccountServiceTests {
   /// `GET /account`'s freeze: who froze it, and the trigger in the app's +04:00 clock.
   @Test func theFreezeIsReadFromTheAccount() {
     let inOct2026: Int64 = 1_792_000_000_000
-    func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> LiveAccountFields {
-      LiveAccountFields(frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
+    func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> AccountInfo {
+      AccountInfo(user_id: "u", frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
     }
     #expect(LiveAccountService.freeze(fields(frozen: false, by: nil), nowMs: inOct2026) == nil)
     #expect(LiveAccountService.freeze(fields(frozen: true, by: "operator"), nowMs: inOct2026) == FreezeInfo(by: .operator, when: nil))
@@ -363,5 +860,132 @@ struct LiveAccountServiceTests {
     let newYearInDubai: Int64 = 1_798_747_200_000
     #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", nowMs: newYearInDubai) == "on Fri 1 Jan at 01:00")
     #expect(LiveAccountService.freezeTime("2026-12-31T19:00:00Z", nowMs: newYearInDubai) == "on Thu 31 Dec 2026 at 23:00")
+  }
+  @Test func theApprovalKeyReadsAsLockedOnlyWhileTheKeychainIsLocked() {
+    let user = UserID("00000000-0000-4000-8000-000000000001")!
+    let writer = WriterID("ios-00000000-0000-4000-8000-000000000002")!
+    #expect(throws: ApprovalKeyError.notNow) {
+      try SecureEnclaveApprovalKey(store: RefusingSecretStore(refusal: .notNow(status: -25308)))
+        .publicKeyX963(userID: user, writerID: writer)
+    }
+    #expect(throws: ApprovalKeyError.unavailable) {
+      try SecureEnclaveApprovalKey(store: RefusingSecretStore(refusal: .failed(status: -25300)))
+        .publicKeyX963(userID: user, writerID: writer)
+    }
+  }
+}
+
+nonisolated private struct RefusingSecretStore: SecretStore {
+  let refusal: SecretStoreError
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { throw refusal }
+
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { throw refusal }
+
+  func delete(_ item: SecretItem) throws(SecretStoreError) { throw refusal }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { throw refusal }
+}
+
+nonisolated final class FaultySecrets: SecretStore {
+  enum Fault { case none, binding, epochKey, session }
+
+  private let inner = MemorySecretStore()
+  private let current = Mutex(Fault.none)
+
+  var fault: Fault {
+    get { current.withLock { $0 } }
+    set { current.withLock { $0 = newValue } }
+  }
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? {
+    switch (item, fault) {
+    case (.accountBinding, .binding), (.epochKey, .epochKey), (.session, .session): throw .failed(status: -26276)
+    default: return try inner.read(item)
+    }
+  }
+
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try inner.write(item, value) }
+
+  func delete(_ item: SecretItem) throws(SecretStoreError) { try inner.delete(item) }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
+}
+
+nonisolated final class RateLimitedSync: Transport {
+  let inner: any Transport
+  private let state = Mutex(false)
+
+  init(inner: any Transport) { self.inner = inner }
+
+  var limiting: Bool {
+    get { state.withLock { $0 } }
+    set { state.withLock { $0 = newValue } }
+  }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    if limiting, request.path.hasPrefix("/api/v1/sync") {
+      return APIResponse(status: 429, body: Data(#"{"error":"rate_limited","detail":""}"#.utf8))
+    }
+    return try await inner.send(request)
+  }
+}
+
+nonisolated final class HeldMailToken: HTTPExchange {
+  private let state = Mutex<(holding: Bool, waiters: [CheckedContinuation<Void, Never>], listings: Int)>((true, [], 0))
+
+  var waiting: Int { state.withLock { $0.waiters.count } }
+
+  var listings: Int { state.withLock { $0.listings } }
+
+  func release() {
+    let held = state.withLock { s -> [CheckedContinuation<Void, Never>] in
+      s.holding = false
+      defer { s.waiters = [] }
+      return s.waiters
+    }
+    held.forEach { $0.resume() }
+  }
+
+  func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
+    if request.url.path().hasSuffix("/messages") { state.withLock { $0.listings += 1 } }
+    if request.url.path() == "/token" {
+      await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+        let go = state.withLock { s -> Bool in
+          guard s.holding else { return true }
+          s.waiters.append(k)
+          return false
+        }
+        if go { k.resume() }
+      }
+    }
+    return HTTPResponse(status: 200, body: Data(#"{"access_token":"synthetic-access","expires_in":3600}"#.utf8))
+  }
+}
+
+nonisolated final class HeldPulls: Transport {
+  let inner: any Transport
+  private let state = Mutex((holding: false, waiting: 0))
+
+  init(inner: any Transport) { self.inner = inner }
+
+  var holding: Bool {
+    get { state.withLock { $0.holding } }
+    set { state.withLock { $0.holding = newValue } }
+  }
+
+  var waiting: Int { state.withLock { $0.waiting } }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    let hold = state.withLock { s -> Bool in
+      guard s.holding, request.method == .get, request.path.hasPrefix("/api/v1/sync") else { return false }
+      s.waiting += 1
+      return true
+    }
+    if hold {
+      defer { state.withLock { $0.waiting -= 1 } }
+      do { try await Task.sleep(for: .seconds(20)) } catch { throw .cancelled }
+    }
+    return try await inner.send(request)
   }
 }

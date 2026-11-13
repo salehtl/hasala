@@ -21,6 +21,15 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
     public let dak: String
     public let final_counter: Int64?
     public let final_head: String?
+
+    public var isLive: Bool { final_counter == nil && final_head == nil }
+
+    var final: Chain.Head? {
+      guard let c = final_counter, let h = final_head.flatMap({ try? Base64.decode($0) }).flatMap(Hash32.init) else {
+        return nil
+      }
+      return Chain.Head(counter: c, hash: h)
+    }
   }
 
   /// `AAK.pub`, b64 32: derived from the unwrapped seed at enrolment.
@@ -46,19 +55,24 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
   public func forReader() -> [WriterID: HeadCheck.RosterWriter] {
     var out: [WriterID: HeadCheck.RosterWriter] = [:]
     for (id, w) in writers {
-      guard let wid = WriterID(id), let dwk = try? Base64.decode(w.dwk) else { continue }
-      var final: Chain.Head?
-      if let c = w.final_counter, let h = w.final_head.flatMap({ try? Base64.decode($0) }).flatMap(Hash32.init) {
-        final = Chain.Head(counter: c, hash: h)
-      }
-      out[wid] = HeadCheck.RosterWriter(dwkPublicKey: dwk, revokedAt: final)
+      guard let wid = WriterID(id), let dwk = try? Base64.decode(w.dwk), w.isLive || w.final != nil else { continue }
+      out[wid] = HeadCheck.RosterWriter(dwkPublicKey: dwk, revokedAt: w.final)
     }
     return out
   }
 
   /// Live writers other than `own` (C9's "another live writer" rule, Devices).
   public func liveWriters() -> [WriterID] {
-    writers.compactMap { $0.value.final_counter == nil ? WriterID($0.key) : nil }
+    writers.compactMap { $0.value.isLive ? WriterID($0.key) : nil }
+  }
+
+  public func shortOfFinal(heads: [WriterID: Chain.Head]) -> [(writer: WriterID, final: Chain.Head)] {
+    writers.compactMap { id, w in
+      guard let writer = WriterID(id), let final = w.final, (heads[writer] ?? .genesis).counter < final.counter else {
+        return nil
+      }
+      return (writer, final)
+    }
   }
 
   public func encoded() -> Data {
@@ -79,7 +93,7 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
     }
     for (id, old) in pinned.writers {
       guard let new = writers[id], new.dwk == old.dwk, new.dak == old.dak else { return false }
-      if old.final_counter != nil || old.final_head != nil {
+      if !old.isLive {
         guard new.final_counter == old.final_counter, new.final_head == old.final_head else { return false }
       }
     }

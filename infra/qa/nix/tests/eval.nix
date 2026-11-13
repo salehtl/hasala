@@ -7,7 +7,7 @@
 #   AT-E1  a minimal system, a fully configured one, one with the Gmail
 #          mailbox link but no Pub/Sub push and one with the Outlook mailbox
 #          link alone evaluate their toplevel with no failed assertion;
-#   AT-E2  each misuse fails the named module assertion (M1–M23), and each
+#   AT-E2  each misuse fails the named module assertion (M1–M24), and each
 #          ill-typed value (a Nix path literal for a secret, an unknown key
 #          kind, a tester limit of 0) fails the option's type, via tryEval;
 #   AT-E3  the rendered units carry exactly the environment and credentials the
@@ -49,6 +49,12 @@ let
       host = consoleHost;
       logins = [ "tester@example" ];
       tailnet = "example-tailnet.ts.net";
+    };
+  };
+  firewalldOnIptables = {
+    services.firewalld = {
+      enable = true;
+      settings.FirewallBackend = "iptables";
     };
   };
 
@@ -482,6 +488,35 @@ let
       "M21"
       (lib.recursiveUpdate (hasala consoleOn) { networking.firewall.enable = false; })
     ];
+    "tunnel on an nftables host" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) { networking.nftables.enable = true; })
+    ];
+    "tunnel with the firewall off" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) { networking.firewall.enable = false; })
+    ];
+    "tunnel on firewalld with the iptables backend" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) firewalldOnIptables)
+    ];
+    "console on firewalld with the iptables backend" = [
+      "M21"
+      (lib.recursiveUpdate (hasala consoleOn) firewalldOnIptables)
+    ];
+    "tunnel with firewalld beside the iptables firewall" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) (
+        firewalldOnIptables // { networking.firewall.backend = "iptables"; }
+      ))
+    ];
+    "tunnel with nftables beside the iptables firewall" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) {
+        networking.nftables.enable = true;
+        networking.firewall.backend = "iptables";
+      })
+    ];
     # M19: nginx is the one user the kernel rule lets through, so a second,
     # ungated vhost reaching the console by any loopback spelling is refused.
     "second vhost to localhost:8472" = [
@@ -555,6 +590,19 @@ let
     "relative secret path" = [
       "M22"
       (hasala { apns.keyFile = "secrets/apns.p8"; })
+    ];
+    "healthCheck with no alert destination" = [
+      "M24"
+      (hasala { monitoring.healthCheck.enable = true; })
+    ];
+    "healthCheck with a recovery notice and no alert destination" = [
+      "M24"
+      (hasala {
+        monitoring = {
+          healthCheck.enable = true;
+          ntfyUrl = "http://127.0.0.1:2586/test";
+        };
+      })
     ];
     "earlyAccessNotice without ntfyUrl" = [
       "M23"
@@ -913,7 +961,23 @@ let
     ) "AT-E3 the API port's kernel rule is installed with the tunnel off"
     ++ check (
       (envOf minimal "hasalad").HASALA_TRUSTED_PROXY == "none"
-    ) "AT-E3 no tunnel must mean trusted_proxy none";
+    ) "AT-E3 no tunnel must mean trusted_proxy none"
+    ++
+      check
+        (
+          let
+            source = builtins.readFile "${nixpkgs}/nixos/modules/services/networking/firewall-iptables.nix";
+            after = marker: text: lib.last (lib.splitString marker text);
+            before = marker: text: lib.head (lib.splitString marker text);
+            start = before "stopScript = " (after "startScript = " source);
+            stop = before "reloadScript = " (after "stopScript = " source);
+            reload = after "reloadScript = " source;
+          in
+          lib.hasInfix "ip46tables -D INPUT -j nixos-fw" (before "cfg.extraCommands" start)
+          && lib.hasInfix "ip46tables -D INPUT -j nixos-drop" (before "cfg.extraStopCommands" stop)
+          && lib.hasInfix "cfg.extraStopCommands" (after "ip46tables -A INPUT -j nixos-drop" reload)
+        )
+        "AT-E3 the firewall's reload no longer closes INPUT with nixos-drop before the stop and start commands, which the port rules rely on";
 
   backupOf = name: (svc fullSys name).serviceConfig;
   offsiteExec = lib.toList (backupOf "hasala-backup-offsite").ExecStart;
@@ -960,6 +1024,38 @@ let
           && lib.hasSuffix " r2:test-bucket/daily" (lib.elemAt offsiteExec 1)
         )
         "AT-E3 the off-site unit must copy without .part files and delete copies at retentionDays: ${builtins.toJSON offsiteExec}"
+    ++ check (lib.all (u: lib.hasInfix "/bin/hasala-retry 4 15 " (backupOf u).ExecStart) [
+      "hasala-migrate"
+      "hasala-purge-replay"
+    ]) "AT-E3 the migrate and replay oneshots must retry a transient failure, a bounded number of times"
+    ++ check (lib.hasInfix "/bin/hasala-retry 4 15 " (svc fullSys "hasala-backup-premigrate").script) "AT-E3 the pre-migration check must retry a transient failure"
+    ++ check (
+      (backupOf "hasala-postgresql").Restart or null == "on-failure"
+      && (backupOf "hasala-postgresql").RestartSec or null != null
+      && (svc fullSys "hasala-postgresql").unitConfig.StartLimitBurst or null != null
+    ) "AT-E3 Postgres must restart after it dies, within a start limit"
+    ++ check (
+      let
+        stopPost = (backupOf "hasala-postgresql").ExecStopPost or "";
+      in
+      lib.hasPrefix "+" stopPost
+      && lib.hasSuffix "/bin/hasala-postgresql-alert notify-failure@%n.service" stopPost
+    ) "AT-E3 a Postgres crash that systemd restarts must still start the alert units"
+    ++ check (
+      !((svc minimal "hasala-postgresql").serviceConfig ? ExecStopPost)
+    ) "AT-E3 with no alert units there is nothing for Postgres to start when it stops"
+    ++ check (
+      let
+        timer = fullSys.config.systemd.timers.hasala-backup-offsite or { };
+      in
+      lib.elem "hasala.target" (timer.wantedBy or [ ])
+      && (timer.timerConfig.OnCalendar or null) != null
+      && (timer.timerConfig.Persistent or false)
+    ) "AT-E3 the off-site unit must run on its own daily timer, whatever the daily backup did"
+    ++ check (lib.elem "hasala-backup-offsite.service" (svc fullSys "hasala-backup").onSuccess) "AT-E3 a daily backup must still start the off-site copy when it succeeds"
+    ++ check (
+      !(minimal.config.systemd.timers ? hasala-backup-offsite)
+    ) "AT-E3 the off-site timer exists with the off-site copy off"
     ++ check (
       (backupOf "hasala-backup").RuntimeDirectory != (backupOf "hasala-backup-premigrate")
       .RuntimeDirectory
@@ -970,6 +1066,25 @@ let
         fullSys.config.systemd.tmpfiles.settings.hasala-maintenance."/run/hasala-maintenance.lock".f.group
         == "hasala-db"
     ) "AT-E3 migrations must hold the maintenance lock"
+    ++ check (
+      let
+        migrate = backupOf "hasala-migrate";
+        limit = fullSys.config.services.hasala.backup.dumpTimeoutSec;
+      in
+      lib.isInt migrate.TimeoutStartSec
+      && migrate.TimeoutStartSec > limit + 600
+      &&
+        builtins.match ".*flock --no-fork /run/hasala-maintenance.lock [^ ]*/bin/timeout 600 [^ ]*/bin/hasala-retry 4 15 .*" migrate.ExecStart
+        != null
+    ) "AT-E3 waiting for the dump's lock must not count against the migration's own ten minutes"
+    ++ check (
+      let
+        lines = lib.splitString "\n" (builtins.readFile "${self}/docs/runbooks/restore.md");
+      in
+      lib.any (l: lib.hasInfix "systemctl stop " l && lib.hasInfix "hasala-health.timer" l) lines
+      && lib.any (lib.hasInfix "systemctl start hasala.target") lines
+      && lib.elem "hasala.target" fullSys.config.systemd.timers.hasala-health.wantedBy
+    ) "AT-E3 the restore runbook must stop the health probes and bring them back with hasala.target"
     ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) [
       "Comodo AAA Services root"
       "emSign ECC Root CA - G3"

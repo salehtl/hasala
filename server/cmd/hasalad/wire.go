@@ -35,6 +35,11 @@ import (
 // nudgeInterval is spec 02 §13.7's watch-renewal nudge.
 const nudgeInterval = 15 * time.Minute
 
+const (
+	heldLinesInterval   = time.Minute
+	restoreFlushTimeout = 10 * time.Second
+)
+
 // readSecret reads a *_FILE secret: the whole file, never logged.
 func readSecret(name, path string) (string, error) {
 	b, err := os.ReadFile(path)
@@ -77,6 +82,7 @@ func wireMailbox(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv
 	if !cfg.Gmail.LinkEnabled() && !cfg.Outlook.LinkEnabled() {
 		slog.Warn("hasalad serve: neither the [gmail] nor the [outlook] mailbox link is configured: " +
 			"the mailbox link routes and the Pub/Sub hook are not mounted")
+		forgetUnrelayedWatches(ctx, pool)
 		return nil
 	}
 	raw, err := readSecret("HASALA_MAILBOX_ROUTE_KEY_FILE", cfg.Gmail.RouteKeyFile)
@@ -102,11 +108,18 @@ func wireMailbox(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv
 	if srv.Outlook != nil && srv.Outlook.Push != nil {
 		nudged = append(nudged, gmailpush.ProviderOutlook)
 	}
+	forgetUnrelayedWatches(ctx, pool, nudged...)
 	if len(nudged) > 0 {
 		ex.done = append(ex.done, startSweepEvery(ctx, "mailbox watch nudge", nudgeInterval,
 			func(ctx context.Context) (string, error) { return gmailpush.Nudge(ctx, pool, waker, nudged...) }))
 	}
 	return nil
+}
+
+func forgetUnrelayedWatches(ctx context.Context, pool *pgxpool.Pool, relayed ...string) {
+	if err := gmailpush.ForgetUnrelayedWatches(ctx, pool, relayed...); err != nil {
+		slog.Warn("hasalad serve: the watches of mailboxes with no push were not cleared", "err", err)
+	}
 }
 
 // wireOutlook mounts the [outlook] group's parts (config.OutlookConfig): the
@@ -190,6 +203,7 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 			return nil, refusal{err}
 		}
 		d := pushv2.NewDispatcher(pool, client)
+		d.SessionIdle = cfg.Auth.SessionIdle
 		ex.done = append(ex.done, d.Start(ctx))
 		waker = d
 	}
@@ -234,6 +248,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		if err != nil {
 			return nil, refusal{err}
 		}
+		if err := pinKeyID(ctx, pool, "auth_key_id", authkeys.KeyID(k)); err != nil {
+			return nil, refusal{err}
+		}
 		tagger = t
 	}
 
@@ -245,20 +262,33 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Register("deleted", mailq.DeletedRenderer)
 	minter, _ := tagger.(invites.Minter)
 	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
-	var record func(purgeledger.Entry)
+	var (
+		hold   purgeledger.HoldFunc
+		record func(purgeledger.Entry)
+	)
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
-		record = func(e purgeledger.Entry) {
-			if err := purgeledger.AppendEntries(p, e); err != nil {
-				slog.Warn("hasalad serve: the restore ledger did not record a waitlist deletion", "kind", string(e.Kind), "err", err)
-			}
+		hold = purgeledger.HoldTx
+		ledger := newLedgerWriter(p)
+		ledger.write = func(purgeledger.Entry) error {
+			flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), restoreFlushTimeout)
+			defer cancel()
+			_, err := purgeledger.Flush(flushCtx, pool, p)
+			return err
 		}
+		record = ledger.record
+		ex.done = append(ex.done, ledger.run(ctx))
 	}
-	q.Unsent = invites.MailUnsent(record)
+	q.Unsent = invites.MailUnsent(hold, minter, record)
+	q.Sent = invites.MailSent(minter)
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
-		wl.Record = record
+		wl.Record, wl.Hold = record, hold
+		ex.done = append(ex.done, startSweepEvery(ctx, "restore ledger held lines", heldLinesInterval,
+			countSweep("wrote %d held restore ledger line(s)", func(ctx context.Context) (int, error) {
+				return purgeledger.Flush(ctx, pool, p)
+			})))
 		ex.done = append(ex.done, startSweep(ctx, "restore ledger retention",
 			countSweep("removed %d restore ledger entries past retention", func(context.Context) (int, error) {
 				return purgeledger.Prune(p, time.Now().Add(-purgeledger.Retention))
@@ -309,10 +339,11 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		}
 		ex.done = append(ex.done, q.Run(ctx))
 	} else {
-		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted and the email worker does not run")
+		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted, the email worker does not run and queued email fails")
+		ex.done = append(ex.done, startSweep(ctx, "mail without a worker", q.FailWithoutWorker))
 	}
 	ex.done = append(ex.done,
-		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool, record) }),
+		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool, hold, record) }),
 		startSweep(ctx, "waitlist sweep", wl.Sweep),
 		startSweep(ctx, "mail log sweep", q.Sweep),
 	)

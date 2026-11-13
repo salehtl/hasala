@@ -193,6 +193,7 @@ final class SetupModel {
 
   /// "Skip": manual-entry mode; your email and the scan are skipped too.
   func skipBanks() {
+    guard !busy, !connectBusy else { return }
     facts.bankSkipped = true
     finish()
   }
@@ -246,14 +247,19 @@ final class SetupModel {
   }
 
   func skipSource() {
-    guard !busy else { return }
+    guard !busy, !connectBusy else { return }
     draft.source = nil
     skipBanks()
   }
 
   func sendTestText() {
     guard path.last != .textsTest else { return }
-    bankTexts?.startTest()
+    do {
+      try bankTexts?.startTest()
+    } catch {
+      failure = .failed(error.message)
+      return
+    }
     go(.textsTest)
   }
 
@@ -413,12 +419,7 @@ final class SetupModel {
   }
 
   /// The failures with a screen of their own (Paper P2.9 row 2).
-  static func showsErrorScreen(_ f: MailConnectFailure) -> Bool {
-    switch f {
-    case .cancelled, .noMailbox, .permissionMissing: true
-    default: false
-    }
-  }
+  static func showsErrorScreen(_ f: MailConnectFailure) -> Bool { f.hasScreen }
 
   /// A connect failure as the setup banner shows it (a closed sign-in shows nothing), in
   /// the provider's words: offline, "Connect Gmail when you're back online", not setup's

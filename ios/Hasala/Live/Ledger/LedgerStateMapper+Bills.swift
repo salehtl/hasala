@@ -178,7 +178,7 @@ nonisolated extension LedgerStateMapper {
           status = .paid
           paidDay = txn.flatMap { derived.days[$0] }
         case .skipped: status = .skipped
-        case .snoozed(let until): status = until > today ? .upcoming : until == today ? .due : .late
+        case .snoozed: status = .upcoming
         case .paused, .notTracked: continue
         case .upcoming: status = .upcoming
         case .due: status = .due
@@ -347,8 +347,7 @@ nonisolated extension LedgerStateMapper {
       if paidDues.contains(local(d)) { return false }
       switch statuses.status(bill: id, due: d, today: t) {
       case .upcoming, .due, .late: return true
-      case .snoozed(let until): return until < t
-      case .paid, .skipped, .paused, .notTracked: return false
+      case .paid, .skipped, .snoozed, .paused, .notTracked: return false
       }
     }
     var next: CivilDate?
@@ -367,7 +366,7 @@ nonisolated extension LedgerStateMapper {
     let shownDue = next ?? fallback
     let terms = v.terms(at: shownDue)
     var amount = Money(minor: terms.amountMinor, currency: b.currency)
-    let history = payments.map(\.due)
+    let history = payments.map { p in p.txnID.flatMap { paidAmount[$0]?.postedAt.date } ?? p.due }.sorted(by: >)
     var priceChangeFrom: Money?
     if !terms.variable, let last = payments.first, let txn = last.txnID,
       let lastDue = CivilDate(year: last.due.year, month: last.due.month, day: last.due.day),

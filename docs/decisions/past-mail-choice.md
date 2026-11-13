@@ -79,7 +79,8 @@ active and the past is skipped. It needs no sign-in or step-up, because it uses 
 read-only grant. `MailboxEngine.importPastMail` clears the floor and records one pending
 import per trusted sender in one commit, from `floor - backfill_days`. A cut run finishes on
 a later cycle. Message accounting and op dedup prevent duplicates. The offer goes away after
-one tap, and the import of a mailbox cannot be started twice.
+one tap. An import that could not be recorded keeps the offer and asks the person to try
+again. The import of a mailbox cannot be started twice.
 
 An import cannot be turned into a skip: use **Disconnect** and remove its transactions.
 

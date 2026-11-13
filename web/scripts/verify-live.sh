@@ -27,9 +27,9 @@ check() {
 # lowercased and without CRs. Retries transient network errors.
 headers() {
   curl -sS -D- -o /dev/null --max-redirs 0 --retry 3 --retry-all-errors "$base$1" |
-    tr -d '\r' | tr '[:upper:]' '[:lower:]'
+    tr -d '\r' | tr '[:upper:]' '[:lower:]' || true
 }
-status() { head -n1 <<<"$1" | awk '{print $2}'; }
+status() { head -n1 <<<"$1" | awk '{print ($2 == "" ? "none" : $2)}'; }
 count() { grep -c -- "$1" <<<"$2" || true; }
 
 expect_status() { # PATH WANT HEADERS

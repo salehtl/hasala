@@ -25,7 +25,7 @@ nonisolated struct LiveStepUp: MailboxStepUp {
   func proof(kind: String, payloadHash: Data?) async throws(MailboxStepUpError) -> JSONValue {
     guard kind == "mailbox.link" || kind == "mailbox.unlink",
       let binding = try? env.secrets.binding(), let user = binding.userID, let writer = binding.writerID,
-      let session = try? env.secrets.session(), !session.pending_logout
+      let session = try? env.secrets.activeSession()
     else { throw .unavailable }
     let tuple = payloadHash.map { [$0] } ?? []
     let paramsHash = StepUp.paramsHash(action: kind, tuple: tuple)

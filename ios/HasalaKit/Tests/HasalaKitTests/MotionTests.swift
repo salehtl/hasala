@@ -175,6 +175,72 @@ struct MotionTests {
     memory.reset()
   }
 
+  @Test func theToastWindowStopsWhileTheAppIsAwayAndKeepsWhatWasLeft() {
+    let t0 = ContinuousClock.now
+    var w = ToastWindow(dwell: .seconds(6), away: false, now: t0)
+    #expect(w.counting && w.left == .seconds(6))
+    w.setAway(true, now: t0 + .seconds(2))
+    #expect(!w.counting && w.left == .seconds(4))
+    w.setAway(true, now: t0 + .seconds(50))
+    #expect(!w.counting && w.left == .seconds(4))
+    w.setAway(false, now: t0 + .seconds(3600))
+    #expect(w.counting && w.left == .seconds(4))
+    w.setAway(false, now: t0 + .seconds(3601))
+    #expect(w.counting && w.left == .seconds(4))
+  }
+
+  @Test func theToastWindowSaysOnlyWhenTheAppReallyLeftOrCameBack() {
+    let t0 = ContinuousClock.now
+    var w = ToastWindow(dwell: .seconds(6), away: false, now: t0)
+    let stayed = w.setAway(false, now: t0 + .seconds(1))
+    #expect(!stayed)
+    #expect(w.counting && w.left == .seconds(6))
+    let left = w.setAway(true, now: t0 + .seconds(2))
+    #expect(left)
+    #expect(w.left == .seconds(4))
+    let stillAway = w.setAway(true, now: t0 + .seconds(3))
+    #expect(!stillAway)
+    #expect(w.left == .seconds(4))
+    let back = w.setAway(false, now: t0 + .seconds(9))
+    #expect(back)
+    let stillBack = w.setAway(false, now: t0 + .seconds(10))
+    #expect(!stillBack)
+    #expect(w.counting && w.left == .seconds(4))
+  }
+
+  @Test func aToastShownWhileAwayWaitsForTheAppToComeBack() {
+    let t0 = ContinuousClock.now
+    var w = ToastWindow(dwell: .seconds(4), away: true, now: t0)
+    #expect(!w.counting && w.left == .seconds(4))
+    w.setAway(false, now: t0 + .seconds(100))
+    #expect(w.counting && w.left == .seconds(4))
+  }
+
+  @Test func aTouchStartsTheFullTimeAgainAndDoesNotOutliveLeaving() {
+    let t0 = ContinuousClock.now
+    var w = ToastWindow(dwell: .seconds(4), away: false, now: t0)
+    w.setAway(true, now: t0 + .seconds(3))
+    w.setAway(false, now: t0 + .seconds(9))
+    #expect(w.left == .seconds(1))
+    w.hold(true, now: t0 + .seconds(9))
+    #expect(!w.counting && w.left == .seconds(4))
+    w.setAway(true, now: t0 + .seconds(10))
+    w.setAway(false, now: t0 + .seconds(20))
+    #expect(w.counting && w.left == .seconds(4))
+    w.hold(true, now: t0 + .seconds(20))
+    w.hold(false, now: t0 + .seconds(21))
+    #expect(w.counting && w.left == .seconds(4))
+  }
+
+  @Test func letGoWhileAwayWaitsForTheAppToComeBack() {
+    let t0 = ContinuousClock.now
+    var w = ToastWindow(dwell: .seconds(4), away: false, now: t0)
+    w.hold(true, now: t0)
+    w.setAway(true, now: t0 + .seconds(1))
+    w.hold(false, now: t0 + .seconds(2))
+    #expect(!w.counting && w.left == .seconds(4))
+  }
+
   @Test func haptics() {
     #expect(HHaptic.allCases.count == 5)
     #expect(HHaptic.selection.feedback == .selection)

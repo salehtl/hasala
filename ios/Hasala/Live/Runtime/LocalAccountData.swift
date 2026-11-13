@@ -1,4 +1,6 @@
+import CoreMailbox
 import CorePrimitives
+import CoreStore
 import Foundation
 import HasalaKeychain
 
@@ -38,6 +40,28 @@ enum LocalAccountData {
     }
   }
 
+  static let mailboxPhaseSeenKey = "app.hasala.prefs.mailbox.phaseSeen"
+
+  static func mailboxPhaseSeen(_ defaults: UserDefaults = .standard) -> MailboxPhase? {
+    defaults.string(forKey: mailboxPhaseSeenKey).flatMap(MailboxPhase.init(rawValue:))
+  }
+
+  static func setMailboxPhaseSeen(_ phase: MailboxPhase?, _ defaults: UserDefaults = .standard) {
+    if let phase { defaults.set(phase.rawValue, forKey: mailboxPhaseSeenKey) } else {
+      defaults.removeObject(forKey: mailboxPhaseSeenKey)
+    }
+  }
+
+  static let amountsHiddenKey = "app.hasala.prefs.amounts.hidden"
+
+  static func amountsHidden(_ defaults: UserDefaults = .standard) -> Bool {
+    defaults.bool(forKey: amountsHiddenKey)
+  }
+
+  static func setAmountsHidden(_ hidden: Bool, _ defaults: UserDefaults = .standard) {
+    defaults.set(hidden, forKey: amountsHiddenKey)
+  }
+
   static func setupFinished(_ defaults: UserDefaults = .standard) -> Bool {
     defaults.bool(forKey: setupFinishedKey)
   }
@@ -56,22 +80,27 @@ enum LocalAccountData {
 
   /// The account's data left this iPhone (deleted here or elsewhere, removed, wiped from
   /// a wall): forget the setup flag, the mailbox provider, the skipped review cards, the push registration,
-  /// the recent searches (held in memory only) and, in Debug simulator runs, the simulator's
-  /// approval keys.
+  /// the recent searches (held in memory only), the cached profile pictures and, in Debug
+  /// simulator runs, the simulator's approval keys.
   static func forget(
-    defaults: UserDefaults = .standard, facts: BankTextsFacts = .shared, marker: LockedTextsMarkerFile = .shared
+    defaults: UserDefaults = .standard, facts: BankTextsFacts = .shared, marker: LockedTextsMarkerFile = .shared,
+    gravatar: GravatarPreference = .shared
   ) {
     SearchHistory.shared.clear()
+    gravatar.forgetPictures()
     WidgetLinkInbox.shared.pending = nil
     defaults.removeObject(forKey: setupFinishedKey)
     defaults.removeObject(forKey: legacySetupFinishedKey)
     defaults.removeObject(forKey: mailboxProviderKey)
     defaults.removeObject(forKey: mailboxMovedAwayKey)
+    defaults.removeObject(forKey: mailboxPhaseSeenKey)
+    defaults.removeObject(forKey: amountsHiddenKey)
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)
     TrustCounts.forget(defaults)
     StoredUnseenPhrase.forget(defaults)
     ManualEntryChoice.forget(defaults)
+    FinishSetupRows.forget(defaults)
     HomeLayoutStore.forgetAll(defaults)
     NotificationReads.forget(defaults)
     PushRegistrar.forgetRegistration(defaults)
@@ -79,6 +108,18 @@ enum LocalAccountData {
     #if DEBUG && targetEnvironment(simulator)
       SimulatorApprovalKey.forgetAll(defaults)
     #endif
+  }
+
+  static func forgetIfNoAccount(
+    binding: () throws -> AccountBinding?, defaults: UserDefaults = .standard, facts: BankTextsFacts = .shared,
+    marker: LockedTextsMarkerFile = .shared
+  ) {
+    do {
+      guard try binding() == nil else { return }
+    } catch {
+      return
+    }
+    forget(defaults: defaults, facts: facts, marker: marker)
   }
 
   /// `value` as 16 hex digits of SHA-256 over this install's id and the value: equal

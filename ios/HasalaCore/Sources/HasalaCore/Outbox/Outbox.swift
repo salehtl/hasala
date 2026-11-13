@@ -48,7 +48,7 @@ public actor Outbox {
   public func pendingCount() -> Int { (try? store.pendingCount()) ?? 0 }
 
   /// Validates, then inserts every op in ONE transaction; durable on return.
-  public func enqueue(_ ops: [Op]) throws(OutboxError) {
+  public func enqueue(_ ops: [Op], importing imports: [(domain: String, sinceMs: Int64)] = []) throws(OutboxError) {
     guard !ops.isEmpty else { return }
     let now = clock.nowMs()
     var rows: [PendingOp] = []
@@ -60,7 +60,7 @@ public actor Outbox {
           opID: op.opID, opJSON: json, opType: op.type.rawValue, entityKind: op.entity?.kind, entityID: op.entity?.id,
           enqueuedAt: now))
     }
-    do { try store.enqueue(rows) } catch { throw .store(error) }
+    do { try store.enqueue(rows, imports: imports) } catch { throw .store(error) }
     scheduleTrigger()
   }
 
@@ -85,6 +85,7 @@ public actor Outbox {
     pendingTrigger = Task {
       try? await Task.sleep(for: wait)
       guard !Task.isCancelled else { return }
+      pendingTrigger = nil
       await run()
     }
   }

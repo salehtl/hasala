@@ -359,21 +359,33 @@ struct CodeStepScreen: View {
   var busy: Bool
   var failure: AuthFailure?
   var sentAt: Date?
+  var expired: (Date) -> Bool
   var trailing: (title: String, identifier: String, action: () -> Void)?
   var onSubmit: () -> Void
   var onResend: () -> Void
 
+  @State private var now = Date.now
+
   private static let revealID = "code.step.reveal"
 
-  private var state: CodeCells.State {
+  static func cellState(failure: AuthFailure?, code: String, expired: Bool) -> CodeCells.State {
+    if expired { return .expired }
     switch failure {
-    case .codeExpired: .expired
-    case .codeWrong: code.count == 6 ? .wrong : .typing
-    default: .typing
+    case .codeExpired: return .expired
+    case .codeWrong: return code.count == 6 ? .wrong : .typing
+    default: return .typing
     }
   }
 
+  static func line(failure: AuthFailure?, state: CodeCells.State) -> AuthFailure? {
+    guard state == .expired else { return failure }
+    if case .codeWrong = failure { return .codeExpired }
+    return failure ?? .codeExpired
+  }
+
   var body: some View {
+    let state = Self.cellState(failure: failure, code: code, expired: expired(now))
+    let shown = Self.line(failure: failure, state: state)
     AccountScreen(title: title, subtitle: subtitle, steps: steps, back: .system) {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 12) {
@@ -382,8 +394,8 @@ struct CodeStepScreen: View {
               // Checked on the sixth digit (page 11 §02); typing again clears a wrong code.
               if new.count == 6, !busy { onSubmit() }
             }
-          if let message = failure?.message {
-            FieldErrorLine(text: message, warning: failure == .codeExpired)
+          if let message = shown?.message {
+            FieldErrorLine(text: message, warning: shown == .codeExpired)
               .accessibilityIdentifier("code.failure")
           }
         }
@@ -397,6 +409,12 @@ struct CodeStepScreen: View {
       if state == .expired {
         BusyButton(title: "Send a new code", busy: busy, identifier: "code.resendNew", action: onResend)
       }
+    }
+    .task(id: sentAt) {
+      guard let sentAt else { return }
+      let left = sentAt.addingTimeInterval(EmailCode.lifetime + 1).timeIntervalSinceNow
+      if left > 0 { try? await Task.sleep(for: .seconds(left)) }
+      if !Task.isCancelled { now = .now }
     }
   }
 }

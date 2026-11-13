@@ -178,6 +178,53 @@ struct FinishSetupTests: AccountSuite {
     #expect(again === flow && again.path.isEmpty && again.incomeEntry.text == "25000" && again.paydayChoice == .day(25))
   }
 
+  @Test func aKeptPlanTakesASalaryChangedSinceItWasClosed() async throws {
+    let setup = MockSetupAuthoring(saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    flow.plan = StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20)
+    m.planFlow = nil
+    try await setup.savePlan(income: 3_000_000, payday: 1, plan: nil)
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    #expect(again === flow && again.incomeMinor == 3_000_000 && again.paydayChoice == .day(1))
+    #expect(again.plan.needsPercent == 60)
+    again.continueWithIncome()
+    await again.savePlan()
+    #expect(setup.income == 3_000_000 && setup.payday == 1 && setup.plan?.needsPercent == 60)
+  }
+
+  @Test func aKeptPlanKeepsWhatWasTypedWhereNothingElseChanged() async throws {
+    let setup = MockSetupAuthoring(saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    flow.incomeEntry = AmountEntry(typing: "26000")
+    flow.paydayChoice = .day(20)
+    m.planFlow = nil
+    try await setup.savePlan(
+      income: 2_500_000, payday: 25, plan: StartingPlan(needsPercent: 50, wantsPercent: 30, savingsPercent: 20))
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    #expect(again.incomeMinor == 2_600_000 && again.paydayChoice == .day(20) && again.plan.needsPercent == 50)
+  }
+
+  @Test func aKeptPlanThatMatchesTheAccountSendsNothing() async throws {
+    let setup = MockSetupAuthoring(saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    m.planFlow = nil
+    let split = StartingPlan(needsPercent: 50, wantsPercent: 30, savingsPercent: 20)
+    try await setup.savePlan(income: 3_000_000, payday: 1, plan: split)
+    let calls = setup.savePlanCalls
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    again.continueWithIncome()
+    await again.savePlan()
+    #expect(setup.savePlanCalls == calls && m.planFlow == nil)
+  }
+
   @Test func theCountLeavesOutARowThatCantStartYet() {
     let items: [FinishSetupItem] = [.plan, .notifications]
     #expect(FinishSetupSection.fact(items, isDone: { _ in false }, importing: true) == "0 of 1")
@@ -192,6 +239,32 @@ struct FinishSetupTests: AccountSuite {
     m.askNotifications()
     m.notificationsNotNow()
     #expect(m.isDone(.notifications) && notifications.answered && !notifications.asked)
+  }
+
+  @Test func aSheetSwipedAwayDuringTheAskSendsOneRequest() async {
+    let held = HeldNotificationPermission()
+    let m = FinishSetupModel(services: AccountServices(
+      account: MockAccountService(existing: .passkey, signedIn: true), mailbox: MockMailbox(),
+      setup: MockSetupAuthoring(), notifications: held))
+    m.askNotifications()
+    let first = Task { await m.allowNotifications() }
+    while held.requests == 0 { await Task.yield() }
+    m.askingNotifications = false
+    #expect(!m.isDone(.notifications))
+    m.askNotifications()
+    let second = Task { await m.allowNotifications() }
+    for _ in 0..<5 { await Task.yield() }
+    #expect(held.requests == 1)
+    held.answer(false)
+    await first.value
+    await second.value
+    #expect(m.isDone(.notifications) && !m.askingNotifications)
+    m.askNotifications()
+    let later = Task { await m.allowNotifications() }
+    while held.requests == 1 { await Task.yield() }
+    held.answer(true)
+    await later.value
+    #expect(held.requests == 2)
   }
 
   @Test func whatTheAccountHoldsCountsAsDone() {
@@ -284,6 +357,12 @@ struct FinishSetupTests: AccountSuite {
     #expect(FinishSetupSection.stopped(m.stoppedMailbox).title == "Sign in to your email again")
     m.refresh(hasTransactions: true)
     #expect(m.isDone(.readingStopped) && m.items.first == .readingStopped)
+    var halted = MockMailbox.gmail
+    halted.state = .readingStopped
+    let stopped = FinishSetupModel(services: services(mailbox: MockMailbox(mailboxes: [halted])))
+    stopped.refresh(hasTransactions: false)
+    #expect(stopped.stoppedMailbox?.id == MockMailbox.gmail.id && stopped.items.first == .readingStopped)
+    #expect(FinishSetupSection.stopped(stopped.stoppedMailbox).title == "Reading your alerts stopped")
   }
 
   @Test func theTotalStaysTheSameOnceAnItemIsDone() async {
@@ -293,6 +372,36 @@ struct FinishSetupTests: AccountSuite {
     await m.checkAgain()
     m.refresh(hasTransactions: true)
     #expect(m.items == [.bankAlerts, .plan, .notifications] && m.isDone(.bankAlerts))
+  }
+
+  @Test func aFinishedRowIsStillCountedAfterARelaunch() throws {
+    let suite = "FinishSetupTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let unseen = InMemoryUnseenPhrase()
+    unseen.noteUnseen(at: .now)
+    func launched() -> FinishSetupModel {
+      var s = services(mailbox: readMailbox())
+      s.unseenPhrase = unseen
+      s.finishRows = FinishSetupRows(defaults: defaults)
+      return FinishSetupModel(services: s)
+    }
+    let first = launched()
+    #expect(first.items == [.phrase, .plan, .notifications] && !first.isDone(.phrase))
+    unseen.noteSeen()
+    let relaunched = launched()
+    #expect(relaunched.items == [.phrase, .plan, .notifications] && relaunched.isDone(.phrase))
+    #expect(FinishSetupSection.fact(relaunched.items, isDone: relaunched.isDone, importing: false) == "1 of 3")
+    FinishSetupRows.forget(defaults)
+    #expect(launched().items == [.plan, .notifications])
+  }
+
+  @Test func aRowNoLongerKnownIsLeftOutOfTheList() throws {
+    let suite = "FinishSetupTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(["phrase", "retired"], forKey: FinishSetupRows.key)
+    #expect(FinishSetupRows(defaults: defaults).listed == [.phrase])
   }
 
   @Test func checkAgainWhileTheImportReadsSaysSo() async {
@@ -318,6 +427,70 @@ struct FinishSetupTests: AccountSuite {
     #expect(mailbox.scans == 1 && m.checkNote == FinishSetupModel.alreadyCheckingLine(.gmail) && m.showingNoAlerts)
   }
 
+  @Test func aCheckThatStopsAfterTheSheetWentShowsTheStoppedRowAndLeavesNoBannerForLater() async {
+    let mailbox = CountingMailbox(readMailbox())
+    let (stream, scan) = AsyncStream<ScanProgress>.makeStream()
+    mailbox.scanStream = stream
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    let check = Task { await m.checkAgain() }
+    while !m.checkingAgain { await Task.yield() }
+    m.showingNoAlerts = false
+    mailbox.laneRows = [MockMailbox.needingSignIn(MockMailbox.gmail)]
+    scan.yield(ScanProgress(phase: .failed("Reading your bank alerts stopped. Try again."), read: 0, total: 0))
+    scan.finish()
+    await check.value
+    m.refresh()
+    #expect(!m.noAlerts && m.isDone(.bankAlerts))
+    #expect(m.stoppedMailbox?.id == MockMailbox.gmail.id && !m.isDone(.readingStopped))
+    mailbox.laneRows = nil
+    m.refresh()
+    #expect(m.noAlerts && !m.isDone(.bankAlerts) && m.stoppedMailbox == nil)
+    m.openNoAlerts()
+    #expect(m.showingNoAlerts && m.checkFailure == nil)
+  }
+
+  @Test func aSheetReopenedDuringTheCheckShowsTheFailure() async {
+    let mailbox = CountingMailbox(readMailbox())
+    let (stream, scan) = AsyncStream<ScanProgress>.makeStream()
+    mailbox.scanStream = stream
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    let check = Task { await m.checkAgain() }
+    while !m.checkingAgain { await Task.yield() }
+    m.showingNoAlerts = false
+    m.openNoAlerts()
+    mailbox.laneRows = [MockMailbox.needingSignIn(MockMailbox.gmail)]
+    scan.yield(ScanProgress(phase: .failed("Reading your bank alerts stopped. Try again."), read: 0, total: 0))
+    scan.finish()
+    await check.value
+    #expect(m.showingNoAlerts && m.checkFailure == .failed("Reading your bank alerts stopped. Try again."))
+  }
+
+  @Test func aFailureSeenInTheSheetGoesWithIt() async {
+    let mailbox = CountingMailbox(readMailbox())
+    let (stream, scan) = AsyncStream<ScanProgress>.makeStream()
+    mailbox.scanStream = stream
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    scan.yield(ScanProgress(phase: .failed("Gmail stopped answering"), read: 0, total: 0))
+    scan.finish()
+    await m.checkAgain()
+    #expect(m.checkFailure == .failed("Gmail stopped answering"))
+    m.showingNoAlerts = false
+    m.openNoAlerts()
+    #expect(m.checkFailure == nil)
+  }
+
   @Test func useADifferentEmailClosesTheSheetForBankAlerts() {
     let m = FinishSetupModel(services: services(mailbox: readMailbox()))
     m.openNoAlerts()
@@ -337,5 +510,27 @@ struct FinishSetupTests: AccountSuite {
     await m.resumeImport()
     await m.resumeImport()
     #expect(mailbox.scans == 1)
+  }
+}
+
+@MainActor
+private final class HeldNotificationPermission: NotificationPermissionAsking {
+  var showsDetails = false
+  private(set) var answered = false
+  private(set) var requests = 0
+  private var waiting: [CheckedContinuation<Bool, Never>] = []
+
+  func decline() { answered = true }
+
+  func requestAuthorization() async -> Bool {
+    requests += 1
+    answered = true
+    return await withCheckedContinuation { waiting.append($0) }
+  }
+
+  func answer(_ allowed: Bool) {
+    let held = waiting
+    waiting = []
+    for continuation in held { continuation.resume(returning: allowed) }
   }
 }

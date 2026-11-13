@@ -23,6 +23,7 @@ struct ModelSuggestionStage: Sendable {
   var autoFileEnabled: @Sendable () -> Bool = { false }
   var cloudBudget: @Sendable () async -> Int = { BacklogSort.dayNames }
   var cloudSpent: @Sendable (Int) async -> Void = { _ in }
+  var willFile: @Sendable (BacklogSort.Filing) async -> Void = { _ in }
   var trusts: @Sendable (String) -> Bool = { _ in true }
   var appActive: @Sendable () -> Bool = { OnScreen.shared.isOn }
   let gate = SweepGate()
@@ -55,7 +56,7 @@ struct ModelSuggestionStage: Sendable {
     let observer = self.observer
     let reader = observer.reader
     _ = try? cache.purgeExpired(now: nowMs())
-    let tally = CallTally()
+    let spend = SpendQueue(report: cloudSpent)
     let cut = CallTally()
     let done: Bool
     do {
@@ -70,7 +71,7 @@ struct ModelSuggestionStage: Sendable {
         let blobs = try await ModelSuggestionSweep.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           stages: stages, context: .foreground, cache: cache, now: nowMs, autoFile: autoFileEnabled(), maxCloudCalls: budget,
-          spent: { tally.add($0) }, trusts: trusts, mayAsk: appActive, cutShort: { cut.add(1) }, stamps: observer.stamps,
+          spent: { spend.add($0) }, trusts: trusts, mayAsk: appActive, cutShort: { cut.add(1) }, stamps: observer.stamps,
           serial: observer.writes,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
           commit: { blobs in
@@ -82,8 +83,7 @@ struct ModelSuggestionStage: Sendable {
     } catch {
       done = false
     }
-    let calls = tally.value
-    if calls > 0 { await cloudSpent(calls) }
+    await spend.drained()
     return (done, cut.value > 0)
   }
 
@@ -100,14 +100,11 @@ struct ModelSuggestionStage: Sendable {
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), dayLeft: left, random: SystemRandom(),
           trusts: trusts, mayAsk: appActive, stamps: observer.stamps, serial: observer.writes,
-          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
+          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) }, willFile: willFile,
           enqueue: { try await outbox.enqueue($0.ops) }, reproject: { try await observer.reproject() })
-        guard !r.failed else {
-          return .init(pass: .failed(r.pass.memo, calls: r.pass.calls), filing: r.filing)
-        }
-        return .init(pass: r.pass, filing: r.filing)
+        return .init(pass: r.outcome, filing: r.filing)
       } catch let e as BacklogSort.Interrupted {
-        return .init(pass: .failed(e.memo, calls: e.calls))
+        return .init(pass: e.pass)
       } catch {
         return nil
       }

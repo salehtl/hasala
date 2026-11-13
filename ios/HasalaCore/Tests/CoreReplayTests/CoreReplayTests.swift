@@ -269,6 +269,49 @@ struct CoreReplayV4Tests {
     #expect(log.kinds == ["plan_undo_mismatch", "invalid_payload", "invalid_payload"])
   }
 
+  @Test("plan: an undo after a newer set of a category keeps that set as typed and still counts in the category's moves for that month")
+  func undoAfterNewerSet() throws {
+    func set(_ c: String, _ amount: String, id: Int) -> String {
+      op("budget_set", #"{"category_id":"\#(c)","month":"2026-10","amount_minor":"\#(amount)","scope":"only"}"#, id: id)
+    }
+    func move(_ from: String, _ to: String, undoes: Int? = nil, id: Int) -> String {
+      let tail = undoes.map { #""reason":"undo","undoes":"op-\#($0)""# } ?? #""reason":"move""#
+      return op("budget_moved", #"{"month":"2026-10","from_category_id":"\#(from)","to_category_id":"\#(to)","amount_minor":"20000",\#(tail)}"#, id: id)
+    }
+    var log = Log()
+    try log.blob(set("dining", "50000", id: 1), set("groceries", "90000", id: 2))
+    try log.blob(move("dining", "groceries", id: 3))
+    try log.blob(set("dining", "30000", id: 4), as: Log.w2)
+    var warm = try SnapshotCodec.decode(try SnapshotCodec.encode(StateSnapshot(state: log.state))).state
+    let undo = move("groceries", "dining", undoes: 3, id: 5)
+    try log.blob(undo)
+    let dining = try #require(log.state.plan.cells["dining"]?["2026-10"])
+    #expect(dining.latestSet == 30000 && dining.movesSinceSet == 0 && dining.movesAll == 0)
+    let groceries = try #require(log.state.plan.cells["groceries"]?["2026-10"])
+    #expect(groceries.latestSet == 90000 && groceries.movesSinceSet == 0 && groceries.movesAll == 0)
+    #expect(log.state.plan.moves["op-3"]?.undone == true)
+    #expect(log.kinds.isEmpty)
+    try Replay.foldBlob(
+      PositionedBlob(writerID: Log.w1, writerCounter: 4, seq: 4, body: Array(#"{"v":4,"kind":"ops","ops":[\#(undo)]}"#.utf8)),
+      into: &warm)
+    #expect(warm == log.state)
+
+    var oneBlob = Log()
+    try oneBlob.blob(set("dining", "50000", id: 1), move("dining", "groceries", id: 3), set("dining", "30000", id: 4))
+    try oneBlob.blob(move("groceries", "dining", undoes: 3, id: 5))
+    #expect(oneBlob.state.plan.cells["dining"]?["2026-10"]?.movesSinceSet == 0)
+    #expect(oneBlob.state.plan.cells["dining"]?["2026-10"]?.movesAll == 0)
+
+    var setFirst = Log()
+    try setFirst.blob(move("dining", "groceries", id: 3), set("dining", "50000", id: 1))
+    try setFirst.blob(set("dining", "30000", id: 4), move("dining", "groceries", id: 6))
+    try setFirst.blob(move("groceries", "dining", undoes: 6, id: 7), move("groceries", "dining", undoes: 3, id: 8))
+    #expect(setFirst.state.plan.cells["dining"]?["2026-10"]?.movesSinceSet == 0)
+    #expect(setFirst.state.plan.cells["dining"]?["2026-10"]?.movesAll == 0)
+    #expect(setFirst.state.plan.cells["groceries"]?["2026-10"]?.movesSinceSet == 0)
+    #expect(setFirst.kinds.isEmpty)
+  }
+
   @Test("bills and accounts: card needs an account, occurrence needs a bill")
   func billsAccounts() throws {
     var log = Log()
@@ -333,7 +376,7 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 57)
+    #expect(s.cursors.hot == 74)
     let text = s.txns["01JC0000000000000000000016"]
     #expect(text?.channel == "sms" && text?.receivedAt == "2026-06-05T08:00:00.000Z" && text?.isText == true)
     #expect(text?.needsReview == false && text?.verifiedSender == false && text?.copyOf == nil)
@@ -349,13 +392,37 @@ struct SnapshotTests {
     #expect(s.txns["01JC0000000000000000000012"]?.copyOf == nil)
     #expect(s.txns["01JC0000000000000000000015"]?.copyOf == nil && s.txns["01JC0000000000000000000014"]?.copyOf == nil)
     #expect(s.mailboxRetirements.first?.txnIDs == ["01JC0000000000000000000003", "01JC0000000000000000000008"])
-    #expect(s.anomalies.map(\.kind) == ["duplicate_ingest", "invalid_payload"])
+    #expect(
+      s.anomalies.map(\.kind) == [
+        "duplicate_ingest", "invalid_payload", "edit_of_retired", "possible_duplicate", "possible_duplicate", "possible_duplicate",
+        "possible_duplicate", "possible_duplicate", "possible_duplicate",
+      ])
+    #expect(s.txns["01JC0000000000000000000091"]?.retiredBy == "canary-v4-63" && s.txns["01JC0000000000000000000093"]?.mergedInto == "01JC0000000000000000000095")
+    #expect(s.txns["01JC0000000000000000000092"]?.possibleDuplicateOf == nil)
+    #expect(s.txns["01JC0000000000000000000094"]?.possibleDuplicateOf == "01JC0000000000000000000095")
+    #expect(s.txns["01JC0000000000000000000094"]?.possibleDuplicateMovedFrom == ["01JC0000000000000000000093"])
+    #expect(s.txns["01JC0000000000000000000096"]?.retiredBy == "canary-v4-70")
+    #expect(s.txns["01JC0000000000000000000097"]?.possibleDuplicateOf == "01JC0000000000000000000096")
+    #expect(s.txns["01JC0000000000000000000097"]?.duplicateDisposition == "different")
+    #expect(s.txns["01JC0000000000000000000099"]?.isHeldCopy == true)
+    #expect(s.txns["01JC0000000000000000000089"]?.possibleDuplicateOf == "01JC0000000000000000000099")
+    #expect(s.txns["01JC0000000000000000000089"]?.possibleDuplicateMovedFrom.isEmpty == true)
+    #expect(s.txns["01JC0000000000000000000088"]?.retiredBy == "canary-v4-79")
+    #expect(s.txns["01JC0000000000000000000087"]?.isLive == true && s.txns["01JC0000000000000000000087"]?.isHeldCopy == false)
+    #expect(s.txns["01JC0000000000000000000087"]?.possibleDuplicateOf == nil)
+    #expect(s.txns["01JC0000000000000000000086"]?.possibleDuplicateOf == "01JC0000000000000000000087")
+    #expect(s.txns["01JC0000000000000000000080"]?.mergedInto == "01JC0000000000000000000085")
+    #expect(s.txns["01JC0000000000000000000085"]?.possibleDuplicateOf == nil)
+    #expect(s.txns["01JC0000000000000000000085"]?.possibleDuplicateMovedFrom == ["01JC0000000000000000000080"])
+    #expect(s.txns["01JC0000000000000000000008"]?.category == "dining" && s.txns["01JC0000000000000000000008"]?.version == 2)
     #expect(s.unreadable.isEmpty)
     #expect(s.merchantNames["carrefour moe"]?.value == "Carrefour MoE")
     #expect(s.merchantRejections.count == 1)
     #expect(s.merchantRejections[State.rejectionKey("carrefour moe", "shopping")]?.rejected == false)
     #expect(s.merchantRejections[State.rejectionKey("carrefour moe", "shopping")]?.opID == "canary-v4-43")
     #expect(s.plan.overwrites.count == 1)
+    #expect(s.plan.cells["transport"]?["2026-11"]?.latestSet == 30000 && s.plan.cells["transport"]?["2026-11"]?.movesSinceSet == 0)
+    #expect(s.plan.cells["transport"]?["2026-11"]?.movesAll == 0 && s.plan.moves["canary-v4-57"]?.undone == true)
     #expect(FoldCanary.foldPrint.utf8.count == 32)
   }
 

@@ -9,6 +9,17 @@ struct BillsProfileEngineParityTests {
   let s = MayaLedger.state
   let now = MayaLedger.now
 
+  @Test func aLateBillWithAPriceChangeKeepsTwoCardsWithTheirOwnIdentity() throws {
+    var late = s
+    let i = try #require(late.bills.firstIndex { $0.id == "du" })
+    late.bills[i].nextDue = now.date.adding(days: -2)
+    let cards = BillsEngine.snapshot(late, now: now).needsALook.filter { $0.name == "du" }
+    #expect(cards.count == 2)
+    #expect(Set(cards.map(\.id)).count == 2)
+    #expect(cards.allSatisfy { $0.billID == "du" })
+    #expect(BillsEngine.toCheck(late, today: now.date) == BillsEngine.toCheck(s, today: now.date))
+  }
+
   @Test func billsMatchComingUpAndFound() {
     let b = BillsEngine.snapshot(s, now: now)
     #expect(b.next14 == .aed(1_039_15))
@@ -19,6 +30,7 @@ struct BillsProfileEngineParityTests {
     #expect(near.income == BillsIncome(label: "Salary", amount: .aed(25_000_00), expected: "expected Wed 28 Oct"))
     #expect(b.upcoming.contains { $0.isIncome })
     #expect(b.needsALook.map(\.name) == ["AXA Insurance", "du"])
+    #expect(b.needsALook.map(\.id) == ["late.axa", "price.du"])
     #expect(b.needsALook.map(\.pill.text) == ["3 days past usual", "Price change"])
     #expect(b.needsALook.map(\.billKind) == ["Car insurance", "Mobile and internet"])
     #expect(b.needsALook[0].body.rendered(hidden: false) == "Car insurance usually arrives on the 7th. No bank email yet.")
@@ -57,6 +69,26 @@ struct BillsProfileEngineParityTests {
     #expect(d.history.dropFirst().allSatisfy { $0.kind == .paid && $0.amount == .aed(550_00) })
     #expect(d.historyNote == "6 on time")
     #expect(d.footnote == "Found in your history. Nothing is shared with AXA Insurance.")
+  }
+
+  @Test func aPaymentThatLeftBeforeTheMonthTurnedCountsAgainstItsOwnDue() throws {
+    var state = s
+    let i = try #require(state.bills.firstIndex { $0.id == "rent" })
+    #expect(state.bills[i].usualDay == 1)
+    state.bills[i].nextDue = LocalDate(2026, 12, 1)
+    state.bills[i].history = [LocalDate(2026, 10, 31), LocalDate(2026, 9, 30), LocalDate(2026, 9, 1)]
+    state.bills[i].payments = []
+    let d = try #require(BillsEngine.detail(state, now: LocalDateTime(2026, 12, 4, 9, 0), bill: "rent"))
+    #expect(d.isLate)
+    #expect(d.historyNote == "3 on time")
+    #expect(d.noticed?.rendered(hidden: false)
+      == "Your last 3 payments arrived between the 30th and 1st. No bank email yet this month.")
+
+    state.bills[i].history = [LocalDate(2026, 11, 8), LocalDate(2026, 9, 30), LocalDate(2026, 9, 1)]
+    let late = try #require(BillsEngine.detail(state, now: LocalDateTime(2026, 12, 4, 9, 0), bill: "rent"))
+    #expect(late.historyNote == "2 of 3 on time")
+    #expect(late.noticed?.rendered(hidden: false)
+      == "Your last 3 payments arrived between the 30th and 8th. No bank email yet this month.")
   }
 
   /// The other bills open the same page: a price change leads with its news, an upcoming bill
@@ -212,5 +244,30 @@ struct MarkedPaidTests {
     let row = try #require(b.recentlyPaid.first { $0.id == "marked:axa:\(LocalDate(2026, 10, 7))" })
     #expect(row.name == "AXA Insurance")
     #expect(b.paidThisMonth.minor == base.paidThisMonth.minor + 550_00)
+  }
+
+  @Test func endingABillKeepsWhatWasMarkedPaidThisMonth() throws {
+    var s = MayaLedger.state
+    let i = try #require(s.bills.firstIndex { $0.id == "axa" })
+    let due = LocalDate(2026, 10, 7)
+    s.bills[i].payments.append(BillPayment(due: due, amount: .aed(550_00), link: .marked))
+    let before = BillsEngine.snapshot(s, now: MayaLedger.now)
+    s.bills[i].state = .ended
+    s.bills[i].endedOn = due
+    let after = BillsEngine.snapshot(s, now: MayaLedger.now)
+    #expect(after.paidThisMonth == before.paidThisMonth)
+    #expect(after.recentlyPaid.contains { $0.id == "marked:axa:\(due)" })
+  }
+
+  @Test func aBillThatWasNeverOneCountsNothing() throws {
+    var s = MayaLedger.state
+    let base = BillsEngine.snapshot(s, now: MayaLedger.now)
+    let i = try #require(s.bills.firstIndex { $0.id == "axa" })
+    let due = LocalDate(2026, 10, 7)
+    s.bills[i].payments.append(BillPayment(due: due, amount: .aed(550_00), link: .marked))
+    s.bills[i].state = .dismissed
+    let b = BillsEngine.snapshot(s, now: MayaLedger.now)
+    #expect(b.paidThisMonth == base.paidThisMonth)
+    #expect(!b.recentlyPaid.contains { $0.id == "marked:axa:\(due)" })
   }
 }

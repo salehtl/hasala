@@ -207,6 +207,19 @@ struct EngineTests {
     #expect(ContinuousClock.now - start < .seconds(10))
   }
 
+  @Test("a search that fails for any reason but a limit is not reported as a limit")
+  func failureIsNotALimit() throws {
+    let re = try ICUPattern.compile("a", caseInsensitive: false)
+    #expect(throws: EngineError.matchFailed) { try re.firstMatch(in: Array("a".utf16), timeLimit: -1) }
+  }
+
+  @Test("ICU's stack limit stopping a search counts as a limit")
+  func stackLimit() throws {
+    let re = try ICUPattern.compile("(a|b)*z", caseInsensitive: false)
+    let body = Array(String(repeating: "a", count: 2_000_000).utf16)
+    #expect(throws: EngineError.limitExceeded) { try re.firstMatch(in: body, timeLimit: 0) }
+  }
+
   @Test("one compiled pattern serves concurrent callers")
   func concurrency() async throws {
     let re = try ICUPattern.compile("(?P<v>[0-9]{4})$", caseInsensitive: false)
@@ -257,6 +270,13 @@ struct ExecutorTests {
     let r = try t.execute(subject: "", normalizedBody: String(repeating: "1", count: 1_000_000))
     #expect(r.error == .tooLarge)
     #expect(!r.matched)
+  }
+
+  @Test("only a limit refuses the message as too_large; another engine failure is not a verdict on it")
+  func engineFailureIsNotTooLarge() {
+    #expect(CompiledTemplate.runError(.limitExceeded) == .limitExceeded)
+    #expect(CompiledTemplate.runError(.matchFailed) == .definition)
+    #expect(CompiledTemplate.runError(.notCompilable) == .definition)
   }
 
   @Test("a cancelled task stops before the next pattern search and records no verdict")

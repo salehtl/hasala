@@ -37,13 +37,37 @@ final class ManualEntryChoice {
 }
 
 @MainActor
+final class FinishSetupRows {
+  static let key = "prefs.home.finish.listed.v1"
+
+  private let defaults: UserDefaults?
+  private var inMemory: [String] = []
+
+  init(defaults: UserDefaults? = nil) {
+    self.defaults = defaults
+  }
+
+  var listed: Set<FinishSetupItem> {
+    Set((defaults?.stringArray(forKey: Self.key) ?? inMemory).compactMap(FinishSetupItem.init(rawValue:)))
+  }
+
+  func list(_ item: FinishSetupItem) {
+    let names = listed.union([item]).map(\.rawValue).sorted()
+    if let defaults { defaults.set(names, forKey: Self.key) } else { inMemory = names }
+  }
+
+  static func forget(_ defaults: UserDefaults) {
+    defaults.removeObject(forKey: key)
+  }
+}
+
+@MainActor
 @Observable
 final class FinishSetupModel {
   @ObservationIgnored private let services: AccountServices
   @ObservationIgnored private let firstScan: FirstScanRun
   @ObservationIgnored private var importResumed = false
   @ObservationIgnored private let session: (() -> AccountSession)?
-  private(set) var phraseTracked = false
   private(set) var phraseSecurity: SecurityModel?
   private(set) var phraseLoading = false
   private(set) var phraseFailure: AuthFailure?
@@ -62,12 +86,14 @@ final class FinishSetupModel {
   private(set) var checkNote: String?
   var showingNoAlerts = false
   @ObservationIgnored private var bankAlertsAfterSheet = false
+  @ObservationIgnored private var requestingNotifications = false
 
   init(services: AccountServices, firstScan: FirstScanRun = FirstScanRun(), session: (() -> AccountSession)? = nil) {
     self.services = services
     self.firstScan = firstScan
     self.session = session
     entersByHand = services.manualEntry.chosen
+    listed.formUnion(services.finishRows.listed)
     refresh()
   }
 
@@ -95,23 +121,25 @@ final class FinishSetupModel {
   var stoppedMailbox: MailboxSnapshot? {
     guard ledgerEmpty, !services.mailbox.firstScanFinished,
       let m = services.mailbox.mailboxes.first(where: { $0.state != .disconnected }),
-      m.state == .needsSignIn || m.readElsewhere || m.note != nil
+      m.state == .needsSignIn || m.state == .readingStopped || m.readElsewhere || m.note != nil
     else { return nil }
     return m
   }
 
   func refresh(hasTransactions: Bool? = nil) {
-    if services.unseenPhrase.unseen {
-      phraseTracked = true
-      listed.insert(.phrase)
-    }
+    if services.unseenPhrase.unseen { list(.phrase) }
     if let hasTransactions { ledgerEmpty = !hasTransactions }
-    if needsEmail { listed.insert(.connectEmail) }
-    if noAlerts { listed.insert(.bankAlerts) }
-    if stoppedMailbox != nil { listed.insert(.readingStopped) }
+    if needsEmail { list(.connectEmail) }
+    if noAlerts { list(.bankAlerts) }
+    if stoppedMailbox != nil { list(.readingStopped) }
     let saved = services.setup.readBack()
     if !planDone, Self.planIsSet(saved) { planDone = true }
     if !notificationsDone, services.notifications.answered { notificationsDone = true }
+  }
+
+  private func list(_ item: FinishSetupItem) {
+    guard listed.insert(item).inserted else { return }
+    services.finishRows.list(item)
   }
 
   func resumeImport() async {
@@ -149,7 +177,11 @@ final class FinishSetupModel {
     phraseFailure = nil
     phraseLoading = true
     defer { phraseLoading = false }
-    if security.state == nil { await security.load() }
+    await security.load()
+    if let failure = security.failure {
+      phraseFailure = failure
+      return
+    }
     if security.state?.hasPasskey == false {
       phraseFailure = .passkeyCantShowUnseenPhrase
       return
@@ -226,7 +258,7 @@ final class FinishSetupModel {
       }
       self?.planFlow = nil
     }
-    flow.path = []
+    flow.reopen()
     draft = flow
     planFlow = flow
   }
@@ -242,7 +274,10 @@ final class FinishSetupModel {
 
   func allowNotifications() async {
     services.notifications.showsDetails = showDetails
+    guard !requestingNotifications else { return }
+    requestingNotifications = true
     _ = await services.notifications.requestAuthorization()
+    requestingNotifications = false
     notificationsDone = true
     askingNotifications = false
     await services.unseenPhrase.remindIfAllowed()

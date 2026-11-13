@@ -14,6 +14,7 @@ enum LiveReading {
     var heldElsewhere: MailProviderKind?
     var textsChosen: Bool
     var textsLastRunMs: Int64?
+    var textsTestMissed = false
     var trustedBanks: [SupportedBank]
     var newestMailRowMs: Int64?
     var txns: [Txn]
@@ -24,7 +25,7 @@ enum LiveReading {
   static func facts(_ i: Inputs) -> ReadingFacts {
     ReadingFacts(
       nowMs: i.nowMs, known: i.known, sample: i.sample, mail: i.status.map { mail($0, provider: i.provider, progress: i.progress) },
-      heldElsewhere: i.heldElsewhere, texts: i.textsChosen ? ReadingFacts.Texts(lastRunMs: i.textsLastRunMs) : nil,
+      heldElsewhere: i.heldElsewhere, texts: i.textsChosen ? ReadingFacts.Texts(lastRunMs: i.textsLastRunMs, testMissed: i.textsTestMissed) : nil,
       banks: i.status.map { banks($0.health, trusted: i.trustedBanks) } ?? [], newestMailRowMs: i.newestMailRowMs,
       earliestBankRow: earliestBankRow(i.txns), backgroundRefreshOff: i.backgroundRefreshOff,
       movedAwayMs: i.status?.phase == .otherDevice ? i.movedAwayMs : nil)
@@ -94,10 +95,6 @@ enum LiveReading {
   }
 
   static func movedAway(from old: MailboxPhase?, to new: MailboxPhase) -> Bool {
-    guard new == .otherDevice, let old else { return false }
-    switch old {
-    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted: return true
-    case .unlinked, .otherDevice: return false
-    }
+    MailboxMoveNote.movedAway(from: old, to: new)
   }
 }

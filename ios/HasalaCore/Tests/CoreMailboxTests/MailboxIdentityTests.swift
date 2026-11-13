@@ -100,7 +100,10 @@ import Testing
     let grant = MailboxEngineConfig(grantID: account).grantID(provider: .gmail, address: "synthetic.user@example.com")
     await rig.ledger.setPlan(MailboxRetirePlan(grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2))
     let plan = try #require(await rig.engine.retirePlan())
-    #expect(plan == MailboxRetirePlan(grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2))
+    #expect(
+      plan
+        == MailboxRetirePlan(
+          grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2, address: "synthetic.user@example.com"))
     let flushes = await rig.ledger.flushes
     #expect(await rig.engine.disconnect(removing: plan) == .removed(7))
     #expect(await rig.ledger.retired == [plan])
@@ -226,16 +229,91 @@ import Testing
     #expect(try await !rig.store.bankHealth().isEmpty)
   }
 
+  @Test func anotherAddressWithALockedKeychainChangesNothingAndAsksAgain() async throws {
+    let rig = Rig()
+    await linkedThenSignedOut(rig)
+    let before = await rig.state()
+    let puts = await rig.server.puts.count
+    rig.gmail.email = other
+    rig.keychain.locked = true
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
+        == .failed(.keychain))
+    rig.keychain.locked = false
+    #expect(await rig.state() == before)
+    #expect(await rig.server.puts.count == puts)
+    #expect(await rig.accounted("d1") == .op)
+    let asks = SwitchAsks(.keep)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: asks.confirm)
+        == .connected(address: other, anotherAddress: true))
+    #expect(asks.questions.count == 1)
+  }
+
+  @Test func anotherAddressWithNoTokenLeftAndAKeychainThatCannotBeWrittenChangesNothing() async throws {
+    let keychain = MemoryGmailRefreshTokenStore()
+    let refusing = WriteRefusingTokenStore(keychain)
+    let rig = Rig(keychain: keychain, tokenStore: refusing)
+    await linkedThenSignedOut(rig)
+    #expect(try keychain.read() == nil)
+    let before = await rig.state()
+    let puts = await rig.server.puts.count
+    rig.gmail.email = other
+    refusing.refuseWrites(true)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
+        == .failed(.keychain))
+    refusing.refuseWrites(false)
+    #expect(await rig.state() == before)
+    #expect(await rig.server.puts.count == puts)
+    #expect(try keychain.read() == nil)
+    #expect(await rig.accounted("d1") == .op)
+    let asks = SwitchAsks(.keep)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: asks.confirm)
+        == .connected(address: other, anotherAddress: true))
+    #expect(asks.questions.count == 1)
+  }
+
+  @Test func anotherAddressWhoseWriteCheckCannotBeClearedLeavesTheOldAddressSignedOut() async throws {
+    let keychain = MemoryGmailRefreshTokenStore()
+    let refusing = WriteRefusingTokenStore(keychain)
+    let rig = Rig(keychain: keychain, tokenStore: refusing)
+    await linkedThenSignedOut(rig)
+    #expect(try keychain.read() == nil)
+    let before = await rig.state()
+    let puts = await rig.server.puts.count
+    rig.gmail.email = other
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "b-new", dateMs: Rig.t0 - 2 * day))
+    refusing.refuseDeletes(true)
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
+        == .failed(.keychain))
+    refusing.refuseDeletes(false)
+    #expect(await rig.state() == before)
+    #expect(await rig.server.puts.count == puts)
+    #expect(try keychain.read() != rig.gmail.refreshToken)
+
+    rig.gmail.clearRequests()
+    let report = await rig.engine.runCycle(trigger: .retry)
+    #expect(report.phase == .reconnectRequired && report.ops == 0)
+    #expect(await rig.accounted("b-new") == nil)
+    #expect(try keychain.read() == nil)
+    #expect(!rig.gmail.requests.contains { $0.form.contains { $0 == ("grant_type", "refresh_token") } })
+  }
+
   @Test func anotherAddressThatCannotBeKeptLeavesNothingToResume() async throws {
     let rig = Rig()
     await linkedThenSignedOut(rig)
     rig.gmail.remove("d1")
     rig.gmail.email = other
     rig.gmail.add(SyntheticMail.enbdAlert(id: "b-new", dateMs: Rig.t0 - 2 * day))
-    rig.keychain.locked = true
+    let keychain = rig.keychain
+    await rig.server.setAfterPut { keychain.locked = true }
     #expect(
       await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
         == .failed(.keychain))
+    await rig.server.setAfterPut(nil)
     rig.keychain.locked = false
     let s = await rig.state()
     #expect(s == MailboxState())

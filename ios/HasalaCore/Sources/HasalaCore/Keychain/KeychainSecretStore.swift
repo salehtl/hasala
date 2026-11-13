@@ -20,6 +20,7 @@ public protocol KeychainAPI: Sendable {
   func add(_ query: [String: Any]) -> OSStatus
   func update(_ query: [String: Any], _ attributes: [String: Any]) -> OSStatus
   func copyData(_ query: [String: Any]) -> (OSStatus, Data?)
+  func accounts(_ query: [String: Any]) -> (OSStatus, [String])
   func delete(_ query: [String: Any]) -> OSStatus
 }
 
@@ -33,6 +34,15 @@ public struct SystemKeychain: KeychainAPI {
     var out: CFTypeRef?
     let s = SecItemCopyMatching(q as CFDictionary, &out)
     return (s, out as? Data)
+  }
+  public func accounts(_ q: [String: Any]) -> (OSStatus, [String]) {
+    var query = q
+    query[kSecReturnAttributes as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitAll
+    var out: CFTypeRef?
+    let s = SecItemCopyMatching(query as CFDictionary, &out)
+    let found = (out as? [[String: Any]] ?? []).compactMap { $0[kSecAttrAccount as String] as? String }
+    return (s, found)
   }
   public func delete(_ q: [String: Any]) -> OSStatus { SecItemDelete(q as CFDictionary) }
 }
@@ -105,11 +115,26 @@ public final class KeychainSecretStore: SecretStore {
     guard s == errSecSuccess || s == errSecItemNotFound else { throw Self.failure(s) }
   }
 
+  public func accounts(service: String) throws(SecretStoreError) -> [String] {
+    var q = base(service: service, account: nil)
+    q[kSecReturnAttributes as String] = true
+    q[kSecMatchLimit as String] = kSecMatchLimitAll
+    let (s, accounts) = api.accounts(q)
+    switch s {
+    case errSecSuccess: return accounts
+    case errSecItemNotFound: return []
+    default: throw Self.failure(s)
+    }
+  }
+
   /// The fresh-install purge's deletes (§4.4 `installCheck`): every item of
   /// every app service in each of `groups`. Returns whether every delete
   /// answered success or not-found; the caller sets `installID` only then.
-  public func purgeAll(groups: [String?]) -> (complete: Bool, statuses: [OSStatus]) {
+  public func purgeAll(groups: [String?], sparing kept: SecretItem? = nil) -> (complete: Bool, statuses: [OSStatus]) {
     var statuses: [OSStatus] = []
+    func note(_ s: OSStatus) {
+      if s != errSecSuccess && s != errSecItemNotFound { statuses.append(s) }
+    }
     for service in SecretItem.allServices {
       for g in groups {
         var q: [String: Any] = [
@@ -118,8 +143,17 @@ public final class KeychainSecretStore: SecretStore {
           kSecUseDataProtectionKeychain as String: true,
         ]
         if let g { q[kSecAttrAccessGroup as String] = g }
-        let s = api.delete(q)
-        if s != errSecSuccess && s != errSecItemNotFound { statuses.append(s) }
+        guard let kept, kept.service == service, g == accessGroup else {
+          note(api.delete(q))
+          continue
+        }
+        let (s, accounts) = api.accounts(q)
+        note(s)
+        for account in accounts where account != kept.account {
+          var one = q
+          one[kSecAttrAccount as String] = account
+          note(api.delete(one))
+        }
       }
     }
     return (statuses.isEmpty, statuses)
@@ -183,6 +217,15 @@ public final class InMemoryKeychainAPI: KeychainAPI, @unchecked Sendable {
       if locked { return (errSecInteractionNotAllowed, nil) }
       guard let item = items[Self.key(q)] else { return (errSecItemNotFound, nil) }
       return (errSecSuccess, corruptReads ? Data([0]) : item.data)
+    }
+  }
+
+  public func accounts(_ q: [String: Any]) -> (OSStatus, [String]) {
+    lock.withLock {
+      if locked { return (errSecInteractionNotAllowed, []) }
+      let prefix = "\(q[kSecAttrAccessGroup as String] as? String ?? "")|\(q[kSecAttrService as String] as? String ?? "")|"
+      let found = items.keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+      return (found.isEmpty ? errSecItemNotFound : errSecSuccess, found)
     }
   }
 

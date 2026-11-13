@@ -29,7 +29,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
   }
 
   private static func token(_ rt: AccountRuntime) throws(SetupFailure) -> String {
-    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    guard let token = try? rt.env.secrets.activeSession()?.token else { throw .failed("You're signed out. Sign in again.") }
     return token
   }
 
@@ -86,7 +86,9 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
         if trusted.contains(d) { dropped.append(d) }
       }
     }
-    try await author(rt) { a throws(AuthorError) in
+    let added = Self.newlyTrusted(kept: kept, before: before)
+    let imports = added.isEmpty ? [] : await rt.lane?.importWindow(senders: added) ?? []
+    try await author(rt, importing: imports) { a throws(AuthorError) in
       for bank in SupportedBank.allCases { a.declareBank(bank.rawValue, active: banks.contains(bank)) }
       for d in kept where !trusted.contains(d) {
         try a.setSenderTrust(typed: d, trusted: true, currentTrusted: trusted)
@@ -97,7 +99,6 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
         trusted.removeAll { $0 == d }
       }
     }
-    let added = Self.newlyTrusted(kept: kept, before: before)
     if !added.isEmpty { rt.lane?.backfill(senders: added) }
   }
 
@@ -164,13 +165,14 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
   }
 
   /// One blob: built, enqueued (durable), re-projected, and the screens reloaded.
-  private func author(_ rt: AccountRuntime, _ body: (inout OpAuthor) throws(AuthorError) -> Void)
-    async throws(SetupFailure)
-  {
+  private func author(
+    _ rt: AccountRuntime, importing imports: [(domain: String, sinceMs: Int64)] = [],
+    _ body: (inout OpAuthor) throws(AuthorError) -> Void
+  ) async throws(SetupFailure) {
     do {
       let ctx = try await rt.observer.authorContext()
       guard let blob = try rt.observer.stamps.build(ctx, body) else { return }
-      try await rt.outbox.enqueue(blob.ops)
+      try await rt.outbox.enqueue(blob.ops, importing: imports)
       try await rt.observer.reproject()
     } catch {
       throw .failed("Couldn't save that. Try again.")

@@ -104,7 +104,8 @@ its category or review lane. So a payment that the merchant list, an older rule 
 filed is filed again, and a payment skipped in Review today is filed too. A row is out
 when:
 
-- the person sorted it (`user`), or a paused rule holds it (`held`);
+- the person sorted it (`user`), or it is held (`held`: a paused rule holds it, or it moved
+  to another category when its own was hidden or archived);
 - it is an unreadable alert, or its sender failed authentication;
 - it is a held copy, a copy or a possible duplicate, or it is in a same-purchase pair;
 - it is archived, a transfer or a split.
@@ -151,8 +152,9 @@ When the person has sorted a payment of a merchant group and direction themselve
 payment of that group and direction that waits in Review suggests their latest pick (#194).
 The pick is the category of the newest row of the group and direction whose current source
 is `user`, newest by `txn.categorized_ms`, or by its posted time when that is empty
-(`LastPick`, HasalaCore `Categorize/LastPick.swift`). These rows do not count: rows held by
-a paused rule (`held`), rows that a rule, the merchant list or a model filed, a split
+(`LastPick`, HasalaCore `Categorize/LastPick.swift`). These rows do not count: held rows
+(`held`: held by a paused rule, or moved when their category was hidden or archived and not
+sorted by the person before), rows that a rule, the merchant list or a model filed, a split
 payment, and a row that waits in Review (an Undo can leave one with source `user`).
 
 The live mapper (`LedgerStateMapper`) runs `LastPick.picks` over the rows it already reads

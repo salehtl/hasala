@@ -6,6 +6,24 @@ import Testing
 @testable import Hasala
 
 @MainActor
+private final class ToastClock {
+  var now = ContinuousClock.now
+  var asked: [Duration] = []
+  private var waiting: [CheckedContinuation<Void, Never>] = []
+
+  func sleep(_ d: Duration) async {
+    asked.append(d)
+    await withCheckedContinuation { waiting.append($0) }
+  }
+
+  func release() {
+    let all = waiting
+    waiting = []
+    for k in all { k.resume() }
+  }
+}
+
+@MainActor
 @Suite("App shell")
 struct AppModelTests {
   @Test func hidingAmountsShowsTheToastAndShowingClearsIt() {
@@ -17,6 +35,25 @@ struct AppModelTests {
     app.toastAction()
     #expect(!app.amountsHidden)
     #expect(app.toast == nil)
+  }
+
+  @Test func hiddenAmountsStayHiddenAfterARelaunchUntilTheEyeIsTapped() {
+    let d = LiveGateTests.defaults()
+    let first = AppModel(store: InMemoryLedger(), amountsDefaults: d)
+    #expect(!first.amountsHidden)
+    first.toggleAmountsHidden()
+    let relaunched = AppModel(store: InMemoryLedger(), amountsDefaults: d)
+    #expect(relaunched.amountsHidden)
+    relaunched.toggleAmountsHidden()
+    #expect(!AppModel(store: InMemoryLedger(), amountsDefaults: d).amountsHidden)
+  }
+
+  @Test func theToastsShowAlsoEndsHidingForTheNextLaunch() {
+    let d = LiveGateTests.defaults()
+    let app = AppModel(store: InMemoryLedger(), amountsDefaults: d)
+    app.toggleAmountsHidden()
+    app.toastAction()
+    #expect(!AppModel(store: InMemoryLedger(), amountsDefaults: d).amountsHidden)
   }
 
   @Test func reviewingAllMonthsLeavesTheAppsPeriodAlone() {
@@ -171,6 +208,66 @@ struct AppModelTests {
     app.holdToast(false)
     #expect(app.toast != nil)
     app.dismissToast()
+    #expect(app.toast == nil)
+  }
+
+  @Test func theUndoWindowStopsWhileTheAppIsAwayAndGoesOnWithWhatWasLeft() async throws {
+    let app = AppModel(store: InMemoryLedger())
+    let clock = ToastClock()
+    app.toastNow = { clock.now }
+    app.toastSleep = { await clock.sleep($0) }
+    app.say("Bill marked as paid")
+    try await LiveLedgerMapperTests.eventually { clock.asked.count == 1 }
+    let dwell = try #require(clock.asked.first)
+    clock.now += .seconds(1)
+    app.sceneChanged(onScreen: false)
+    clock.release()
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(app.toast != nil)
+    #expect(clock.asked.count == 1)
+    clock.now += .seconds(3600)
+    app.sceneChanged(onScreen: true)
+    try await LiveLedgerMapperTests.eventually { clock.asked.count == 2 }
+    #expect(clock.asked.last == dwell - .seconds(1))
+    #expect(app.toast != nil)
+    clock.release()
+    try await LiveLedgerMapperTests.eventually { app.toast == nil }
+    #expect(app.toast == nil)
+  }
+
+  @Test func aToastShownWhileTheAppIsAwayWaitsForItToComeBack() async throws {
+    let app = AppModel(store: InMemoryLedger())
+    let clock = ToastClock()
+    app.toastNow = { clock.now }
+    app.toastSleep = { await clock.sleep($0) }
+    app.sceneChanged(onScreen: false)
+    app.say("That change didn't save")
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(clock.asked.isEmpty && app.toast != nil)
+    app.sceneChanged(onScreen: true)
+    try await LiveLedgerMapperTests.eventually { clock.asked.count == 1 }
+    clock.release()
+    try await LiveLedgerMapperTests.eventually { app.toast == nil }
+    #expect(app.toast == nil)
+  }
+
+  @Test func aSceneReportThatChangesNothingLeavesTheToastTimerRunning() async throws {
+    let app = AppModel(store: InMemoryLedger())
+    let clock = ToastClock()
+    app.toastNow = { clock.now }
+    app.toastSleep = { await clock.sleep($0) }
+    app.sceneChanged(onScreen: true)
+    app.say("Bill marked as paid")
+    try await LiveLedgerMapperTests.eventually { clock.asked.count == 1 }
+    clock.now += .seconds(1)
+    app.sceneChanged(onScreen: true)
+    clock.now += .seconds(1)
+    app.sceneChanged(onScreen: true)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(clock.asked.count == 1)
+    #expect(app.toast != nil)
+    clock.release()
+    try await LiveLedgerMapperTests.eventually { app.toast == nil }
     #expect(app.toast == nil)
   }
 

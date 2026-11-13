@@ -41,8 +41,8 @@ public enum HIcon: String, CaseIterable, Sendable, Hashable {
   // Rows, cards and screens.
   case check, chevronRight, chevronDown, chevronUp, minus, delete
   case lock, lockKeyhole, key, shield, shieldCheck, privacy, faceID, touchID, passkey, password
-  case envelope, mailX, phone, iPad, cloud, paper, info, calendar, clock, history
-  case download, trash, linkOff, wand, rule, split, pencil, refund, swap, archive
+  case envelope, mailX, phone, iPad, cloud, paper, info, alert, calendar, clock, history
+  case download, upload, copy, trash, linkOff, wand, rule, split, pencil, refund, swap, archive
   case globe, appearance, help, tag, receipt, bank, cash, trendUp, monitor, chat, mic, cameraSlash, swipe
   case gauge, reviewSheet
   // Other companies' marks, in their own colours (page 15 · Mailboxes).
@@ -321,6 +321,8 @@ private extension HIcon {
     case .info:  // Project card, "Not counted in your monthly plan" (14 pt).
       [line(circlePath(12, 12, 8.5), 2, caps: false, joins: false),
        line("M12 11v5.5M12 7.5v.5", 2.2, joins: false)]
+    case .alert:
+      [line("M12 7v6", 2.2, joins: false), fill(circlePath(12, 16.8, 1.3))]
     case .calendar:  // Drawn to the page 05 rules (no board draws one yet).
       [line(rectPath(3.5, 5, 17, 15.5, r: 2.5), caps: false, joins: false),
        line("M3.5 10h17M8 3v4M16 3v4", joins: false)]
@@ -328,6 +330,11 @@ private extension HIcon {
       [line(circlePath(12, 12, 8.5), caps: false, joins: false), line("M12 7.5V12l3 2")]
     case .download:  // Export your data (CSV).
       [line("M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14", 1.8)]
+    case .upload:
+      [line("M12 15V4.5M7.5 9 12 4.5 16.5 9M5 19.5h14", 2.2)]
+    case .copy:
+      [line(rectPath(9, 9, 11.5, 11.5, r: 2.5), 2, caps: false, joins: false),
+       line("M15 5.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v8.5A1.5 1.5 0 0 0 5 15h.5", 2, joins: false)]
     case .trash:  // Delete account, "erased here and on our server".
       [line("M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.9 12.2a1.5 1.5 0 0 0 1.5 1.3h6.2a1.5 1.5 0 0 0 1.5-1.3L17.5 7")]
     case .linkOff:  // Delete account, "passkeys and password stop working".

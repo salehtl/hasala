@@ -38,6 +38,30 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(m.failure == .orphanedPasskey)
   }
 
+  @Test func aSignInWhileAnotherIsRunningStartsNothing() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .milliseconds(50)
+    var outcomes = 0
+    let m = SignInModel(account: account) { _ in outcomes += 1 }
+    let first = Task { await m.signInWithPasskey() }
+    while !m.busy { await Task.yield() }
+    await m.signInWithPasskey()
+    #expect(m.busy && m.signingIn == .passkey)
+    await first.value
+    #expect(outcomes == 1)
+    #expect(!m.busy && m.signingIn == nil)
+
+    m.email = "maya@example.com"
+    m.password = MockAccountService.existingPassword
+    let second = Task { await m.signInWithPassword() }
+    while !m.busy { await Task.yield() }
+    await m.signInWithPasskey()
+    await m.signInWithPassword()
+    #expect(m.busy && m.signingIn == .password)
+    await second.value
+    #expect(outcomes == 2)
+  }
+
   @Test func forgotPasswordWaitsForTheOtherIPhone() async {
     let account = MockAccountService(existing: .passwordOnly)
     account.delay = .zero
@@ -132,6 +156,62 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(account.verifiedRecoveryCodes == [MockAccountService.emailCode])
   }
 
+  private func verifiedRecovery(_ account: MockAccountService) async -> SignInModel {
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(await m.submitRecoveryCode())
+    #expect(m.verifiedRecoveryKind == .passkey)
+    return m
+  }
+
+  @Test func aFinishThatUsedUpTheCeremonyStartsAgainFromTheWords() async {
+    for spent: AuthFailure in [.offline, .rateLimited, .refused, .integrity] {
+      let account = MockAccountService(existing: .passkey)
+      let m = await verifiedRecovery(account)
+      account.failNext = spent
+      #expect(await m.finishRecovery(.passkey) == .startAgain)
+      #expect(m.recovery == nil && m.verifiedRecoveryKind == nil && m.recoverCode.isEmpty)
+      #expect(m.failure(on: .recoverWords) == spent)
+      #expect(m.failure(on: .recoverMethod) == nil)
+      #expect(!m.phraseText.isEmpty)
+      #expect(await m.submitRecoveryWords())
+      #expect(m.failure(on: .recoverWords) == nil)
+      m.recoverCode = MockAccountService.emailCode
+      #expect(await m.submitRecoveryCode())
+      #expect(await m.finishRecovery(.passkey) == .done)
+    }
+  }
+
+  @Test func aFinishTheServerAlreadyTookStaysOnItsScreenForAnotherTry() async {
+    for failure: AuthFailure in [.offline, .rateLimited, .refused] {
+      let account = MockAccountService(existing: .passkey)
+      let m = await verifiedRecovery(account)
+      account.recoverySurvivesFailure = true
+      account.failNext = failure
+      #expect(await m.finishRecovery(.passkey) == .failed)
+      #expect(m.recovery != nil && m.verifiedRecoveryKind == .passkey)
+      #expect(m.recoverCode == MockAccountService.emailCode)
+      #expect(m.failure(on: .recoverMethod) == failure)
+      #expect(m.failure(on: .recoverWords) == nil)
+      #expect(await m.finishRecovery(.passkey) == .done)
+      #expect(account.verifiedRecoveryCodes == [MockAccountService.emailCode])
+    }
+  }
+
+  @Test func aClosedPasskeySheetKeepsTheCeremonyForAnotherTry() async {
+    let account = MockAccountService(existing: .passkey)
+    let m = await verifiedRecovery(account)
+    account.failNext = .cancelled
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(m.recovery != nil && m.verifiedRecoveryKind == .passkey)
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(account.verifiedRecoveryCodes == [MockAccountService.emailCode])
+  }
+
   @Test func aFailedResendShowsOnTheCodeScreen() async {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
@@ -179,6 +259,225 @@ struct SignInSecurityFlowTests: AccountSuite {
                          startedAt: .now.addingTimeInterval(-11 * 60))
     #expect(t.codeExpired(now: .now))
     #expect(!t.isExpired(now: .now))
+  }
+
+  @Test func aRecoveryCodeRunsOutTenMinutesAfterItWasSent() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    #expect(!m.recoverCodeExpired(now: .now))
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    let sent = try #require(m.recoverCodeSentAt)
+    #expect(!m.recoverCodeExpired(now: sent.addingTimeInterval(10 * 60)))
+    #expect(m.recoverCodeExpired(now: sent.addingTimeInterval(10 * 60 + 1)))
+    #expect(await m.resendRecoveryCode())
+    let again = try #require(m.recoverCodeSentAt)
+    #expect(!m.recoverCodeExpired(now: again.addingTimeInterval(10 * 60)))
+  }
+
+  @Test func aRecoveryCodeAlreadyAcceptedDoesNotRunOut() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(await m.submitRecoveryCode())
+    let sent = try #require(m.recoverCodeSentAt)
+    #expect(!m.recoverCodeExpired(now: sent.addingTimeInterval(11 * 60)))
+  }
+
+  @Test func aResetCodeRunsOutTenMinutesAfterItWasSent() async throws {
+    let account = MockAccountService(existing: .passwordOnly)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    #expect(!m.resetCodeExpired(now: .now))
+    m.resetEmail = "maya@example.com"
+    #expect(await m.submitResetEmail())
+    let sent = try #require(m.resetCodeSentAt)
+    #expect(!m.resetCodeExpired(now: sent.addingTimeInterval(10 * 60)))
+    #expect(m.resetCodeExpired(now: sent.addingTimeInterval(10 * 60 + 1)))
+  }
+
+  @Test func aFailedResendLeavesAUsedUpRecoveryCodeExpired() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    for _ in 0..<5 {
+      m.recoverCode = "000000"
+      #expect(!(await m.submitRecoveryCode()))
+    }
+    #expect(m.failure(on: .recoverCode) == .codeExpired)
+    let sent = try #require(m.recoverCodeSentAt)
+    for refused: AuthFailure in [.offline, .rateLimited] {
+      account.failNext = refused
+      #expect(!(await m.resendRecoveryCode()))
+      #expect(m.failure(on: .recoverCode) == refused)
+      #expect(m.recoverCodeExpired(now: sent))
+      let state = CodeStepScreen.cellState(failure: refused, code: "", expired: m.recoverCodeExpired(now: sent))
+      #expect(state == .expired)
+    }
+    #expect(await m.resendRecoveryCode())
+    #expect(m.failure(on: .recoverCode) == nil)
+    #expect(!m.recoverCodeExpired(now: try #require(m.recoverCodeSentAt)))
+  }
+
+  @Test func aRecoveryCodeUsedUpWhileFinishingStaysExpiredAfterAFailedResend() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    for _ in 0..<5 {
+      m.recoverCode = "000000"
+      #expect(await m.finishRecovery(.password("a brand new passphrase")) == .codeRejected)
+    }
+    #expect(m.failure(on: .recoverCode) == .codeExpired)
+    let sent = try #require(m.recoverCodeSentAt)
+    account.failNext = .offline
+    #expect(!(await m.resendRecoveryCode()))
+    #expect(m.recoverCodeExpired(now: sent))
+  }
+
+  @Test func aWrongRecoveryCodeIsNotUsedUp() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = "000000"
+    #expect(!(await m.submitRecoveryCode()))
+    let sent = try #require(m.recoverCodeSentAt)
+    account.failNext = .offline
+    #expect(!(await m.resendRecoveryCode()))
+    #expect(!m.recoverCodeExpired(now: sent))
+  }
+
+  @Test func forgettingARecoveryForgetsThatItsCodeWasUsedUp() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    for _ in 0..<5 {
+      m.recoverCode = "000000"
+      #expect(!(await m.submitRecoveryCode()))
+    }
+    #expect(m.recoverCodeUsedUp)
+    m.forgetRecovery()
+    #expect(!m.recoverCodeUsedUp)
+  }
+
+  @Test func aFailedResendLeavesAUsedUpResetCodeExpired() async throws {
+    let account = MockAccountService(existing: .passwordOnly)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    m.resetEmail = "maya@example.com"
+    #expect(await m.submitResetEmail())
+    for _ in 0..<5 {
+      m.resetCodeText = "000000"
+      #expect(!(await m.submitResetCode()))
+    }
+    #expect(m.failure(on: .forgotCode) == .codeExpired)
+    let sent = try #require(m.resetCodeSentAt)
+    for refused: AuthFailure in [.offline, .rateLimited] {
+      account.failNext = refused
+      #expect(!(await m.submitResetEmail()))
+      #expect(m.failure(on: .forgotCode) == refused)
+      #expect(m.resetCodeExpired(now: sent))
+      let state = CodeStepScreen.cellState(failure: refused, code: "000000", expired: m.resetCodeExpired(now: sent))
+      #expect(state == .expired)
+    }
+    #expect(await m.submitResetEmail())
+    #expect(m.failure(on: .forgotCode) == nil)
+    #expect(!m.resetCodeExpired(now: try #require(m.resetCodeSentAt)))
+  }
+
+  @Test func theCodeScreenExpiresByTheClockAsByTheServer() {
+    #expect(CodeStepScreen.cellState(failure: nil, code: "", expired: false) == .typing)
+    #expect(CodeStepScreen.cellState(failure: nil, code: "12", expired: true) == .expired)
+    #expect(CodeStepScreen.cellState(failure: .codeExpired, code: "", expired: false) == .expired)
+    #expect(CodeStepScreen.cellState(failure: .codeWrong(triesLeft: 3), code: "123456", expired: false) == .wrong)
+    #expect(CodeStepScreen.cellState(failure: .codeWrong(triesLeft: 3), code: "12", expired: false) == .typing)
+    #expect(CodeStepScreen.cellState(failure: .codeWrong(triesLeft: 3), code: "123456", expired: true) == .expired)
+
+    #expect(CodeStepScreen.line(failure: nil, state: .typing) == nil)
+    #expect(CodeStepScreen.line(failure: nil, state: .expired) == .codeExpired)
+    #expect(CodeStepScreen.line(failure: .codeWrong(triesLeft: 3), state: .expired) == .codeExpired)
+    #expect(CodeStepScreen.line(failure: .offline, state: .expired) == .offline)
+    #expect(CodeStepScreen.line(failure: .codeWrong(triesLeft: 3), state: .wrong) == .codeWrong(triesLeft: 3))
+  }
+
+  @Test func aChangeRefusedAsFrozenShowsTheFreezeThePageMissed() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.load()
+    #expect(!m.isFrozen)
+    try await account.perform(.freeze, password: nil)
+    await m.request(.signOutEverywhere)
+    #expect(m.confirming != nil)
+    await m.confirm()
+    #expect(m.confirming == nil)
+    #expect(m.failure == .frozen)
+    #expect(m.isFrozen)
+  }
+
+  @Test func theFirstLoadIsTriedAgainWhileTheServerCantBeReached() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    account.refuseSecurity = [.offline, .rateLimited, .offline]
+    let m = SecurityModel(session: session)
+    await m.keepLoading(firstWait: .milliseconds(1))
+    #expect(m.state != nil)
+    #expect(m.failure == nil)
+    #expect(account.refuseSecurity.isEmpty)
+  }
+
+  @Test func aRefusedFirstLoadIsNotTriedAgain() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    account.refuseSecurity = [.refused, .offline]
+    let m = SecurityModel(session: session)
+    await m.keepLoading(firstWait: .milliseconds(1))
+    #expect(m.state == nil)
+    #expect(m.failure == .refused)
+    #expect(account.refuseSecurity == [.offline])
+  }
+
+  @Test func leavingThePageStopsTheFirstLoadsRetries() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    account.refuseSecurity = Array(repeating: .offline, count: 10_000)
+    let m = SecurityModel(session: session)
+    let loading = Task { await m.keepLoading(firstWait: .milliseconds(1)) }
+    while m.failure == nil { await Task.yield() }
+    loading.cancel()
+    await loading.value
+    let left = account.refuseSecurity.count
+    try? await Task.sleep(for: .milliseconds(20))
+    #expect(m.state == nil)
+    #expect(account.refuseSecurity.count == left)
+  }
+
+  @Test func aLoadThatHadAnAnswerDoesNotRetry() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.keepLoading(firstWait: .milliseconds(1))
+    account.refuseSecurity = [.offline, .offline]
+    await m.keepLoading(firstWait: .milliseconds(1))
+    #expect(m.state != nil)
+    #expect(m.failure == .offline)
+    #expect(account.refuseSecurity == [.offline])
   }
 
   @Test func unlockWithTheWords() async {
@@ -272,6 +571,17 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(unknown.1 == ["This passkey can't sign in any more", "We email you about it"])
   }
 
+  @Test func removingThisIPhoneWithChangesThatCantUploadSaysWhatIsLost() {
+    #expect(SecurityView.removeThisIPhoneTitle == "Remove this iPhone?")
+    #expect(SecurityView.removeThisIPhoneMessage
+      == "Changes that can't upload are lost for good. Everything you uploaded stays in your account.")
+    let words = SecurityModel.words(for: .perform(.removeThisIPhoneLosingUnsent), email: "maya@example.com", state: nil)
+    #expect(words.0 == "Remove this iPhone")
+    #expect(words.1 == ["Changes that can't upload are lost for good", "Everything you uploaded stays in your account"])
+    #expect(SecurityAction.removeThisIPhoneLosingUnsent.explainer == "Confirm it's you to remove this device")
+    #expect(!AccountCapabilities.beta.contains(.removeThisIPhone))
+  }
+
   @Test func theLastWayInCannotBeRemoved() async {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero
@@ -308,6 +618,16 @@ struct SignInSecurityFlowTests: AccountSuite {
     await m.request(.addPasskey)
     #expect(m.failure == .frozen)
     #expect(m.confirming == nil)
+    m.failure = nil
+    await m.request(.deleteAccount)
+    #expect(m.failure == .frozen)
+    #expect(m.confirming == nil)
+    await #expect(throws: AuthFailure.frozen) { try await account.perform(.deleteAccount, password: nil) }
+    #expect(session.phase == .ready && account.frozenInfo != nil)
+    m.failure = nil
+    await m.request(.unfreeze)
+    await m.confirm()
+    #expect(account.frozenInfo == nil && !m.isFrozen)
     await m.request(.deleteAccount)
     await m.confirm()
     #expect(session.phase == .signedOut)
@@ -379,6 +699,29 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(left.phase == .ready)
   }
 
+  @Test func theUnfreezePageGoesWhenTheFreezeTurnsOutToBeTheOperators() async {
+    let open: [FrozenWall.Route] = [.unfreeze]
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .operator)
+    let holder = FreezeInfo(by: .holder, when: nil)
+    #expect(FrozenWall.shownPath(open, for: holder) == open)
+    let session = AccountSession(services: services(account), phase: .frozen(holder))
+    await #expect(throws: AuthFailure.frozenByOperator) { try await session.unfreeze(password: nil) }
+    guard case .frozen(let learned) = session.phase else { Issue.record("\(session.phase)"); return }
+    #expect(FrozenWall.shownPath(open, for: learned).isEmpty)
+    #expect(FrozenWall.shownPath(open, for: FreezeInfo(by: .holder, when: nil, holderCanLift: false)).isEmpty)
+  }
+
+  @Test func deleteWaitsForAnUnfreezeWhileTheAccountIsLeftFrozen() {
+    let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
+                                 phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    session.leaveFrozen()
+    #expect(session.deleteWaitsForUnfreeze)
+    session.unfroze()
+    #expect(!session.deleteWaitsForUnfreeze)
+  }
+
   @Test func aHolderUnfreezeOpensTheApp() async throws {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero
@@ -387,6 +730,85 @@ struct SignInSecurityFlowTests: AccountSuite {
     try await session.unfreeze(password: nil)
     #expect(session.phase == .ready)
     #expect(account.frozenInfo == nil)
+  }
+
+  @Test func onlyLiftingTheFreezeAsksForALaunchRun() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .holder)
+    let session = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    var launches = 0
+    session.onUnfroze = { launches += 1 }
+    session.leaveFrozen()
+    session.showFrozenWall()
+    #expect(launches == 0)
+    try await session.unfreeze(password: nil)
+    #expect(session.phase == .ready && launches == 1)
+  }
+
+  @Test func unfreezingFromTheBannerAsksForALaunchRunWithNoPhaseChange() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    session.leaveFrozen()
+    var launches = 0
+    var phases = 0
+    session.onUnfroze = { launches += 1 }
+    session.onPhaseChange = { _ in phases += 1 }
+    session.unfroze()
+    #expect(launches == 1 && phases == 0 && session.leftFrozen == nil)
+  }
+
+  @Test func aFreezeFoundDuringSetupGoesBackToSetupWhenLifted() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    var launches = 0
+    session.onUnfroze = { launches += 1 }
+    session.runFoundFrozen(holder)
+    #expect(session.phase == .frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .onboarding && launches == 1)
+    session.setupFinished()
+    session.froze(holder)
+    session.unfroze()
+    #expect(session.phase == .ready)
+  }
+
+  @Test func leavingItFrozenDuringSetupGoesBackToSetupWithTheFreezeKept() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    session.runFoundFrozen(holder)
+    session.leaveFrozen()
+    #expect(session.phase == .onboarding && session.leftFrozen == holder)
+    session.runFoundFrozen(holder)
+    #expect(session.phase == .onboarding)
+    session.showFrozenWall()
+    #expect(session.phase == .frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .onboarding && session.leftFrozen == nil)
+  }
+
+  @Test func finishingSetupAfterLeavingItFrozenOpensTheAppWithTheBanner() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    var phases: [AccountSession.Phase] = []
+    session.onPhaseChange = { phases.append($0) }
+    session.runFoundFrozen(holder)
+    session.leaveFrozen()
+    session.setupFinished()
+    #expect(phases == [.frozen(holder), .onboarding, .ready])
+    #expect(session.leftFrozen == holder)
+    session.showFrozenWall()
+    session.unfroze()
+    #expect(session.phase == .ready)
+  }
+
+  @Test func aSignOutForgetsTheSetupBehindAFreeze() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    session.runFoundFrozen(holder)
+    session.signedOut()
+    session.signedIn(.frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .ready)
   }
 
   @Test func aSignInToAFrozenAccountKeepsWhoFrozeIt() {
@@ -418,6 +840,19 @@ struct SignInSecurityFlowTests: AccountSuite {
     let fresh = AccountSession(services: services(MockAccountService()), phase: .ready)
     fresh.runFoundFrozen(nil)
     #expect(fresh.phase == .frozen(FreezeInfo(by: .holder, when: nil)))
+  }
+
+  @Test func theGateHearsEveryPhaseChangeWithNoViewWatching() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .ready)
+    var heard: [AccountSession.Phase] = []
+    session.onPhaseChange = { heard.append($0) }
+    session.setupFinished()
+    #expect(heard.isEmpty)
+    session.signedOut()
+    session.signedOut()
+    session.accountCreated()
+    session.setupFinished()
+    #expect(heard == [.signedOut, .onboarding, .ready])
   }
 
   // MARK: Relaunch (spec 04 §6.5)

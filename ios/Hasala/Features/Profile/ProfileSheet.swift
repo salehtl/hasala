@@ -116,7 +116,8 @@ struct ProfileSheet: View {
   /// row also draw from.
   private var summary: MailboxesSummary {
     MailboxesSummary(
-      app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true)
+      app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true,
+      reading: app.store.state.reading)
   }
 
   // MARK: Your money
@@ -272,15 +273,24 @@ struct ProfileSheet: View {
           .accessibilityIdentifier("profile.signOut")
       }
       if can(.deleteAccount) {
-        Button { push(.deleteAccount) } label: {
-          Text("Delete your account")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.actionDestructive)
+        if session?.deleteWaitsForUnfreeze == true {
+          Text(AccountCopy.unfreezeToDelete)
+            .hType(.subheadline.weight(.semibold))
+            .foregroundStyle(HColor.textSecondary)
+            .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
+            .accessibilityIdentifier("profile.deleteFrozen")
+        } else {
+          Button { push(.deleteAccount) } label: {
+            Text("Delete your account")
+              .hType(.subheadline.weight(.medium))
+              .foregroundStyle(HColor.actionDestructive)
+              .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("profile.delete")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("profile.delete")
       }
       Text(Self.footer(BuildInfo.current))
         .hType(.footnote)

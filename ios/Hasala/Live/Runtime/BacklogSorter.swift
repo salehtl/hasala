@@ -84,9 +84,9 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
     }
   }
 
-  var capped: Bool {
-    guard let run, run.phase == .paused else { return false }
-    return run.reason == .dayCap
+  func capped(nowMs: Int64) -> Bool {
+    guard let run, run.phase == .paused, run.reason == .dayCap else { return false }
+    return run.untilMs.map { nowMs < $0 } ?? true
   }
 
   mutating func spend(_ calls: Int, nowMs: Int64) {
@@ -164,6 +164,11 @@ nonisolated final class BacklogLink: Sendable {
     guard let s = sorter.withLock({ $0 }) else { return }
     await s.spent(calls)
   }
+
+  func willFile(_ filing: BacklogSort.Filing) async {
+    guard let s = sorter.withLock({ $0 }) else { return }
+    await s.willFile(filing)
+  }
 }
 
 actor BacklogSorter {
@@ -215,14 +220,17 @@ actor BacklogSorter {
   private let wake = WakeSignal()
   private var record: BacklogRunRecord
   private var memo = BacklogSort.Memo()
+  private var intended: [String: Int64] = [:]
   private var retryArmed = false
   private var checking = false
   private var checkAgain = false
   private var closed = false
   private var mayRun: Bool
+  private var held = false
   private var hold: BacklogSnapshot.Hold?
   private var observer: (@Sendable (BacklogSnapshot) -> Void)?
   private var task: Task<Void, Never>?
+  private var stopping: Task<Void, Never>?
   private var generation = 0
   private var watching = false
   private(set) var passes = 0
@@ -269,7 +277,7 @@ actor BacklogSorter {
   func ensure(retry: Bool = false) async {
     guard !closed else { return }
     if retry { retryArmed = true }
-    guard mayRun else { return }
+    guard mayRun, !held else { return }
     guard enabled() else { return resume() }
     if let run = record.run, run.phase != .done { return resume() }
     if checking {
@@ -291,7 +299,7 @@ actor BacklogSorter {
   }
 
   private var mayStart: Bool {
-    guard !closed, mayRun, task == nil else { return false }
+    guard !closed, mayRun, !held, task == nil else { return false }
     guard let run = record.run else { return true }
     return run.phase == .done && (retryArmed || !run.retriesOnlyAtOpen)
   }
@@ -302,7 +310,7 @@ actor BacklogSorter {
       if run.phase != .done { end(.off) }
       return
     }
-    guard mayRun else { return }
+    guard mayRun, !held else { return }
     switch run.phase {
     case .running:
       if task == nil { launch() } else { wake.fire() }
@@ -336,7 +344,12 @@ actor BacklogSorter {
   func switchedOff() {
     guard !enabled() else { return }
     halt()
-    if let run = record.run, run.phase != .done { end(.off) }
+    if let run = record.run, run.phase != .done { end(.off) } else { publish() }
+  }
+
+  func switchedOn() async {
+    publish()
+    await ensure(retry: true)
   }
 
   func suspend() {
@@ -352,6 +365,21 @@ actor BacklogSorter {
     await task?.value
   }
 
+  func settled() async {
+    await stopping?.value
+  }
+
+  func holdRuns() async {
+    held = true
+    halt()
+    await settled()
+  }
+
+  func releaseRuns() {
+    held = false
+    resume()
+  }
+
   func sendAllBack(_ author: @Sendable ([String: Int64]) async -> Int?) async -> Int {
     let sent = record.filedHere
     guard !sent.isEmpty else { return 0 }
@@ -362,8 +390,9 @@ actor BacklogSorter {
   }
 
   func cloudBudget() -> Int {
-    guard !record.capped else { return 0 }
-    return BacklogSort.dayLeft(record.day, nowMs: nowMs())
+    let now = nowMs()
+    guard !record.capped(nowMs: now) else { return 0 }
+    return BacklogSort.dayLeft(record.day, nowMs: now)
   }
 
   func spent(_ calls: Int) {
@@ -372,8 +401,22 @@ actor BacklogSorter {
     save()
   }
 
+  func willFile(_ filing: BacklogSort.Filing) {
+    guard !filing.filed.isEmpty else { return }
+    intended.merge(filing.filed) { _, new in new }
+    record.filedHere.merge(filing.filed) { _, new in new }
+    save()
+  }
+
   private func halt() {
-    task?.cancel()
+    if let running = task {
+      running.cancel()
+      let earlier = stopping
+      stopping = Task {
+        await earlier?.value
+        await running.value
+      }
+    }
     task = nil
     hold = nil
     wake.fire()
@@ -426,6 +469,8 @@ actor BacklogSorter {
 
   private func apply(_ r: PassResult) {
     record.spend(r.pass.calls, nowMs: nowMs())
+    for (id, v) in intended where r.filing.filed[id] != v && record.filedHere[id] == v { record.filedHere[id] = nil }
+    intended = [:]
     record.filedHere.merge(r.filing.filed) { _, new in new }
     save()
   }
@@ -483,14 +528,19 @@ actor BacklogSorter {
         apply(result)
       }
       if Task.isCancelled || generation != id { return }
-      guard let r = result, !r.pass.failed else {
+      let failed = result?.pass.failed ?? true
+      if failed {
         failures += 1
         if failures >= Self.maxFailures { return end(.failed) }
+      }
+      guard let r = result, !failed || r.pass.stop != nil else {
         await wake.wait(Self.idleWait, sleep: sleep)
         continue
       }
-      passes += 1
-      failures = 0
+      if !failed {
+        passes += 1
+        failures = 0
+      }
       let decided = BacklogSort.next(after: r.pass, importRunning: await importRunning(), backoffs: backoffs, nowMs: nowMs())
       if Task.isCancelled || generation != id { return }
       backoffs = decided.backoffs

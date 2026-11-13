@@ -68,11 +68,25 @@ final class LiveBankTexts: BankTextsConnecting {
     let next = facts.read(nowMs: nowMs)
     if let started = testStartedMs, next.testOpenedMs == nil {
       testStartedMs = nil
-      if (next.testPassedMs ?? 0) < started { testMissed = true }
+      if (next.testPassedMs ?? 0) < started {
+        testMissed = true
+        facts.setTestMissed(true)
+      }
       testHints = false
       hinting?.cancel()
     }
     if next != data { data = next }
+    if lockedNotice != nil, link == .linked {
+      lockedNotice = nil
+      if let m = marker.read() { countAsIgnored(m) }
+    }
+  }
+
+  private func countAsIgnored(_ m: LockedTextsMarker) {
+    guard (try? facts.update(nowMs: nowMs) { $0.addLockedRuns(m.count, latestMinuteMs: m.latestMinuteMs) }) != nil
+    else { return }
+    marker.remove()
+    reload()
   }
 
   var link: MailboxLinkCopy { BankTextsLinkCopy.copy(data) }
@@ -123,12 +137,17 @@ final class LiveBankTexts: BankTextsConnecting {
     }
   }
 
-  func startTest() {
+  func startTest() throws(BankTextsFailure) {
     let started = nowMs
+    do {
+      data = try facts.update(nowMs: started) { $0.openTest(atMs: started) }
+    } catch {
+      throw .failed(Self.saveFailed)
+    }
     testMissed = false
+    facts.setTestMissed(false)
     testHints = false
     testStartedMs = started
-    data = (try? facts.update(nowMs: started) { $0.testOpenedMs = started }) ?? data
     closing?.cancel()
     closing = Task { [weak self] in
       try? await Task.sleep(for: .milliseconds(BankTextsFactsData.testWindowMs + 500))
@@ -214,9 +233,7 @@ final class LiveBankTexts: BankTextsConnecting {
       return
     }
     lockedNotice = nil
-    guard (try? facts.update(nowMs: nowMs) { $0.addIgnored(m.count, atMs: m.latestMinuteMs) }) != nil else { return }
-    marker.remove()
-    reload()
+    countAsIgnored(m)
   }
 
   func lockedNoticeShown() {

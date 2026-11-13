@@ -599,8 +599,8 @@ From <https://learn.microsoft.com/en-us/graph/api/resources/subscription?view=gr
 - **Delivery.** A 2xx within **3 seconds** counts as delivered; otherwise Graph retries
   for up to 4 hours. Endpoints with more than 10 % slow answers are delayed by 10
   minutes; with more than 15 % over 10 seconds, notifications are dropped and "can't be
-  recovered". The hook must answer fast (the contract's 202). 503 on a database failure
-  makes Graph retry (good).
+  recovered". The hook must answer fast (the contract's 202). 503 on a database failure,
+  or when a wake could not be queued, makes Graph retry (good).
 - **Query string.** "Any query string parameter included in the notificationUrl property
   is included in the HTTP POST". Put no secret in the URL.
 - **Latency** for `message`: under 1 minute on average, 3 minutes at most.
@@ -610,7 +610,10 @@ From <https://learn.microsoft.com/en-us/graph/api/resources/subscription?view=gr
   `PATCH /subscriptions/{id}` with a new expiry (this reauthorizes and renews in one
   step); never a `reauthorize` and a PATCH within 10 minutes of each other. For
   `subscriptionRemoved`: create again, then run a full list. For `missed`: run the list.
-  These match the contract's `ReasonNudge`.
+  These match the contract's `ReasonNudge`. The server clears `watch_expires_at` on
+  `subscriptionRemoved` and moves a later expiry to the present on
+  `reauthorizationRequired`. The phone takes the expiry the server reports at its holder
+  check, so these cause a create or a PATCH in the next cycle that runs that check.
 
 ---
 

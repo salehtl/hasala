@@ -222,7 +222,17 @@ struct BankTextsTestScreen: View {
   var skip: (() -> Void)?
   var failure: SetupFailure?
   @State private var copied = false
+  @State private var startFailure: SetupFailure?
   @Environment(\.openURL) private var openURL
+
+  private func start() {
+    do {
+      try lane.startTest()
+      startFailure = nil
+    } catch {
+      startFailure = .failed(error.message)
+    }
+  }
 
   var body: some View {
     let test = lane.test
@@ -246,7 +256,7 @@ struct BankTextsTestScreen: View {
           TextsNote(text: "The test adds nothing; it only checks the automation runs.")
           TextsNote(icon: .chat, text: "Nothing in a minute? Hasala shows what to check.")
         }
-        SetupFailureBanner(failure: failure)
+        SetupFailureBanner(failure: startFailure ?? failure)
         if test == .nothingYet { skipLink }
       }
       .padding(.top, -8)
@@ -254,7 +264,7 @@ struct BankTextsTestScreen: View {
     } footer: {
       footer(test)
     }
-    .onAppear { if test == .idle { lane.startTest() } }
+    .onAppear { if test == .idle { start() } }
     .task(id: copied) {
       guard copied else { return }
       try? await Task.sleep(for: Self.copiedFor)
@@ -305,7 +315,7 @@ struct BankTextsTestScreen: View {
       .buttonStyle(.pill(.primary, fill: true))
       .dockPill()
       .accessibilityIdentifier("textsTest.openShortcuts")
-      Button { lane.startTest() } label: { Text("Send the test again").fixedSize(horizontal: false, vertical: true) }
+      Button { start() } label: { Text("Send the test again").fixedSize(horizontal: false, vertical: true) }
         .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
         .dockPill()
         .accessibilityIdentifier("textsTest.again")

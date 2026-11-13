@@ -13,14 +13,40 @@ protocol SenderAddressAdding: AnyObject {
   func addSenderAddress(_ typed: String, for domain: String) async -> SenderAddressOutcome
 }
 
+struct SenderAddressForm: Equatable {
+  static let offlineLine = "You're offline. Add it when you're back online."
+
+  var typed = "" {
+    didSet { if typed != oldValue { failure = nil } }
+  }
+  private(set) var busy = false
+  private(set) var failure: String?
+
+  var canAdd: Bool { !busy && !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+  mutating func begin() -> String? {
+    guard canAdd else { return nil }
+    busy = true
+    failure = nil
+    return typed
+  }
+
+  mutating func finish(_ outcome: SenderAddressOutcome) {
+    busy = false
+    switch outcome {
+    case .added: failure = nil
+    case .refused(let line): failure = line
+    case .offline: failure = Self.offlineLine
+    }
+  }
+}
+
 struct AddSenderAddressSheet: View {
   let domain: String
   let adder: SenderAddressAdding
   var onAdded: (String) -> Void = { _ in }
 
-  @State private var typed = ""
-  @State private var busy = false
-  @State private var failure: String?
+  @State private var form = SenderAddressForm()
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -44,7 +70,7 @@ struct AddSenderAddressSheet: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
           fieldLayout {
-            TextField("alerts@\(domain)", text: $typed)
+            TextField("alerts@\(domain)", text: $form.typed)
               .keyboardType(.emailAddress)
               .textContentType(.emailAddress)
               .textInputAutocapitalization(.never)
@@ -54,15 +80,15 @@ struct AddSenderAddressSheet: View {
               .accessibilityLabel("Sender address")
               .accessibilityIdentifier("addSender.address")
             Button("Add") { Task { await add() } }
-              .buttonStyle(.pill(.secondary, size: .small, loading: busy))
-              .disabled(typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
+              .buttonStyle(.pill(.secondary, size: .small, loading: form.busy))
+              .disabled(!form.canAdd)
               .accessibilityIdentifier("addSender.add")
           }
           .padding(.horizontal, 16)
           .padding(.vertical, 10)
           .frame(minHeight: 56)
           .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-          if let failure {
+          if let failure = form.failure {
             InlineStatus(tone: .warning, text: failure, size: .regular)
               .accessibilityIdentifier("addSender.failure")
           }
@@ -84,17 +110,12 @@ struct AddSenderAddressSheet: View {
   }
 
   private func add() async {
-    guard !busy, !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-    busy = true
-    defer { busy = false }
-    switch await adder.addSenderAddress(typed, for: domain) {
-    case .added(let address):
-      onAdded(address)
+    guard let address = form.begin() else { return }
+    let outcome = await adder.addSenderAddress(address, for: domain)
+    form.finish(outcome)
+    if case .added(let added) = outcome {
+      onAdded(added)
       dismiss()
-    case .refused(let line):
-      failure = line
-    case .offline:
-      failure = "You're offline. Add it when you're back online."
     }
   }
 }

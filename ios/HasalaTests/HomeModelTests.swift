@@ -82,6 +82,57 @@ struct HomeModelTests {
     #expect(!reads.isRead(item("bill.du", "du may be late")))
   }
 
+  @Test func aReadConnectRowStaysReadThroughAnOpenBeforeTheServerAnswers() throws {
+    let suite = "test.bell.reads.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    func launch() -> (AppModel, CountingMailbox) {
+      let mailbox = CountingMailbox(MockMailbox())
+      return (AppModel(store: InMemoryLedger(), mailbox: mailbox, notificationReads: NotificationReads(defaults: defaults)), mailbox)
+    }
+    let (first, _) = launch()
+    #expect(first.needsALook.contains { $0.id == "mail.connect" })
+    HomeViewModel(app: first).markAllRead()
+    #expect(first.bellCount == 0)
+
+    let (offline, mailbox) = launch()
+    mailbox.offerOverride = .some(nil)
+    mailbox.offerSettled = false
+    #expect(!offline.needsALook.contains { $0.id == "mail.connect" })
+    HomeViewModel(app: offline).markAllRead()
+
+    mailbox.offerOverride = nil
+    mailbox.offerSettled = true
+    #expect(offline.needsALook.contains { $0.id == "mail.connect" })
+    #expect(offline.bellCount == 0)
+    let (later, _) = launch()
+    #expect(later.bellCount == 0)
+  }
+
+  @Test func aConnectRowThatTrulyLeftIsNewWhenItReturns() {
+    let mailbox = CountingMailbox(MockMailbox())
+    let app = AppModel(store: InMemoryLedger(), mailbox: mailbox)
+    let home = HomeViewModel(app: app)
+    home.markAllRead()
+    #expect(app.bellCount == 0)
+    mailbox.offerOverride = .some(nil)
+    home.markAllRead()
+    mailbox.offerOverride = nil
+    #expect(app.bellCount == 1)
+  }
+
+  @Test func anOpenBeforeTheServerAnswersMarksNoConnectRowThatWasNeverRead() {
+    let mailbox = CountingMailbox(MockMailbox())
+    mailbox.offerOverride = .some(nil)
+    mailbox.offerSettled = false
+    let app = AppModel(store: InMemoryLedger(), mailbox: mailbox)
+    HomeViewModel(app: app).markAllRead()
+    #expect(app.bellCount == 0)
+    mailbox.offerOverride = nil
+    mailbox.offerSettled = true
+    #expect(app.bellCount == 1)
+  }
+
   @Test func readsPersistAsDigestsAndAreForgotten() throws {
     let suite = "test.bell.reads.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))

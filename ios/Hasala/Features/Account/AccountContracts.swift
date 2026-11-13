@@ -28,6 +28,12 @@ enum NewCredential: Equatable, Sendable {
   }
 }
 
+enum EmailCode {
+  static let lifetime: TimeInterval = 10 * 60
+
+  static func expired(sentAt: Date, now: Date) -> Bool { now.timeIntervalSince(sentAt) > lifetime }
+}
+
 /// A live signup ceremony (`signup/begin`), alive for 30 minutes (spec 04 §6.2 step 6).
 struct SignupTicket: Equatable, Sendable {
   var id: String
@@ -40,7 +46,7 @@ struct SignupTicket: Equatable, Sendable {
   func isExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 30 * 60 }
   /// The email code expires 10 minutes after it was sent (spec 04 §6.1.4); `startedAt`
   /// is the send, since "Resend code" starts a fresh ceremony.
-  func codeExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 10 * 60 }
+  func codeExpired(now: Date) -> Bool { EmailCode.expired(sentAt: startedAt, now: now) }
 }
 
 /// The 12 words, held in memory for the phrase screens only (spec 04 §6.7). There is no
@@ -172,6 +178,7 @@ enum SecurityAction: Equatable, Sendable {
   case changePassword(new: String)
   case removePassword
   case removeDevice(id: String)
+  case removeThisIPhoneLosingUnsent
   case signOutEverywhere
   case freeze
   case unfreeze
@@ -185,7 +192,7 @@ enum SecurityAction: Equatable, Sendable {
     case .setPassword: "Confirm it's you to set a password"
     case .changePassword: "Confirm it's you to change your password"
     case .removePassword: "Confirm it's you to remove your password"
-    case .removeDevice: "Confirm it's you to remove this device"
+    case .removeDevice, .removeThisIPhoneLosingUnsent: "Confirm it's you to remove this device"
     case .signOutEverywhere: "Confirm it's you to sign out everywhere"
     case .freeze: "Confirm it's you to freeze your account"
     case .unfreeze: "Confirm it's you to unfreeze your account"
@@ -355,6 +362,7 @@ protocol AccountService: AnyObject {
   /// C3: the 12 words open the recovery wrap and enrol this iPhone.
   func unlockWithPhrase(_ words: [String]) async throws(AuthFailure)
   func endUnlockOffer()
+  func sessionEnded()
 
   // MARK: Relaunch with a session (§6.5)
 
@@ -382,6 +390,7 @@ protocol AccountService: AnyObject {
   /// (`02` #48 answers `options` for a passkey or `salt` for a password).
   func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure)
   func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure)
+  func recoveryCanContinue(_ ticket: RecoveryTicket) -> Bool
 
   // MARK: Signed in
 
@@ -430,6 +439,8 @@ extension AccountService {
   var keysOnThisIPhone: Bool { true }
 
   func endUnlockOffer() {}
+
+  func sessionEnded() {}
 
   // No ceremony binds the email change yet (C6): a service that doesn't carry it out says
   // so, and the screens offer it only with `.changeEmail` on the unfinished surface.

@@ -158,6 +158,7 @@ public struct Txn: Sendable, Equatable, Codable {
   public var aliases: [TxnAlias] = []
   public var copyOf: String?
   public var copyDecision: String?
+  public var possibleDuplicateMovedFrom: [String] = []
   public var channel: String? = nil
   public var receivedAt: String? = nil
   /// field → keyed value (03c §3.5); every value is a string or a clear.
@@ -507,15 +508,18 @@ public struct PlanCell: Sendable, Equatable, Codable {
   public var movesAll: Int64 = 0
   public var movesSinceSet: Int64 = 0
   public var latestSetWrite: PlanWrite?
+  public var latestSetPosition: OpPosition?
 
   public init(
-    latestSet: Int64? = nil, onwardSet: Int64? = nil, movesAll: Int64 = 0, movesSinceSet: Int64 = 0, latestSetWrite: PlanWrite? = nil
+    latestSet: Int64? = nil, onwardSet: Int64? = nil, movesAll: Int64 = 0, movesSinceSet: Int64 = 0, latestSetWrite: PlanWrite? = nil,
+    latestSetPosition: OpPosition? = nil
   ) {
     self.latestSet = latestSet
     self.onwardSet = onwardSet
     self.movesAll = movesAll
     self.movesSinceSet = movesSinceSet
     self.latestSetWrite = latestSetWrite
+    self.latestSetPosition = latestSetPosition
   }
 }
 

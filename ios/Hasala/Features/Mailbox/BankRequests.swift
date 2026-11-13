@@ -64,8 +64,14 @@ struct BankRequestsSnapshot: Equatable, Sendable {
     catalog.filter { SupportedBank(rawValue: $0.slug) == nil && $0.state != .supported && $0.state != .declined }
   }
 
-  static let offline = BankRequestsSnapshot(
-    requests: [], catalog: BankCandidate.all.map { BankCatalogChoice(slug: $0.slug, name: $0.name, state: .requested) })
+  static let unknown = BankRequestsSnapshot(requests: [], catalog: [])
+
+  func answered(_ fresh: BankRequestsSnapshot?, asked: RequestedBank) -> BankRequestsSnapshot {
+    if let fresh { return fresh }
+    var held = self
+    if !held.requests.contains(where: { $0.id == asked.id }) { held.requests.append(asked) }
+    return held
+  }
 }
 
 struct BankHint: Identifiable, Hashable, Sendable {

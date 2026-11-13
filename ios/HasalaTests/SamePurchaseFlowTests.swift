@@ -55,6 +55,7 @@ struct SamePurchaseFlowTests {
     #expect(title == "Counted once")
     #expect(inverses == [.samePurchase(foreign: "amazon-usd", previousHome: 91_81, previousRateMicro: nil, home: "amazon-aed", previousNote: "")])
     #expect(s.txn("amazon-usd")?.homeMinor == 93_00 && s.txn("amazon-usd")?.amount == Money(minor: 25_00, currency: "USD"))
+    #expect(s.txn("amazon-usd")?.homeSource == .stated && s.txn("amazon-usd")?.homeRateMicro == nil)
     #expect(s.txn("amazon-aed")?.archived == true && s.txn("amazon-aed")?.note == "Settled the USD 25.00 purchase")
     #expect(s.txn("amazon-aed")?.samePurchase == nil)
 
@@ -87,6 +88,31 @@ struct SamePurchaseFlowTests {
     _ = try store.apply(.archive("amazon-aed", true))
     _ = try store.apply(.archive("amazon-aed", false))
     #expect(store.state.txn("amazon-aed")?.archived == false)
+  }
+
+  @Test func theNoteOfAMergedAlertCannotChange() throws {
+    var s = Scenario.mayaSamePurchase.state
+    _ = try LiveLedgerStore.patch(.resolveSamePurchase("amazon-aed", same: true), &s, now: MayaLedger.now)
+    let settled = s.txn("amazon-aed")?.note
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) {
+      try LiveLedgerStore.patch(.setNote("amazon-aed", "Lunch"), &s, now: MayaLedger.now)
+    }
+    #expect(s.txn("amazon-aed")?.note == settled && s.txn("amazon-aed")?.mergedInto == "amazon-usd")
+    var other = Scenario.mayaSamePurchase.state
+    _ = try LiveLedgerStore.patch(.setNote("amazon-aed", "Lunch"), &other, now: MayaLedger.now)
+    #expect(other.txn("amazon-aed")?.note == "Lunch")
+  }
+
+  @Test func editingTheNoteOfAMergedAlertIsRefused() throws {
+    var s = Scenario.mayaSamePurchase.state
+    _ = try LiveLedgerStore.patch(.resolveSamePurchase("amazon-aed", same: true), &s, now: MayaLedger.now)
+    let note = s.txn("amazon-aed")?.note
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) {
+      try LiveLedgerStore.patch(.setNote("amazon-aed", "Mine"), &s, now: MayaLedger.now)
+    }
+    #expect(s.txn("amazon-aed")?.note == note && s.txn("amazon-aed")?.mergedInto == "amazon-usd")
+    _ = try LiveLedgerStore.patch(.setNote("amazon-usd", "Mine"), &s, now: MayaLedger.now)
+    #expect(s.txn("amazon-usd")?.note == "Mine")
   }
 
   @Test func theMapperMarksAMergedAlert() throws {

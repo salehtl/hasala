@@ -74,7 +74,9 @@ struct LiveLedgerMapperTests {
     }
   }
 
-  static func account(clock: any CoreTime.Clock = FixedClock(ms: anchor)) throws -> Account {
+  static func account(
+    clock: any CoreTime.Clock = FixedClock(ms: anchor), outboxClock: any CoreTime.Clock = FixedClock(ms: anchor)
+  ) throws -> Account {
     let store = try LedgerStore.inMemory()
     try store.create(StoreMeta(userID: user, writerID: writer, apiBase: "https://api.hasala.app", keyEpoch: 1, createdAt: anchor))
     let context = SyncContext(
@@ -83,7 +85,7 @@ struct LiveLedgerMapperTests {
       client: AuthClient(transport: MiniHasalad(invite: "")), clock: clock, random: SystemRandom())
     let projection = try ProjectionStore.inMemory()
     let observer = LedgerPageObserver(context: context, projection: projection, dictionary: AccountRuntime.dictionary)
-    let outbox = Outbox(store: store, clock: FixedClock(ms: anchor), debounce: .seconds(3600), onAuthored: {})
+    let outbox = Outbox(store: store, clock: outboxClock, debounce: .seconds(3600), onAuthored: {})
     return Account(context: context, projection: projection, observer: observer, outbox: outbox)
   }
 
@@ -212,6 +214,28 @@ struct LiveLedgerMapperTests {
     }
     #expect(got.projects.map(\.left) == [.aed(7_140_00)])
     #expect(got.projects.map(\.dates) == want.projects.map(\.dates))
+  }
+
+  @Test func anEndedMoveIsOfferedUntilItsCategoryHasItsOwnBudgetThisMonth() async throws {
+    let october = CivilMonth(year: 2026, month: 10)!
+    let november = CivilMonth(year: 2026, month: 11)!
+    let context = LedgerStateMapper.Context(
+      today: LocalDate(2026, 11, 2),
+      profile: ProfileInfo(displayName: "Maya Rahman", email: "maya@example.com", signIn: .password))
+    let base = try await Self.foldedState(context: context).plan.expiredMoves
+    let moved = try await Self.foldedState(context: context) { o throws(AuthorError) in
+      o.moveMoney(month: october, from: nil, to: "dining", amountMinor: 100_00)
+      o.moveMoney(month: october, from: nil, to: "groceries", amountMinor: 50_00)
+    }
+    #expect(moved.plan.expiredMoves["dining"]?.minor == (base["dining"]?.minor ?? 0) + 100_00)
+    #expect(moved.plan.expiredMoves["groceries"]?.minor == (base["groceries"]?.minor ?? 0) + 50_00)
+    let kept = try await Self.foldedState(context: context) { o throws(AuthorError) in
+      o.moveMoney(month: october, from: nil, to: "dining", amountMinor: 100_00)
+      o.moveMoney(month: october, from: nil, to: "groceries", amountMinor: 50_00)
+      o.setBudget(category: "groceries", month: november, amountMinor: 2_050_00)
+    }
+    #expect(kept.plan.expiredMoves["dining"] == moved.plan.expiredMoves["dining"])
+    #expect(kept.plan.expiredMoves["groceries"] == nil)
   }
 
   @Test func incomeReceivedAboveTheSourceIsReadyToAssign() async throws {
@@ -578,6 +602,318 @@ struct LiveLedgerMapperTests {
     #expect(s.txns.allSatisfy { $0.projectID != "japan" })
     #expect(throws: ActionError.invalidProject) {
       try LiveLedgerStore.patch(.saveProject("x", ProjectDraft(name: " ")), &s, now: MayaLedger.now)
+    }
+  }
+
+  @Test func aRowWithATransferPeerIsAMatchedTransferAndCannotBecomeARefund() async throws {
+    let wall = Int64(1_791_633_600_000)
+    var credit = ""
+    var debit = ""
+    var live = try await Self.foldedState { o throws(AuthorError) in
+      credit = try o.manualEntry(amountMinor: 500_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Own account", category: nil)
+      debit = try o.manualEntry(amountMinor: 500_00, currency: "AED", direction: "debit", localWallMs: wall, merchant: "Own account", category: nil)
+      o.annotate(txnID: credit, set: [("transfer_peer", debit)])
+    }
+    let matched = try #require(live.txns.first { $0.id == credit })
+    #expect(matched.isTransfer && matched.isMatchedTransfer)
+    #expect(live.txns.first { $0.id == debit }?.isMatchedTransfer == false)
+    #expect(throws: ActionError.refused(RefundEdit.refusedMatchedTransfer)) {
+      _ = try LiveLedgerStore.patch(.markRefund(credit), &live, now: MayaLedger.now)
+    }
+    #expect(live.txns.first { $0.id == credit } == matched)
+  }
+
+  @Test func theOptimisticTransferEndsARefundAndTheRuleFilingBehindIt() throws {
+    var s = MayaLedger.state
+    var row = Txn(
+      id: "rule-refund", merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now,
+      categoryID: "refunds", categorySource: .rule(pattern: "TEST STORE"), isRefund: true)
+    row.ruleID = "r"
+    row.priorFiling = PriorFiling(categoryID: nil, categorySource: nil, ruleID: nil, needsReview: true)
+    s.txns.append(row)
+    _ = try LiveLedgerStore.patch(.markTransfer(row.id), &s, now: MayaLedger.now)
+    let t = try #require(s.txn(row.id))
+    #expect(t.isTransfer && !t.isRefund && t.priorFiling == nil)
+  }
+
+  static func credit(
+    _ id: TxnID, category: CategoryID?, refund: Bool = false, linkBroken: Bool = false, matched: Bool = false,
+    ruled: Bool = false
+  ) -> HasalaModels.Txn {
+    HasalaModels.Txn(
+      id: id, merchant: "Test Store", amount: .aed(500_00), direction: .in, postedAt: MayaLedger.now, categoryID: category,
+      categorySource: category == nil ? nil : .user, needsReview: category == nil, isRefund: refund || linkBroken,
+      isTransfer: matched || category == "transfer", isMatchedTransfer: matched, merchantGroup: "test store", ruled: ruled,
+      refundLinkBroken: linkBroken)
+  }
+
+  @Test func theOptimisticSortKeepsTheRefundAndMatchedTransferFlagsTheLedgerReads() throws {
+    var s = MayaLedger.state
+    s.txns += [
+      Self.credit("plain", category: nil), Self.credit("refund", category: "refunds", refund: true),
+      Self.credit("matched", category: nil, matched: true),
+    ]
+    _ = try LiveLedgerStore.patch(.categorize("plain", "dining", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    _ = try LiveLedgerStore.patch(.categorize("refund", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    _ = try LiveLedgerStore.patch(.categorize("matched", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.isRefund == true && s.txn("plain")?.isTransfer == false)
+    #expect(s.txn("refund")?.isRefund == false)
+    #expect(s.txn("matched")?.isTransfer == true && s.txn("matched")?.isRefund == false)
+
+    _ = try LiveLedgerStore.patch(.categorize("plain", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.isRefund == false)
+  }
+
+  @Test func theOptimisticRuleReachKeepsTheRefundAndMatchedTransferFlagsTheLedgerReads() throws {
+    var s = MayaLedger.state
+    s.txns += [
+      Self.credit("filed", category: nil, ruled: true), Self.credit("plain", category: nil, ruled: true),
+      Self.credit("matched", category: nil, matched: true, ruled: true),
+    ]
+    _ = try LiveLedgerStore.patch(.categorize("filed", "dining", learnRule: true, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.categoryID == "dining" && s.txn("matched")?.categoryID == "dining")
+    #expect(s.txn("plain")?.isRefund == true && s.txn("plain")?.isTransfer == false)
+    #expect(s.txn("matched")?.isTransfer == true)
+
+    _ = try LiveLedgerStore.patch(.returnToReview(["plain", "matched"]), &s, now: MayaLedger.now)
+    #expect(s.txn("plain")?.categoryID == nil && s.txn("plain")?.isRefund == false)
+    #expect(s.txn("matched")?.categoryID == nil && s.txn("matched")?.isTransfer == true)
+
+    var refunds = MayaLedger.state
+    refunds.txns += [
+      Self.credit("filed", category: nil, ruled: true), Self.credit("refund", category: "refunds", refund: true, ruled: true),
+    ]
+    refunds.txns[refunds.txns.count - 1].needsReview = true
+    _ = try LiveLedgerStore.patch(.categorize("filed", "salary", learnRule: true, project: nil), &refunds, now: MayaLedger.now)
+    #expect(refunds.txn("refund")?.categoryID == "salary" && refunds.txn("refund")?.isRefund == false)
+  }
+
+  @Test(arguments: [nil, "dining", "savings"] as [CategoryID?])
+  func theOptimisticPatchKeepsARefundFlagThatRestsOnABrokenRefundLink(from category: CategoryID?) throws {
+    var s = MayaLedger.state
+    s.txns += [Self.credit("linked", category: category, linkBroken: true)]
+    _ = try LiveLedgerStore.patch(.categorize("linked", "salary", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("linked")?.categoryID == "salary" && s.txn("linked")?.isRefund == true)
+    _ = try LiveLedgerStore.patch(.categorize("linked", "transfer", learnRule: false, project: nil), &s, now: MayaLedger.now)
+    #expect(s.txn("linked")?.categoryID == "transfer" && s.txn("linked")?.isRefund == true)
+
+    var marked = MayaLedger.state
+    marked.txns += [Self.credit("linked", category: category, linkBroken: true)]
+    _ = try LiveLedgerStore.patch(.markTransfer("linked"), &marked, now: MayaLedger.now)
+    #expect(marked.txn("linked")?.isTransfer == true && marked.txn("linked")?.isRefund == false)
+    #expect(marked.txn("linked")?.refundLinkBroken == false)
+    _ = try LiveLedgerStore.patch(.markTransfer("linked"), &marked, now: MayaLedger.now)
+    #expect(marked.txn("linked")?.isTransfer == false && marked.txn("linked")?.isRefund == false)
+
+    var ruled = MayaLedger.state
+    ruled.txns += [
+      Self.credit("filed", category: nil, ruled: true), Self.credit("linked", category: category, linkBroken: true, ruled: true),
+    ]
+    ruled.txns[ruled.txns.count - 1].needsReview = true
+    _ = try LiveLedgerStore.patch(.categorize("filed", "salary", learnRule: true, project: nil), &ruled, now: MayaLedger.now)
+    #expect(ruled.txn("linked")?.categoryID == "salary" && ruled.txn("linked")?.isRefund == true)
+    _ = try LiveLedgerStore.patch(.returnToReview(["linked"]), &ruled, now: MayaLedger.now)
+    #expect(ruled.txn("linked")?.categoryID == category && ruled.txn("linked")?.isRefund == true)
+  }
+
+  @Test func aRefundWhoseLinkBrokeStaysARefundThroughASortAsTheLedgerReadsIt() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    let wall = Int64(1_791_633_600_000)
+    var refund = ""
+    let linked = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      refund = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Store", category: "dining")
+      let other = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Store", category: nil)
+      o.annotate(txnID: refund, set: [("refund_of", other)])
+    }
+    try await a.outbox.enqueue(try #require(linked).ops)
+    try await a.observer.reproject()
+    #expect(try a.projection.reader.txn(refund)?.refundState == "broken")
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "refundlink.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    let before = try #require(store.state.txn(refund))
+    #expect(before.categoryID == "dining" && before.isRefund && before.refundLinkBroken && before.refundOf == nil)
+
+    _ = try store.apply(.categorize(refund, "salary", learnRule: false, project: nil))
+    let patched = try #require(store.state.txn(refund))
+    #expect(patched.categoryID == "salary" && patched.isRefund)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "salary" }
+    let read = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(refund))
+    #expect(read.categoryID == "salary" && read.isRefund && read.refundLinkBroken)
+    #expect(read.isRefund == patched.isRefund)
+
+    let token = try #require(try store.apply(.markTransfer(refund)))
+    let marked = try #require(store.state.txn(refund))
+    #expect(marked.isTransfer && !marked.isRefund && !marked.refundLinkBroken)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "transfer" }
+    #expect(try a.projection.reader.txn(refund)?.refundOf == nil)
+    let transfer = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(refund))
+    #expect(transfer.categoryID == "transfer" && transfer.isTransfer == marked.isTransfer)
+    #expect(transfer.isRefund == marked.isRefund && transfer.refundLinkBroken == marked.refundLinkBroken)
+
+    store.undo(token)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "salary" }
+    #expect(try a.projection.reader.txn(refund)?.refundState == "broken")
+  }
+
+  @Test func aRefundWhoseLinkNamesNoPaymentStopsBeingARefundAsTheLedgerReadsIt() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    let missing = "01JC0000000000000000000099"
+    var refund = ""
+    let linked = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      refund = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: 1_791_633_600_000, merchant: "Test Store",
+        category: "dining")
+      o.annotate(txnID: refund, set: [("refund_of", missing)])
+    }
+    try await a.outbox.enqueue(try #require(linked).ops)
+    try await a.observer.reproject()
+    let row = try #require(try a.projection.reader.txn(refund))
+    #expect(row.refundOf == missing && row.refundTarget == nil && row.refundState == "broken")
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "refundunmark.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    var failed = false
+    store.onWriteFailed = { failed = true }
+
+    let token = try #require(try store.apply(.markRefund(refund)))
+    #expect(token.title == "No longer a refund")
+    let patched = try #require(store.state.txn(refund))
+    #expect(!patched.isRefund && !patched.refundLinkBroken && patched.categoryID == nil)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == nil }
+    let cleared = try #require(try a.projection.reader.txn(refund))
+    #expect(cleared.refundOf == nil && cleared.refundState == nil)
+    let read = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(refund))
+    #expect(read.isRefund == patched.isRefund && read.refundLinkBroken == patched.refundLinkBroken)
+
+    store.undo(token)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "dining" }
+    let back = try #require(try a.projection.reader.txn(refund))
+    #expect(back.refundOf == missing && back.refundState == "broken")
+    #expect(!failed)
+  }
+
+  @Test func aMatchedRefundMarkedATransferLosesItsLinkAsTheLedgerReadsIt() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    let wall = Int64(1_791_633_600_000)
+    var purchase = ""
+    var refund = ""
+    let linked = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      purchase = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "debit", localWallMs: wall - 86_400_000, merchant: "Test Store",
+        category: "shopping")
+      refund = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Store", category: "shopping")
+      o.annotate(txnID: refund, set: [("refund_of", purchase)])
+    }
+    try await a.outbox.enqueue(try #require(linked).ops)
+    try await a.observer.reproject()
+    #expect(try a.projection.reader.txn(refund)?.refundState == "ok")
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "refundtransfer.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    #expect(store.state.txn(refund)?.refundOf == purchase)
+
+    let token = try #require(try store.apply(.markTransfer(refund)))
+    let marked = try #require(store.state.txn(refund))
+    #expect(marked.isTransfer && !marked.isRefund && marked.refundOf == nil && !marked.refundLinkBroken)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "transfer" }
+    #expect(try a.projection.reader.txn(refund)?.refundOf == nil)
+    let read = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(refund))
+    #expect(read.isTransfer == marked.isTransfer && read.isRefund == marked.isRefund)
+    #expect(read.refundOf == nil && !read.refundLinkBroken)
+
+    store.undo(token)
+    try await Self.eventually { try a.projection.reader.txn(refund)?.category == "shopping" }
+    let back = try #require(try a.projection.reader.txn(refund))
+    #expect(back.refundOf == purchase && back.refundState == "ok")
+    #expect(!failed)
+  }
+
+  @Test func theOptimisticSplitFollowsTheRefundRuleTheLedgerReads() throws {
+    let lines = [
+      SplitLine(id: 0, categoryID: "dining", amount: .aed(300_00)), SplitLine(id: 1, categoryID: "shopping", amount: .aed(200_00)),
+    ]
+    var s = MayaLedger.state
+    s.txns += [
+      Self.credit("counted", category: "dining", refund: true), Self.credit("refund", category: "refunds", refund: true),
+      Self.credit("linked", category: "dining", linkBroken: true), Self.credit("income", category: "salary"),
+    ]
+    for id in ["counted", "refund", "linked", "income"] {
+      _ = try LiveLedgerStore.patch(.split(id, lines), &s, now: MayaLedger.now)
+      #expect(s.txn(id)?.splits.count == 2 && s.txn(id)?.categoryID == "dining", "\(id)")
+    }
+    #expect(s.txn("counted")?.isRefund == false)
+    #expect(s.txn("refund")?.isRefund == true)
+    #expect(s.txn("linked")?.isRefund == true)
+    #expect(s.txn("income")?.isRefund == false)
+
+    var split = MayaLedger.state
+    var counted = Self.credit("counted", category: "dining")
+    counted.splits = counted.apportioned(lines)
+    var income = Self.credit("income", category: "salary")
+    income.splits = income.apportioned(lines)
+    split.txns += [counted, income]
+    _ = try LiveLedgerStore.patch(.split("counted", []), &split, now: MayaLedger.now)
+    _ = try LiveLedgerStore.patch(.split("income", []), &split, now: MayaLedger.now)
+    #expect(split.txn("counted")?.splits.isEmpty == true && split.txn("counted")?.isRefund == true)
+    #expect(split.txn("income")?.splits.isEmpty == true && split.txn("income")?.isRefund == false)
+  }
+
+  @Test func aSplitAndItsRemovalKeepTheRefundFlagAsTheLedgerReadsIt() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    let wall = Int64(1_791_633_600_000)
+    var counted = ""
+    var refund = ""
+    let made = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      counted = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Store", category: "dining")
+      refund = try o.manualEntry(
+        amountMinor: 120_00, currency: "AED", direction: "credit", localWallMs: wall, merchant: "Test Shop", category: "refunds")
+    }
+    try await a.outbox.enqueue(try #require(made).ops)
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "split.refund.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    #expect(store.state.txn(counted)?.isRefund == true && store.state.txn(refund)?.isRefund == true)
+    let lines = [
+      SplitLine(id: 0, categoryID: "dining", amount: .aed(70_00)), SplitLine(id: 1, categoryID: "shopping", amount: .aed(50_00)),
+    ]
+
+    for (id, splitRefund) in [(counted, false), (refund, true)] {
+      _ = try store.apply(.split(id, lines))
+      let patched = try #require(store.state.txn(id))
+      #expect(patched.isRefund == splitRefund, "\(id)")
+      try await Self.eventually { try a.projection.reader.txn(id)?.split == true }
+      let read = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(id))
+      #expect(!read.splits.isEmpty && read.isRefund == patched.isRefund, "\(id)")
+
+      await store.writesFinished()
+      await store.reload()
+      #expect(store.state.txn(id)?.isRefund == read.isRefund, "\(id)")
+      _ = try store.apply(.split(id, []))
+      let removed = try #require(store.state.txn(id))
+      #expect(removed.splits.isEmpty && removed.isRefund, "\(id)")
+      try await Self.eventually { try a.projection.reader.txn(id)?.split == false }
+      let back = try #require(try LedgerStateMapper.map(a.projection.reader, context: Self.context()).txn(id))
+      #expect(back.splits.isEmpty && back.isRefund == removed.isRefund, "\(id)")
     }
   }
 

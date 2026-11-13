@@ -216,6 +216,33 @@ enum LedgerSchema {
 
   static let mailboxReadFrom = ["ALTER TABLE mailbox_state ADD COLUMN read_from_ms INTEGER"]
 
+  static let mailboxMessageStrike: [String] = [
+    "CREATE TABLE mailbox_message_strike (message_id TEXT PRIMARY KEY, count INTEGER NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID"
+  ]
+
+  static let mailboxRetirePlan: [String] = [
+    """
+    CREATE TABLE mailbox_retire_plan (
+      grant_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      legacy INTEGER NOT NULL,
+      total INTEGER NOT NULL,
+      edited INTEGER NOT NULL,
+      count_known INTEGER NOT NULL,
+      PRIMARY KEY (grant_id, provider)
+    ) WITHOUT ROWID
+    """
+  ]
+
+  static let mailboxProvider = ["ALTER TABLE mailbox_state ADD COLUMN provider TEXT"]
+
+  static let mailboxRetireHeld = [
+    "ALTER TABLE mailbox_retire_plan ADD COLUMN held INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE mailbox_retire_plan ADD COLUMN address TEXT",
+  ]
+
+  static let outboxLatchBuild = ["ALTER TABLE sync_state ADD COLUMN latch_build TEXT"]
+
   static var migrator: DatabaseMigrator {
     var m = DatabaseMigrator()
     m.registerMigration("v1") { db in
@@ -256,6 +283,24 @@ enum LedgerSchema {
     }
     m.registerMigration("mailbox_read_from") { db in
       for sql in mailboxReadFrom { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_message_strike") { db in
+      for sql in mailboxMessageStrike { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_retire_plan") { db in
+      for sql in mailboxRetirePlan { try db.execute(sql: sql) }
+    }
+    m.registerMigration("acknowledged_ops") { db in
+      for sql in acknowledgedOps { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_provider") { db in
+      for sql in mailboxProvider { try db.execute(sql: sql) }
+    }
+    m.registerMigration("outbox_latch_build") { db in
+      for sql in outboxLatchBuild { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_retire_held") { db in
+      for sql in mailboxRetireHeld { try db.execute(sql: sql) }
     }
     return m
   }

@@ -49,12 +49,12 @@ struct BootWallView: View {
           WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "wall.talk")
         }
       }
-      .alert("Remove this iPhone's Hasala data?", isPresented: $confirmingErase) {
+      .alert(Self.eraseAlertTitle, isPresented: $confirmingErase) {
         Button("Cancel", role: .cancel) {}
         Button("Remove", role: .destructive) { Task { await boot.eraseThisIPhone() } }
           .accessibilityIdentifier("wall.erase.confirm")
       } message: {
-        Text("Your account and everything you uploaded stay. \(Self.lostChanges)")
+        Text(Self.eraseAlertMessage)
       }
     }
     .accessibilityIdentifier("wall.\(identifier)")
@@ -84,6 +84,10 @@ struct BootWallView: View {
   }
 
   static let eraseKind: PillButtonStyle.Kind = .destructiveQuiet
+
+  static let eraseAlertTitle = "Remove this iPhone's Hasala data?"
+
+  static let eraseAlertMessage = "Your account and everything you uploaded stay. \(lostChanges)"
 
   static let lostChanges = "Changes not uploaded yet are lost."
 

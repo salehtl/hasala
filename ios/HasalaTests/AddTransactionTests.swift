@@ -87,6 +87,37 @@ struct AddTransactionTests {
     #expect(app.toast?.title == "Added Corner Bakery")
   }
 
+  @Test func aSecondTapAfterSavingAddsNothing() throws {
+    let store = InMemoryLedger()
+    let app = AppModel(store: store)
+    app.router.open(.addTransaction)
+    let model = AddTransactionModel(app: app)
+    let before = store.state.txns.count
+    model.entry = AmountEntry(typing: "10")
+    model.merchant = "Corner Bakery"
+    model.categoryID = "dining"
+    #expect(model.save())
+    #expect(!model.save())
+    #expect(store.state.txns.count == before + 1)
+  }
+
+  @Test func aRefusedSaveCanBeTriedAgain() throws {
+    let store = InMemoryLedger()
+    let app = AppModel(store: store)
+    app.router.open(.addTransaction)
+    let model = AddTransactionModel(app: app)
+    let before = store.state.txns.count
+    model.entry = AmountEntry(typing: "10")
+    model.merchant = "Corner Bakery"
+    model.categoryID = "no-such-category"
+    #expect(!model.save())
+    #expect(store.state.txns.count == before)
+    #expect(app.sheet == .addTransaction)
+    model.categoryID = "dining"
+    #expect(model.save())
+    #expect(store.state.txns.count == before + 1)
+  }
+
   @Test func theButtonNamesALongName() {
     let model = AddTransactionModel(app: AppModel(store: InMemoryLedger()))
     type([.digit(2), .digit(5)], into: model)

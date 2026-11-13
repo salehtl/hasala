@@ -95,7 +95,7 @@ protocol BankTextsConnecting: AnyObject, Observable {
   var lastRanAt: Date? { get }
   var ignoredLast30Days: Int { get }
   func finishSetUp() async throws(BankTextsFailure)
-  func startTest()
+  func startTest() throws(BankTextsFailure)
   func read(_ text: String) async -> BankTextReading
   func match(_ text: String) async -> BankTextMatch?
   func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure)
@@ -116,7 +116,7 @@ extension BankTextsConnecting {
   var usesTexts: Bool { source == .texts }
   var readsEmail: Bool { link == .linked }
   var offersPaste: Bool { link != .linked }
-  var sawAutomationRun: Bool { lastRanAt != nil || ignoredLast30Days > 0 }
+  var sawAutomationRun: Bool { lastRanAt != nil }
 }
 
 enum BankTexts {
@@ -202,7 +202,7 @@ enum BankTexts {
   }
 
   static let automationStillThere =
-    "Your Shortcuts automation stays, so bank texts come in from now on."
+    "If your Shortcuts automation is still there, Hasala will add bank texts from now on."
 
   static func disconnectNote(
     _ lane: (any BankTextsConnecting)?, mailbox: (any MailboxConnecting)?, disconnecting id: String

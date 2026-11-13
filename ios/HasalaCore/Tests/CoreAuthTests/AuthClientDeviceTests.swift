@@ -32,6 +32,17 @@ struct AuthClientDeviceTests {
     #expect(APNsTokenEnvironment(rawValue: "production") == .production)
   }
 
+  @Test("#40 keeps who froze the account, when, and whether its holder can lift it")
+  func accountFreeze() async throws {
+    let json =
+      #"{"user_id":"u","frozen":true,"frozen_by":"operator","freeze_trigger_at":"2026-10-11T17:20:05Z","holder_can_lift":false}"#
+    let a = try await AuthClient(transport: Recorder(APIResponse(status: 200, body: Data(json.utf8)))).account(bearer: "tok")
+    let back = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(a)) as? [String: Any])
+    #expect(back["frozen_by"] as? String == "operator")
+    #expect(back["freeze_trigger_at"] as? String == "2026-10-11T17:20:05Z")
+    #expect(back["holder_can_lift"] as? Bool == false)
+  }
+
   @Test("#32 GET and #33 DELETE /push/apns (no body)")
   func listAndDelete() async throws {
     let list = Recorder(

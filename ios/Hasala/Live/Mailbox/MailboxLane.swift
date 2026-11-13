@@ -1,6 +1,7 @@
 import CoreMailbox
 import CorePrimitives
 import CoreStore
+import CoreSync
 import CoreTemplate
 import CoreTime
 import Foundation
@@ -34,9 +35,9 @@ nonisolated final class MailboxLane: Sendable {
   init?(
     provider: MailboxProvider, build: BuildInfo, secrets: Secrets, userID: UserID, persistence: any MailboxPersistence,
     ledger: any MailboxLedger, server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
-    presenter: any MailAuthSessionPresenter
+    presenter: any MailAuthSessionPresenter, mailHTTP: (any HTTPExchange)? = nil
   ) {
-    let http = URLSessionHTTPExchange.ephemeral(maxResponseBytes: MailboxLimits.maxResponseBytes)
+    let http = mailHTTP ?? URLSessionHTTPExchange.ephemeral(maxResponseBytes: MailboxLimits.maxResponseBytes)
     let clock = SystemClock()
     let mail: any MailProvider
     switch provider {
@@ -84,11 +85,13 @@ nonisolated final class MailboxLane: Sendable {
   /// ends first in practice. If it hasn't, the connect is refused ("Try again"): signing in
   /// regardless could let that ending reach Google after this link and end its grant.
   func connect(
-    backfillDays: Int, pastMail: MailboxPastMail = .read, replacing: Bool = false, confirm: MailboxSwitchConfirm? = nil
+    backfillDays: Int, pastMail: MailboxPastMail = .read, replacing: Bool = false, retiring: MailboxRetirePlan? = nil,
+    confirm: MailboxSwitchConfirm? = nil
   ) async -> ConnectResult {
     if let refused = await MailGrantEnds.shared.connectGate() { return refused }
     let r = await engine.connect(
-      presenter: presenter, backfillDays: backfillDays, pastMail: pastMail, replacing: replacing, confirm: confirm)
+      presenter: presenter, backfillDays: backfillDays, pastMail: pastMail, replacing: replacing, retiring: retiring,
+      confirm: confirm)
     if case .connected = r {
       // The scan itself runs from `firstScan()` (foreground) or the processing task.
       BackgroundScheduler.shared.scheduleProcessing()
@@ -152,8 +155,15 @@ nonisolated final class MailboxLane: Sendable {
         continuation.yield(.ended(totals))
         continuation.finish()
       }
-      if !started { continuation.finish() }
+      if !started {
+        continuation.yield(.ended(FirstScanTotals(phase: .halted)))
+        continuation.finish()
+      }
     }
+  }
+
+  func importWindow(senders: [String]) async -> [(domain: String, sinceMs: Int64)] {
+    await engine.importWindow(senders: senders)
   }
 
   func backfill(senders: [String]) {
@@ -164,11 +174,19 @@ nonisolated final class MailboxLane: Sendable {
   func importPastMail() async -> CycleReport { await engine.importPastMail() }
 
   func stop() async {
+    work.markCut()
     await engine.stop()
     await work.cancelAll()
   }
 
-  func resume() async { await engine.resume() }
+  func resume(restartingCut restart: Bool) async {
+    await engine.resume()
+    guard work.takeCut(), restart else { return }
+    let engine = self.engine
+    work.start { _ = await engine.runFirstScan(maxCycles: 50) }
+  }
+
+  var isStopped: Bool { get async { await engine.stopped } }
 
   func close() async {
     work.close()
@@ -192,8 +210,13 @@ nonisolated final class MailboxLane: Sendable {
     await engine.disconnect(removing: plan)
   }
   func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome { await engine.retire(plan) }
+  func retryHeld(_ plan: MailboxRetirePlan) async -> MailboxHeldRetryOutcome { await engine.retryHeld(plan) }
+  func dropHeld(_ plan: MailboxRetirePlan) async { await engine.dropHeld(plan) }
   /// The other provider's link replaced this one: end this provider's grant here.
-  func endGrant() async { await engine.endGrant() }
+  func endGrant() async {
+    _ = work.takeCut()
+    await engine.endGrant()
+  }
   func addSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {
     await engine.importSender(typed)
   }
@@ -208,6 +231,7 @@ nonisolated final class LaneWork: @unchecked Sendable {
   private let lock = NSLock()
   private var tasks: [UUID: Task<Void, Never>] = [:]
   private var closed = false
+  private var cut = false
 
   @discardableResult
   func start(_ body: @escaping @Sendable () async -> Void) -> Bool {
@@ -232,10 +256,24 @@ nonisolated final class LaneWork: @unchecked Sendable {
 
   var running: Int { lock.withLock { tasks.count } }
 
+  func markCut() {
+    lock.withLock { if !tasks.isEmpty { cut = true } }
+  }
+
   func cancelAll() async {
-    let all = lock.withLock { Array(tasks.values) }
+    let all = lock.withLock { () -> [Task<Void, Never>] in
+      if !tasks.isEmpty { cut = true }
+      return Array(tasks.values)
+    }
     for t in all { t.cancel() }
     for t in all { await t.value }
+  }
+
+  func takeCut() -> Bool {
+    lock.withLock {
+      defer { cut = false }
+      return cut
+    }
   }
 }
 
@@ -334,6 +372,11 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
     }
   }
 
+  func end(within limit: Duration = MailGrantEnds.departureWait, _ work: @escaping @Sendable () async -> Void) async {
+    enqueue(work)
+    _ = await Task { await self.settled(within: limit) }.value
+  }
+
   /// Before a connect signs in: nil once every earlier ending is done (waiting at most
   /// `limit`), else the refusal ("Couldn't connect … Try again."). An ending still running
   /// could reach the provider after the new link and end its grant and watch.
@@ -362,7 +405,7 @@ extension MailboxLane {
     var grants: [HeldMailGrants.Grant] = []
     for p in MailboxProvider.allCases {
       guard let token = try? SecretsMailRefreshTokenStore(secrets: secrets, userID: userID, provider: p.providerID).read(),
-        !token.isEmpty
+        !token.isEmpty, token != RefreshingMailTokenProvider.writeCheckValue
       else { continue }
       let sub = p == .outlook ? (try? SecretsOutlookLinkStore(secrets: secrets, userID: userID).read())??.subscriptionID : nil
       grants.append(.init(provider: p, refreshToken: token, subscriptionID: sub))
@@ -370,14 +413,19 @@ extension MailboxLane {
     return grants.isEmpty ? nil : HeldMailGrants(grants: grants)
   }
 
-  nonisolated static func endGrantLater(_ held: HeldMailGrants?, build: BuildInfo) {
-    guard let held else { return }
-    MailGrantEnds.shared.enqueue { await endGrant(held, build: build, stopWatch: false) }
+  nonisolated static func endGrantThenWipe(
+    _ env: AccountEnvironment, userID: UserID, writerID: WriterID?, ends: MailGrantEnds = .shared,
+    within limit: Duration = MailGrantEnds.departureWait, ending: @escaping @Sendable (HeldMailGrants) async -> Void
+  ) async {
+    if let held = heldGrant(secrets: env.secrets, userID: userID) {
+      await ends.end(within: limit) { await ending(held) }
+    }
+    AccountWipe.wipe(env, userID: userID, writerID: writerID)
   }
 
   /// Ends this iPhone's grants as the account leaves it (spec 04 §4.7 rows 2–4), best effort,
-  /// and nothing for a provider the build has no client for. It needs only what `heldGrant`
-  /// read, so it runs after the local wipe as well.
+  /// and nothing for a provider the build has no client for. It runs before the local wipe:
+  /// a kill during it leaves the token here, and the next departure ends it.
   ///
   /// - Gmail: `users.stop` first when the account itself is going (`stopWatch`), then the
   ///   refresh token is revoked at Google.

@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,10 +57,12 @@ type Console struct {
 	TTL     time.Duration
 	Now     func() time.Time
 	Record  func(purgeledger.Entry) error
+	Missing func(purgeledger.Entry) (bool, error)
 
 	queue  *mailq.Queue
 	kCSRF  []byte
 	tunnel refusalLog
+	spent  spentTokens
 }
 
 // New builds a console with a fresh CSRF key (a restart invalidates open
@@ -96,9 +99,9 @@ func (c *Console) Handler() http.Handler {
 		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("POST /waitlist/{id}/approve", c.action("waitlist.approve", "waitlist_entry", c.approve))
-	mux.HandleFunc("POST /invites/mint", c.action("invite.mint", "invite", c.mint))
+	mux.HandleFunc("POST /invites/mint", c.action("invite.mint", "invite", c.once(c.mint)))
 	mux.HandleFunc("POST /invites/{id}/revoke", c.actionThen("invite.revoke", "invite", c.revoke, c.recordRevoked))
-	mux.HandleFunc("POST /invites/{id}/resend", c.action("invite.resend", "invite", c.resend))
+	mux.HandleFunc("POST /invites/{id}/resend", c.action("invite.resend", "invite", c.once(c.resend)))
 	mux.HandleFunc("POST /banks/{id}/status", c.action("bank.status", "bank", c.bankStatus))
 	mux.HandleFunc("POST /banks/add", c.action("bank.add", "bank", c.bankAdd))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
@@ -208,6 +211,35 @@ func (c *Console) csrfOK(login, path, target, token string) bool {
 	}
 	want := c.csrf(login, path, target, issued)
 	return hmac.Equal([]byte(want), []byte(token))
+}
+
+type spentTokens struct {
+	mu    sync.Mutex
+	until map[string]time.Time
+}
+
+func (s *spentTokens) claim(token string, now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for t, until := range s.until {
+		if now.After(until) {
+			delete(s.until, t)
+		}
+	}
+	if _, spent := s.until[token]; spent {
+		return false
+	}
+	if s.until == nil {
+		s.until = map[string]time.Time{}
+	}
+	s.until[token] = now.Add(csrfTTL)
+	return true
+}
+
+func (s *spentTokens) release(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.until, token)
 }
 
 // view is what every page template gets.
@@ -405,6 +437,9 @@ func (c *Console) actionThen(name, kind string, f actionFunc, then func(target s
 				code, result = "address_gone", "refused"
 				say = "The server no longer keeps this invite's email address, so it cannot resend it. " +
 					"Revoke the invite and mint a new one.\n"
+			} else if errors.Is(err, invites.ErrMintLimit) {
+				code, result = "mint_limit", "refused"
+				say = "That did not work (refused). Go back and reload.\n"
 			} else if errors.Is(err, errRefused) || errors.Is(err, invites.ErrNotApprovable) || errors.Is(err, invites.ErrNoSuchInvite) {
 				code, result = "refused", "refused"
 				say = "That did not work (refused). Go back and reload.\n"
@@ -440,6 +475,20 @@ func (c *Console) actionThen(name, kind string, f actionFunc, then func(target s
 			return
 		}
 		http.Redirect(w, r, back+"?done="+name, http.StatusSeeOther)
+	}
+}
+
+func (c *Console) once(f actionFunc) actionFunc {
+	return func(ctx context.Context, tx pgx.Tx, r *http.Request) (string, string, string, error) {
+		token := r.PostForm.Get("csrf")
+		if !c.spent.claim(token, c.now()) {
+			return r.PathValue("id"), "", "", errRefused
+		}
+		target, back, show, err := f(ctx, tx, r)
+		if err != nil {
+			c.spent.release(token)
+		}
+		return target, back, show, err
 	}
 }
 
@@ -502,10 +551,33 @@ func (c *Console) revoke(ctx context.Context, tx pgx.Tx, r *http.Request) (strin
 		return "", "/invites", "", errRefused
 	}
 	got, err := invites.Revoke(ctx, tx, id.String(), c.now())
+	if errors.Is(err, invites.ErrNoSuchInvite) {
+		missed, merr := c.revocationMissed(ctx, tx, id)
+		if merr != nil {
+			return id.String(), "/invites", "", merr
+		}
+		if missed {
+			return id.String(), "/invites", "", nil
+		}
+	}
 	if err == nil && got != id {
 		return id.String(), "/invites", "", errRefused
 	}
 	return id.String(), "/invites", "", err
+}
+
+func (c *Console) revocationMissed(ctx context.Context, q invites.Querier, id uuid.UUID) (bool, error) {
+	if c.Missing == nil {
+		return false, nil
+	}
+	_, at, err := invites.Revoked(ctx, q, id.String())
+	if errors.Is(err, invites.ErrNoSuchInvite) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return c.Missing(purgeledger.Entry{ID: id, At: at, Kind: purgeledger.KindInviteRevoked})
 }
 
 func (c *Console) recordRevoked(target string) error {
@@ -513,7 +585,13 @@ func (c *Console) recordRevoked(target string) error {
 	if err != nil || c.Record == nil {
 		return err
 	}
-	return c.Record(purgeledger.Entry{ID: id, At: c.now(), Kind: purgeledger.KindInviteRevoked})
+	ctx, cancel := context.WithTimeout(context.Background(), auditFor)
+	defer cancel()
+	_, at, err := invites.Revoked(ctx, c.Pool, target)
+	if err != nil {
+		return err
+	}
+	return c.Record(purgeledger.Entry{ID: id, At: at, Kind: purgeledger.KindInviteRevoked})
 }
 
 func (c *Console) resend(ctx context.Context, tx pgx.Tx, r *http.Request) (string, string, string, error) {

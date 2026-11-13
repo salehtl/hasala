@@ -260,15 +260,20 @@ type waitlistJSON struct {
 	TurnstileToken string `json:"turnstileToken"`
 }
 
-func writePublicRateLimited(w http.ResponseWriter) {
+func (s *Server) answerRateLimited(w http.ResponseWriter, r *http.Request, isForm bool, form string) {
 	w.Header().Set("Retry-After", "600")
-	writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+	s.answerPublic(w, r, isForm, http.StatusTooManyRequests, nil, "rate_limited", form)
+}
+
+func isFormPost(r *http.Request) bool {
+	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return ct == "application/x-www-form-urlencoded"
 }
 
 func (s *Server) handleWaitlistSubmit(w http.ResponseWriter, r *http.Request) {
 	o := s.Web
 	if !o.WaitlistIP.Allow(clientKey(r)) || !prefixAllow(r, o.WaitlistPrefix) {
-		writePublicRateLimited(w)
+		s.answerRateLimited(w, r, isFormPost(r), "")
 		return
 	}
 	var (
@@ -305,7 +310,7 @@ func (s *Server) handleWaitlistSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !o.WaitlistGlobal.Allow("") {
-		writePublicRateLimited(w)
+		s.answerRateLimited(w, r, isForm, "")
 		return
 	}
 	if _, err := o.Waitlist.Submit(r.Context(), email, choice); err != nil {

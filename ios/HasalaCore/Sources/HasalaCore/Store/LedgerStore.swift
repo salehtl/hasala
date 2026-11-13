@@ -50,6 +50,8 @@ public enum OutboxLatch: String, Sendable, Hashable, CaseIterable {
   case hardStop = "hard_stop"
   case sealerFault = "sealer_fault"
   case accountFull = "account_full"
+
+  public var keepsChangesFromUploading: Bool { self == .hardStop || self == .sealerFault }
 }
 
 /// `sync_state` (§4.2).
@@ -60,6 +62,7 @@ public struct SyncStateRow: Sendable, Hashable {
   public var checkpointJSON: Data?
   public var rosterJSON: Data?
   public var latch: OutboxLatch?
+  public var latchBuild: String?
   public var epochHWM: UInt32
   public var logGeneration: Int64?
   public var lastPullAt: Int64?
@@ -176,6 +179,17 @@ public final class LedgerStore: Sendable {
     }
   }
 
+  public static func owner(directory: URL) -> UserID? {
+    var configuration = Configuration()
+    configuration.readonly = true
+    configuration.busyMode = .timeout(5)
+    let file = directory.appendingPathComponent("ledger.sqlite").path
+    guard let queue = try? DatabaseQueue(path: file, configuration: configuration),
+      let id = try? queue.read({ try String.fetchOne($0, sql: "SELECT user_id FROM store_meta WHERE id = 1") })
+    else { return nil }
+    return UserID(id)
+  }
+
   /// An in-memory store (tests).
   public static func inMemory() throws(StoreError) -> LedgerStore {
     do {
@@ -264,22 +278,34 @@ public final class LedgerStore: Sendable {
     return SyncStateRow(
       cursorHot: row["cursor_hot"], authoredHead: Chain.Head(counter: row["authored_counter"], hash: h),
       checkpointJSON: row["checkpoint_json"], rosterJSON: row["roster_json"],
-      latch: latch.flatMap(OutboxLatch.init(rawValue:)), epochHWM: UInt32(row["epoch_hwm"] as Int64),
+      latch: latch.flatMap(OutboxLatch.init(rawValue:)), latchBuild: row["latch_build"],
+      epochHWM: UInt32(row["epoch_hwm"] as Int64),
       logGeneration: row["log_generation"], lastPullAt: row["last_pull_at"], lastPushAt: row["last_push_at"],
       lastFullCheckAt: row["last_full_check_at"])
   }
 
-  public func setLatch(_ latch: OutboxLatch?) throws(StoreError) {
+  public func setLatch(_ latch: OutboxLatch?, build: String? = nil) throws(StoreError) {
     try write { db in
-      try db.execute(sql: "UPDATE sync_state SET outbox_latch = ? WHERE id = 1", arguments: [latch?.rawValue])
+      try db.execute(
+        sql: "UPDATE sync_state SET outbox_latch = ?, latch_build = ? WHERE id = 1",
+        arguments: [latch?.rawValue, latch == nil ? nil : build])
+    }
+  }
+
+  public func recordLogGenerationIfUnknown(_ generation: Int64) throws(StoreError) {
+    try write { db in
+      try db.execute(
+        sql: "UPDATE sync_state SET log_generation = ? WHERE id = 1 AND log_generation IS NULL",
+        arguments: [generation])
     }
   }
 
   public func setEpochHWM(_ e: UInt32) throws(StoreError) {
-    try write { db in
-      try db.execute(
-        sql: "UPDATE sync_state SET epoch_hwm = max(epoch_hwm, ?) WHERE id = 1", arguments: [Int64(e)])
-    }
+    try write { db in try Self.raiseEpochHWM(e, db) }
+  }
+
+  private static func raiseEpochHWM(_ e: UInt32, _ db: Database) throws {
+    try db.execute(sql: "UPDATE sync_state SET epoch_hwm = max(epoch_hwm, ?) WHERE id = 1", arguments: [Int64(e)])
   }
 
   public func setRoster(_ json: Data) throws(StoreError) {
@@ -326,7 +352,7 @@ public final class LedgerStore: Sendable {
   /// the snapshot and the cursor commit together.
   public func persistPage(
     rows: [WireRowRecord], heads: [WriterID: Chain.Head], cursor: Int64, at: Int64,
-    snapshot: FoldSnapshotChange = .keep
+    snapshot: FoldSnapshotChange = .keep, epochHWM: UInt32? = nil
   ) throws(StoreError) {
     let tip = rows.last(where: { $0.seq == cursor }).map {
       Self.boundTip(seq: $0.seq, writerID: $0.writerID, counter: $0.counter, blobHash: $0.blobHash, prevHash: $0.prevHash)
@@ -354,6 +380,7 @@ public final class LedgerStore: Sendable {
       }
       try db.execute(
         sql: "UPDATE sync_state SET cursor_hot = ?, last_pull_at = ? WHERE id = 1", arguments: [cursor, at])
+      if let epochHWM { try Self.raiseEpochHWM(epochHWM, db) }
       try Self.applySnapshot(snapshot, cursor: cursor, tip: tip, at: at, db)
     }
   }
@@ -392,7 +419,7 @@ public final class LedgerStore: Sendable {
   // MARK: - Pending ops (§5.4)
 
   /// Inserts `ops` in one transaction; durable when this returns.
-  public func enqueue(_ ops: [PendingOp]) throws(StoreError) {
+  public func enqueue(_ ops: [PendingOp], imports: [(domain: String, sinceMs: Int64)] = []) throws(StoreError) {
     try write { db in
       for op in ops {
         try db.execute(
@@ -402,18 +429,23 @@ public final class LedgerStore: Sendable {
             """,
           arguments: [op.opID, op.opJSON, op.opType, op.entityKind, op.entityID, op.enqueuedAt])
       }
+      try MailboxTableStore.add(imports: imports, db)
     }
   }
 
   public func pendingOps(limit: Int = 10_000) throws(StoreError) -> [PendingOp] {
-    let rows = try read { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM pending_ops ORDER BY local_seq LIMIT ?", arguments: [limit])
-    }
-    return rows.map {
-      PendingOp(
-        localSeq: $0["local_seq"], opID: $0["op_id"], opJSON: $0["op_json"], opType: $0["op_type"],
-        entityKind: $0["entity_kind"], entityID: $0["entity_id"], enqueuedAt: $0["enqueued_at"])
-    }
+    let rows = try read { db in try Self.pendingRows(db, limit: limit) }
+    return rows.map(Self.pendingOp)
+  }
+
+  static func pendingRows(_ db: Database, limit: Int) throws -> [Row] {
+    try Row.fetchAll(db, sql: "SELECT * FROM pending_ops ORDER BY local_seq LIMIT ?", arguments: [limit])
+  }
+
+  static func pendingOp(_ row: Row) -> PendingOp {
+    PendingOp(
+      localSeq: row["local_seq"], opID: row["op_id"], opJSON: row["op_json"], opType: row["op_type"],
+      entityKind: row["entity_kind"], entityID: row["entity_id"], enqueuedAt: row["enqueued_at"])
   }
 
   public func pendingCount() throws(StoreError) -> Int {
@@ -490,6 +522,14 @@ public final class LedgerStore: Sendable {
             db, sql: "SELECT op_ids_json FROM inflight_blobs WHERE writer_counter = ?", arguments: [c])
         else { continue }
         for id in try JSONDecoder().decode([String].self, from: ids) {
+          try db.execute(
+            sql: """
+              INSERT OR IGNORE INTO acknowledged_ops
+                (local_seq, op_id, op_json, op_type, entity_kind, entity_id, enqueued_at, writer_counter)
+              SELECT local_seq, op_id, op_json, op_type, entity_kind, entity_id, enqueued_at, ?
+                FROM pending_ops WHERE op_id = ?
+              """,
+            arguments: [c, id])
           try db.execute(sql: "DELETE FROM pending_ops WHERE op_id = ?", arguments: [id])
         }
         try db.execute(sql: "DELETE FROM inflight_blobs WHERE writer_counter = ?", arguments: [c])
@@ -517,6 +557,18 @@ public final class LedgerStore: Sendable {
     try write { db in
       try db.execute(
         sql: "INSERT INTO fold_events (at, kind, detail) VALUES (?, ?, ?)", arguments: [at, kind, detail])
+      try Self.pruneFoldEvents(db)
+    }
+  }
+
+  public func recordFoldEventOnce(kind: String, detail: String, at: Int64) throws(StoreError) {
+    try write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO fold_events (at, kind, detail)
+          SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM fold_events WHERE kind = ? AND detail = ?)
+          """,
+        arguments: [at, kind, detail, kind, detail])
       try Self.pruneFoldEvents(db)
     }
   }

@@ -115,13 +115,24 @@ final class SecurityModel {
     }
   }
 
+  func keepLoading(firstWait: Duration = .seconds(5)) async {
+    var wait = firstWait
+    await load()
+    while state == nil, failure == .offline || failure == .rateLimited, !Task.isCancelled {
+      try? await Task.sleep(for: wait)
+      guard !Task.isCancelled else { return }
+      wait = min(wait * 2, .seconds(30))
+      await load()
+    }
+  }
+
   // MARK: Confirm it's you
 
   /// Starts a change: "Confirm it's you" opens on `host` (P2.6: one pattern for every
   /// sensitive action).
   func request(_ action: SecurityAction, host: Host = .page) async {
     guard let state else { return }
-    if isFrozen, action != .unfreeze, action != .deleteAccount {
+    if isFrozen, action != .unfreeze {
       failure = .frozen
       return
     }
@@ -221,6 +232,10 @@ final class SecurityModel {
       session.learnedOperatorFreeze()
       await load()
       failure = .frozenByOperator
+    } catch .frozen {
+      closeConfirmation()
+      await load()
+      failure = .frozen
     } catch .sessionEnded {
       // The server ended the session (an operator freeze revokes them all): sign in again.
       closeConfirmation()
@@ -267,6 +282,9 @@ final class SecurityModel {
     case .deleteAccount, .signOutEverywhere:
       // Delete ends the account; sign out everywhere ends this iPhone's session too
       // (`02` §9.3: every session, the caller's included). Its keys stay here.
+      session.signedOut()
+      return
+    case .removeThisIPhoneLosingUnsent:
       session.signedOut()
       return
     case .unfreeze:
@@ -323,6 +341,8 @@ final class SecurityModel {
       case .removeDevice(let id):
         let name = state?.devices.first { $0.id == id }?.title ?? "this device"
         return ("Remove \(name)", ["It's signed out now", "Its copy of your data is erased when it next opens Hasala"])
+      case .removeThisIPhoneLosingUnsent:
+        return ("Remove this iPhone", ["Changes that can't upload are lost for good", "Everything you uploaded stays in your account"])
       case .signOutEverywhere:
         return ("Sign out everywhere", ["Every device signs out, this one too", "Your sealed backup stays"])
       case .freeze:

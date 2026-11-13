@@ -39,6 +39,22 @@ import Testing
     for id in ["d1", "n1"] { #expect(try await rig.store.isParsing(id) == false) }
   }
 
+  @Test func aMarkFromBeforeTheWindowGoesWhenTheCheckpointMoves() async throws {
+    let rig = Rig(backend: .sqlite)
+    await rig.connectAndActivate()
+    try await rig.store.markParsing("left-behind")
+    rig.clock.advance(4 * day)
+    try await rig.store.markParsing("still-recent")
+    rig.gmail.add(SyntheticMail.dibCard(id: "d-new", dateMs: rig.clock.nowMs() - 1_000))
+    rig.clock.advance(1_000)
+
+    let r = await rig.engine.runCycle(trigger: .refresh)
+
+    #expect(r.completed)
+    #expect(try await rig.store.isParsing("left-behind") == false)
+    #expect(try await rig.store.isParsing("still-recent"))
+  }
+
   @Test func theMarkIsDurableAndDisconnectClearsIt() throws {
     let tables = try MailboxTableStore.inMemory()
     #expect(try !tables.isParsing("m1"))
@@ -83,6 +99,9 @@ actor CancelOnParse: MailboxPersistence {
     try await base.markParsing(messageID)
   }
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { try await base.clearParsing(messageID) }
+  func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int { try await base.strikes(messageID: messageID) }
+  func pendingRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan] { try await base.pendingRetires() }
+  func heldRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan] { try await base.heldRetires() }
   func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport] { try await base.pendingImports() }
   func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String] { try await base.unparsedSenders() }
   func loadReader() async throws(MailboxPersistenceError) -> MailReaderState? { try await base.loadReader() }

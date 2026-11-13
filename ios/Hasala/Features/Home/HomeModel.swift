@@ -87,12 +87,17 @@ final class HomeViewModel: HomeModel {
   }
 
   func markAllRead() {
-    app.notificationReads.markAllRead(app.needsALook.filter { !Self.staysUnread($0) })
+    app.notificationReads.markAllRead(
+      app.needsALook.filter { !Self.staysUnread($0) }, keeping: app.mailOfferKnown ? [] : [Self.connectRow])
   }
 
   static func staysUnread(_ item: NotificationItem) -> Bool {
     item.id.hasPrefix("mail.signIn.")
   }
+
+  static let connectRow = NotificationItem(
+    id: "mail.connect", disc: .neutral(.envelope), title: "Connect your email",
+    line: "Then Hasala can read your bank alerts.", when: nil, destination: .bankAlerts)
 
   /// Mail's row (plan B4.3: the offer is the bell's mail row and the Profile card). It has no
   /// moment of its own, so it comes after the ledger's dated items. Both open Bank alerts,
@@ -102,9 +107,7 @@ final class HomeViewModel: HomeModel {
     case nil:
       return nil
     case .connect:
-      return NotificationItem(
-        id: "mail.connect", disc: .neutral(.envelope), title: "Connect your email",
-        line: "Then Hasala can read your bank alerts.", when: nil, destination: .bankAlerts)
+      return connectRow
     case .signInAgain(let id, let provider):
       // Page 18 §14 "Mailbox needs sign-in": the title names the mailbox, never the account.
       let address = mailboxes.first { $0.id == id }?.address ?? provider.appName

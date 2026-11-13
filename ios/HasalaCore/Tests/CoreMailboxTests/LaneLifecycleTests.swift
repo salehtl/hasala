@@ -6,8 +6,75 @@ import Testing
 
 @testable import CoreMailbox
 
+@Suite struct MailboxMoveNoteTests {
+  @Test func onlyAScanOrABackfillIsAnImportStillGoing() {
+    #expect(MailboxPhase.allCases.filter(\.isImporting) == [.scanning, .authoringBackfill])
+  }
+
+  @Test func aMoveTheLastRunNeverShowedStillCountsAfterARelaunch() {
+    var note = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: .active)
+    note.see(.active, nowMs: 1)
+    #expect(note.lastPhase == .active && note.movedAwayMs == nil)
+    var relaunched = MailboxMoveNote(kept: note.lastPhase, movedAwayMs: note.movedAwayMs, current: .otherDevice)
+    relaunched.see(.otherDevice, nowMs: 5)
+    #expect(relaunched.movedAwayMs == 5 && relaunched.lastPhase == .otherDevice)
+  }
+
+  @Test func anIPhoneThatNeverReadTheMailboxIsNotToldItMoved() {
+    var first = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: .otherDevice)
+    first.see(.otherDevice, nowMs: 5)
+    #expect(first.movedAwayMs == nil)
+    var unlinked = MailboxMoveNote(kept: .unlinked, movedAwayMs: nil, current: .otherDevice)
+    unlinked.see(.otherDevice, nowMs: 5)
+    #expect(unlinked.movedAwayMs == nil)
+  }
+
+  @Test func theNoteStaysUntilThePhaseLeavesOtherDevice() {
+    var note = MailboxMoveNote(kept: .active, movedAwayMs: nil, current: .otherDevice)
+    note.see(.otherDevice, nowMs: 5)
+    var relaunched = MailboxMoveNote(kept: note.lastPhase, movedAwayMs: note.movedAwayMs, current: .otherDevice)
+    relaunched.see(.otherDevice, nowMs: 9)
+    #expect(relaunched.movedAwayMs == 5)
+    relaunched.see(.active, nowMs: 10)
+    #expect(relaunched.movedAwayMs == nil)
+  }
+
+  @Test func aPhaseAlreadySeenChangesNothing() {
+    var note = MailboxMoveNote(kept: .otherDevice, movedAwayMs: 3, current: .otherDevice)
+    note.see(.otherDevice, nowMs: 9)
+    #expect(note.movedAwayMs == 3)
+  }
+
+  @Test func aMoveNeedsAPhaseThatWasReadingHere() {
+    for old in MailboxPhase.allCases {
+      let expected = old != .unlinked && old != .otherDevice
+      #expect(MailboxMoveNote.movedAway(from: old, to: .otherDevice) == expected)
+    }
+    #expect(!MailboxMoveNote.movedAway(from: nil, to: .otherDevice))
+    #expect(!MailboxMoveNote.movedAway(from: .active, to: .active))
+  }
+}
+
 @Suite struct LaneLifecycleTests {
   let day: Int64 = 86_400_000
+
+  @Test func aSettledLaneHoldsNoImportProgress() {
+    let event = MailboxProgress(stage: .downloading, done: 3, total: 3)
+    for phase in [MailboxPhase.active, .unlinked, .otherDevice] {
+      #expect(MailboxProgress.following(event, after: nil, phase: phase) == nil)
+      #expect(MailboxProgress.following(.init(stage: .failed(.offline), done: 0, total: 0), after: event, phase: phase) == nil)
+    }
+  }
+
+  @Test func aLaneStillImportingFollowsEachEvent() {
+    let event = MailboxProgress(stage: .downloading, done: 25, total: 500)
+    for phase in [MailboxPhase?.none, .scanning, .awaitingCards, .authoringBackfill, .halted, .reconnectRequired] {
+      #expect(MailboxProgress.following(event, after: nil, phase: phase) == event)
+      #expect(
+        MailboxProgress.following(.init(stage: .failed(.offline), done: 0, total: 0), after: event, phase: phase)
+          == MailboxProgress(stage: .failed(.offline), done: 25, total: 500))
+    }
+  }
 
   @Test func aStoppedEngineRunsNoCycleAndLeavesTheSharedStateAlone() async {
     let rig = Rig()

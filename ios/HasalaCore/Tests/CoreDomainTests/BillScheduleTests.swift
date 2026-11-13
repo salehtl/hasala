@@ -159,6 +159,13 @@ struct BillScheduleTests {
     #expect(none.openPause == nil && !none.isPaused(Self.d("2026-02-06")))
   }
 
+  @Test("a bill whose last pause has an end has no open pause")
+  func closedPauseIsNotOpen() throws {
+    let v = try Self.view(
+      Self.bill(anchor: "2026-01-06", start: "2026-01-06", pauses: [BillPause(from: "2026-02-01", until: "2026-03-06")]))
+    #expect(v.openPause == nil)
+  }
+
   @Test("trackingSince: the later of start and the create's local (+04:00) day; start without createdAt")
   func trackingSince() throws {
     #expect(

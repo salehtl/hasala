@@ -14,7 +14,7 @@ final class AccountSession {
     /// (`resume()`); a failure to reach it stays here with Retry.
     case checking
     /// Signed in with keys here; setup resumes at the derived step (§6.6).
-    case onboarding(OnboardingStep)
+    case onboarding
     /// Signed in, data sealed here (§6.10).
     case needsUnlock(passkeyCanUnlock: Bool)
     /// Signed in without keys anywhere (C1 interrupted after register/finish): make a new
@@ -27,14 +27,22 @@ final class AccountSession {
   }
 
   let services: AccountServices
-  private(set) var phase: Phase
-  /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
-  /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
+  private(set) var phase: Phase {
+    didSet { if phase != oldValue { onPhaseChange?(phase) } }
+  }
+  @ObservationIgnored var onPhaseChange: (@MainActor (Phase) -> Void)?
+  @ObservationIgnored var onUnfroze: (@MainActor () -> Void)?
+  /// "Leave it frozen": the app, or the setup the freeze interrupted, opens with the frozen
+  /// banner. The freeze is kept as it was (who froze it decides whether Unfreeze is offered,
+  /// spec 04 §6.11).
   private(set) var leftFrozen: FreezeInfo?
+  private var setupBehindWall = false
+  private var behindWall: Phase { setupBehindWall ? .onboarding : .ready }
   /// An invite link that arrived while signed out (§13.5), for the invite screen.
   var pendingInvite: InviteLink?
   /// A toast for links that can't act now ("You already have an account").
   var notice: String?
+  static let hasAccountNotice = "You already have an account"
   /// The signed-in account is the App Review demo account (`review_account` on
   /// `GET /account`), so its ledger is sample data. Set by the runtime once the account
   /// is known; false until then and after signing out.
@@ -88,14 +96,31 @@ final class AccountSession {
   }
 
   /// After the account and keys exist (C1/C1-P complete): setup continues at the bank.
-  func accountCreated() { phase = .onboarding(.bank) }
+  func accountCreated() {
+    switch phase {
+    case .signedOut, .needsKeys: phase = .onboarding
+    default: break
+    }
+  }
 
   /// After unlocking on a new iPhone: setup steps that are per-device still run.
-  func unlocked() { phase = .ready }
+  func unlocked() {
+    guard case .needsUnlock = phase else { return }
+    phase = .ready
+  }
 
-  func setupFinished() { phase = .ready }
+  func setupFinished() {
+    switch phase {
+    case .onboarding:
+      setupBehindWall = false
+      phase = .ready
+    case .frozen: setupBehindWall = false
+    default: break
+    }
+  }
 
   func froze(_ info: FreezeInfo) {
+    if case .onboarding = phase { setupBehindWall = true }
     leftFrozen = nil
     phase = .frozen(info)
   }
@@ -116,10 +141,12 @@ final class AccountSession {
 
   var canLeaveFrozen: Bool { account.keysOnThisIPhone }
 
+  var deleteWaitsForUnfreeze: Bool { leftFrozen != nil }
+
   func leaveFrozen() {
-    guard canLeaveFrozen else { return }
-    if case .frozen(let info) = phase { leftFrozen = info }
-    phase = .ready
+    guard canLeaveFrozen, case .frozen(let info) = phase else { return }
+    leftFrozen = info
+    phase = behindWall
   }
 
   /// The wall again, from the banner, with the freeze as it was.
@@ -129,8 +156,13 @@ final class AccountSession {
   }
 
   func unfroze() {
+    switch phase {
+    case .frozen: phase = behindWall
+    case .onboarding, .ready: break
+    default: return
+    }
     leftFrozen = nil
-    phase = .ready
+    onUnfroze?()
   }
 
   /// The server says the operator froze the account: the wall, or the banner after "Leave
@@ -157,7 +189,9 @@ final class AccountSession {
       throw .sessionEnded
     }
     guard account.keysOnThisIPhone else {
+      guard case .frozen = phase else { return }
       leftFrozen = nil
+      setupBehindWall = false
       phase = .checking
       await resume()
       return
@@ -171,7 +205,9 @@ final class AccountSession {
   }
 
   func signedOut() {
+    if phase != .signedOut { account.sessionEnded() }
     leftFrozen = nil
+    setupBehindWall = false
     reviewAccount = false
     phase = .signedOut
   }
@@ -182,7 +218,7 @@ final class AccountSession {
     if phase == .signedOut {
       pendingInvite = link
     } else {
-      notice = "You already have an account"
+      notice = Self.hasAccountNotice
     }
   }
 }
@@ -199,5 +235,6 @@ struct AccountServices {
   var cloudSort: CloudSortOffering?
   var unseenPhrase: any UnseenPhraseNoting = InMemoryUnseenPhrase()
   var manualEntry = ManualEntryChoice()
+  var finishRows = FinishSetupRows()
   var bankTexts: (any BankTextsConnecting)?
 }

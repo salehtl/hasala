@@ -75,10 +75,7 @@ struct MoveMoneySheet: View {
   private var amount: Int64? { MoneyFormat.parseMinor(draft) }
   /// Never the destination: choosing Shopping as "To" takes it off "Take from".
   private var sources: [MoveSource] { model.sources(to: destination) }
-  private var chosenSource: MoveSource? {
-    let all = sources
-    return all.first { $0.id == (source ?? nil) } ?? all.first
-  }
+  private var chosenSource: MoveSource? { PlanEngine.moveSource(picked: source, offered: sources) }
   /// Assign (from Plan, no category yet) lets the person choose where the money goes.
   private var assigning: Bool { model.row == nil }
 
@@ -258,7 +255,7 @@ struct MoveMoneySheet: View {
         PlanListCard {
           ForEach(showAllSources ? sources : Array(sources.prefix(4))) { s in
             Button { source = .some(s.id) } label: {
-              SourceRow(source: s, selected: chosen?.id == s.id, hidden: model.hidden)
+              SourceRow(source: s, selected: chosen == s, hidden: model.hidden)
             }
             .buttonStyle(HRowPressStyle())
             .accessibilityIdentifier("move.from.\(s.id ?? "rta")")
@@ -296,9 +293,9 @@ struct MoveMoneySheet: View {
   private var commit: some View {
     VStack(spacing: 10) {
       Button(Self.commitLabel(amount: amount, assigns: assignsHere)) {
-        guard let amount, let to = destination else { return }
+        guard let amount, let to = destination, let from = chosenSource, refusal == nil else { return }
         typing = false
-        _ = model.move(.aed(amount), from: chosenSource?.id, to: to)
+        _ = model.move(.aed(amount), from: from.id, to: to)
       }
       .buttonStyle(.pill(.primary, fill: true))
       .disabled(amount == nil || amount == 0 || destination == nil || chosenSource == nil || refusal != nil)

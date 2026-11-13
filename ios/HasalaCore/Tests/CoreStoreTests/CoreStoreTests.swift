@@ -1,9 +1,11 @@
 // Unit tests for CoreStore (owner: WS-11): the §4.2 schema, each §5
 // transaction boundary, the §4.4 item formats and the §4.1 file hygiene.
+import CoreAuth
 import CorePrimitives
 import CoreWire
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 
 @testable import CoreStore
@@ -139,6 +141,101 @@ struct LedgerStoreTests {
     #expect(try s.syncState().authoredHead.counter == 2)
   }
 
+  @Test("an acknowledgement that lands while the outbox overlay is read loses no op")
+  func overlayReadsBothTablesAtOnce() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-overlay-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let s = try LedgerStore.open(directory: dir)
+    try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "https://api.hasala.app", keyEpoch: 1, createdAt: 1))
+    try s.enqueue([
+      PendingOp(opID: "op1", opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil, enqueuedAt: 0)
+    ])
+    try s.persistBatch([
+      InflightBlob(counter: 1, batchID: "B", prevHash: .zero, blobHash: h(1), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op1"], headSig: nil, createdAt: 0)
+    ])
+    let step = Mutex(0)
+    try s.db.read { db in
+      db.trace(options: .statement) { event in
+        guard case .statement(let statement) = event else { return }
+        let acknowledgeNow = step.withLock { step -> Bool in
+          if step == 0, statement.sql.contains("FROM acknowledged_ops") { step = 1 } else if step == 1 {
+            step = 2
+            return true
+          }
+          return false
+        }
+        if acknowledgeNow { try? s.acknowledge(counters: [1], head: Chain.Head(counter: 1, hash: h(1)), at: 5) }
+      }
+    }
+
+    let overlay = try s.outboxOverlay(writerID: writer, foldedThrough: 0)
+
+    #expect(step.withLock { $0 } == 2)
+    #expect(try s.pendingCount() == 0)
+    #expect(overlay.map(\.opID) == ["op1"])
+  }
+
+  @Test("the outbox overlay lists acknowledged ops, then pending ones, without the ones already folded")
+  func overlayLeavesOutWhatIsFolded() throws {
+    let s = try created()
+    try s.enqueue(
+      ["op1", "op2", "op3"].map {
+        PendingOp(opID: $0, opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil, enqueuedAt: 0)
+      })
+    try s.persistBatch([
+      InflightBlob(counter: 1, batchID: "B", prevHash: .zero, blobHash: h(1), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op1"], headSig: nil, createdAt: 0),
+      InflightBlob(counter: 2, batchID: "B", prevHash: h(1), blobHash: h(2), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op2"], headSig: Data(repeating: 5, count: 64), createdAt: 0),
+    ])
+    try s.acknowledge(counters: [1, 2], head: Chain.Head(counter: 2, hash: h(2)), at: 5)
+    try s.db.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO wire_rows (seq, writer_id, writer_counter, type_flag, size_bucket, blob_hash, prev_hash, created_at, blob, disposition)
+          VALUES (7, ?, 1, 'edit', 1024, zeroblob(32), zeroblob(32), 't', x'00', 'folded')
+          """,
+        arguments: [writer.string])
+    }
+
+    #expect(try s.outboxOverlay(writerID: writer, foldedThrough: 0).map(\.opID) == ["op1", "op2", "op3"])
+    #expect(try s.outboxOverlay(writerID: writer, foldedThrough: 7).map(\.opID) == ["op2", "op3"])
+  }
+
+  @Test("an acknowledged op is kept until the pull reaches its row, whatever that row's disposition")
+  func acknowledgedOpsWaitForTheirRow() throws {
+    let s = try created()
+    try s.enqueue(
+      ["op1", "op2"].map {
+        PendingOp(opID: $0, opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil, enqueuedAt: 0)
+      })
+    try s.persistBatch([
+      InflightBlob(counter: 1, batchID: "B", prevHash: .zero, blobHash: h(1), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op1"], headSig: nil, createdAt: 0),
+      InflightBlob(counter: 2, batchID: "B", prevHash: h(1), blobHash: h(2), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op2"], headSig: Data(repeating: 5, count: 64), createdAt: 0),
+    ])
+    try s.acknowledge(counters: [1, 2], head: Chain.Head(counter: 2, hash: h(2)), at: 5)
+    #expect(try s.pendingCount() == 0)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).map(\.opID) == ["op1", "op2"])
+
+    try s.db.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO wire_rows (seq, writer_id, writer_counter, type_flag, size_bucket, blob_hash, prev_hash, created_at, blob, disposition)
+          VALUES (7, ?, 1, 'edit', 1024, zeroblob(32), zeroblob(32), 't', x'00', 'set_aside')
+          """,
+        arguments: [writer.string])
+    }
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 6).map(\.opID) == ["op1", "op2"])
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 7).map(\.opID) == ["op2"])
+    try s.forgetAcknowledged(writerID: writer, foldedThrough: 6)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).count == 2)
+    try s.forgetAcknowledged(writerID: writer, foldedThrough: 7)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).map(\.opID) == ["op2"])
+  }
+
   @Test("latch, epoch high-water mark (never lowered), roster and fold-event ring")
   func state() throws {
     let s = try created()
@@ -154,6 +251,62 @@ struct LedgerStoreTests {
     #expect(ev.count == 64 && ev.last?.detail == "69")
   }
 
+  @Test("the build that raised a latch stays with it across a reopen, and goes when the latch is replaced or lifted")
+  func latchBuild() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-latch-\(ProcessInfo.processInfo.globallyUniqueString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    do {
+      let s = try LedgerStore.open(directory: dir)
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+      try s.setLatch(.hardStop, build: "261101.1")
+    }
+    let s = try LedgerStore.open(directory: dir)
+    #expect(try s.syncState().latch == .hardStop)
+    #expect(try s.syncState().latchBuild == "261101.1")
+    try s.setLatch(.accountFull)
+    #expect(try s.syncState().latchBuild == nil)
+    try s.setLatch(.sealerFault, build: "2")
+    try s.setLatch(nil, build: "2")
+    #expect(try s.syncState().latch == nil)
+    #expect(try s.syncState().latchBuild == nil)
+  }
+
+  @Test("a latch kept before its build was noted reads with no build")
+  func latchFromBeforeTheBuildColumn() throws {
+    let queue = try DatabaseQueue()
+    try LedgerSchema.migrator.migrate(queue, upTo: "mailbox_provider")
+    try queue.write { db in
+      try db.execute(
+        sql: "INSERT INTO sync_state (id, authored_hash, outbox_latch) VALUES (1, zeroblob(32), 'hard_stop')")
+    }
+    try LedgerSchema.migrator.migrate(queue)
+    let s = try LedgerStore(db: queue)
+    #expect(try s.syncState().latch == .hardStop)
+    #expect(try s.syncState().latchBuild == nil)
+  }
+
+  @Test("a once-only fold event is one row, however often it is recorded, and leaves the rest of the ring")
+  func foldEventOnce() throws {
+    let s = try created()
+    try s.recordFoldEvent(kind: "k", detail: "earlier", at: 1)
+    for i in 0..<100 { try s.recordFoldEventOnce(kind: "alarm", detail: "a", at: Int64(i)) }
+    #expect(try s.foldEvents().map(\.detail) == ["earlier", "a"])
+    try s.recordFoldEventOnce(kind: "alarm", detail: "b", at: 2)
+    try s.recordFoldEventOnce(kind: "other", detail: "a", at: 3)
+    #expect(try s.foldEvents().map { "\($0.kind):\($0.detail)" } == ["k:earlier", "alarm:a", "alarm:b", "other:a"])
+  }
+
+  @Test("once the ring has dropped a once-only fold event it is recorded again, and the ring stays at 64")
+  func foldEventOnceAfterTheRingMoved() throws {
+    let s = try created()
+    try s.recordFoldEventOnce(kind: "alarm", detail: "a", at: 0)
+    for i in 0..<64 { try s.recordFoldEvent(kind: "k", detail: "\(i)", at: Int64(i)) }
+    #expect(try !s.foldEvents().contains { $0.kind == "alarm" })
+    try s.recordFoldEventOnce(kind: "alarm", detail: "a", at: 65)
+    let ev = try s.foldEvents()
+    #expect(ev.count == 64 && ev.last?.kind == "alarm")
+  }
+
   @Test("open(directory:) protects and excludes the directory and the database files")
   func files() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-store-\(ProcessInfo.processInfo.globallyUniqueString)")
@@ -164,6 +317,61 @@ struct LedgerStoreTests {
     #expect(FileHygiene.isExcluded(dir.appendingPathComponent("ledger.sqlite")))
     let again = try LedgerStore.open(directory: dir)
     #expect(try again.meta()?.userID == user)
+  }
+}
+
+@Suite("CoreStore: the owner read at launch")
+struct StoreOwnerTests {
+  func directory() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("hasala-owner-\(ProcessInfo.processInfo.globallyUniqueString)")
+  }
+
+  func file(_ dir: URL) -> URL { dir.appendingPathComponent("ledger.sqlite") }
+
+  @Test("reads the owner of a store that was closed, and of one still open with unwritten changes")
+  func readsOwner() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    do {
+      let s = try LedgerStore.open(directory: dir)
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+    }
+    #expect(LedgerStore.owner(directory: dir) == user)
+    let open = try LedgerStore.open(directory: dir)
+    try open.setLastPull(1)
+    #expect(LedgerStore.owner(directory: dir) == user)
+  }
+
+  @Test("does not migrate a store one migration behind, or mark its folder")
+  func leavesTheStoreAlone() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    do {
+      let s = try LedgerStore(db: DatabasePool(path: file(dir).path, configuration: LedgerStore.configuration()))
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+      try s.db.write { db in
+        try db.execute(sql: "DROP TABLE acknowledged_ops")
+        try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'acknowledged_ops'")
+      }
+    }
+    try #require(!FileHygiene.isExcluded(URL(fileURLWithPath: dir.path)))
+
+    #expect(LedgerStore.owner(directory: dir) == user)
+
+    #expect(!FileHygiene.isExcluded(URL(fileURLWithPath: dir.path)))
+    let queue = try DatabaseQueue(path: file(dir).path)
+    #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM grdb_migrations WHERE identifier = 'acknowledged_ops'") } == 0)
+  }
+
+  @Test("no owner for a missing file, which stays missing, or for a store never given an identity")
+  func noOwner() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    #expect(LedgerStore.owner(directory: dir) == nil)
+    #expect(!FileManager.default.fileExists(atPath: file(dir).path))
+    _ = try LedgerStore.open(directory: dir)
+    #expect(LedgerStore.owner(directory: dir) == nil)
   }
 }
 
@@ -223,6 +431,13 @@ struct SecretTests {
     #expect(throws: SecretStoreError.self) { _ = try s.writerSeed(userID: user, writerID: writer) }
   }
 
+  @Test("only a locked Keychain reads as 'not now' for the approval key; any other refusal is unavailable")
+  func approvalKeyStoreErrors() {
+    #expect(ApprovalKeyError(storeError: .notNow(status: -25308)) == .notNow)
+    #expect(ApprovalKeyError(storeError: .failed(status: -25300)) == .unavailable)
+    #expect(ApprovalKeyError(storeError: .readBackMismatch) == .unavailable)
+  }
+
   @Test("locked: reads throw 'not now', never nil; wipe removes every item")
   func locked() throws {
     let m = MemorySecretStore()
@@ -240,6 +455,38 @@ struct SecretTests {
     #expect(m.count == 0)
   }
 
+  @Test("a wipe takes the keys of every writer this account left here, and no other account's")
+  func wipeTakesEveryWriterOfTheAccount() throws {
+    let m = MemorySecretStore()
+    let s = Secrets(store: m, apiHost: "h")
+    let orphan = try #require(WriterID("ios-1a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"))
+    let otherUser = try #require(UserID("7f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d"))
+    let otherWriter = try #require(WriterID("ios-2a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"))
+    for w in [writer, orphan] {
+      try s.writeWriterSeed(Data(count: 32), userID: user, writerID: w)
+      try m.write(.approvalKey(userID: user, writerID: w), Data("k".utf8))
+    }
+    try s.writeWriterSeed(Data(count: 32), userID: otherUser, writerID: otherWriter)
+    try m.write(.approvalKey(userID: otherUser, writerID: otherWriter), Data("k".utf8))
+
+    try s.wipeAccount(userID: user, writerID: writer)
+
+    #expect(try m.read(.writerKey(userID: user, writerID: writer)) == nil)
+    #expect(try m.read(.writerKey(userID: user, writerID: orphan)) == nil)
+    #expect(try m.read(.approvalKey(userID: user, writerID: orphan)) == nil)
+    #expect(try m.read(.writerKey(userID: otherUser, writerID: otherWriter)) != nil)
+    #expect(try m.read(.approvalKey(userID: otherUser, writerID: otherWriter)) != nil)
+  }
+
+  @Test("a wipe with no binding still takes the account's writer keys")
+  func wipeWithoutABoundWriter() throws {
+    let m = MemorySecretStore()
+    let s = Secrets(store: m, apiHost: "h")
+    try s.writeWriterSeed(Data(count: 32), userID: user, writerID: writer)
+    try s.wipeAccount(userID: user, writerID: nil)
+    #expect(m.count == 0)
+  }
+
   struct RefusesApprovalKey: SecretStore {
     let inner: MemorySecretStore
     func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { try inner.read(item) }
@@ -248,6 +495,7 @@ struct SecretTests {
       if case .approvalKey = item { throw .notNow(status: -25308) }
       try inner.delete(item)
     }
+    func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
   }
 
   @Test("a refused delete does not stop the wipe: every other item goes, and the refusal is reported")

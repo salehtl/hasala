@@ -27,6 +27,19 @@ export function onPage(init: (signal: AbortSignal) => void): void {
   run();
 }
 
+export function pageTimer(signal: AbortSignal) {
+  let id = 0;
+  const clear = () => window.clearTimeout(id);
+  signal.addEventListener('abort', clear, { once: true });
+  return {
+    clear,
+    set: (fn: () => void, ms: number) => {
+      clear();
+      id = window.setTimeout(fn, ms);
+    },
+  };
+}
+
 /** An IntersectionObserver that disconnects when the page is swapped out. */
 export function observe(
   signal: AbortSignal,

@@ -83,6 +83,7 @@ struct MainView: View {
     }
     .onChange(of: WidgetLinkInbox.shared.pending) { _, _ in openPendingWidgetLink() }
     .onChange(of: scenePhase, initial: true) { _, phase in
+      app.sceneChanged(onScreen: phase != .background)
       if phase == .active { app.bankTexts?.refresh() }
     }
     .alert(
@@ -99,6 +100,9 @@ struct MainView: View {
         .accessibilityIdentifier("lockedTexts.ok")
     } message: { count in
       Text(BankTexts.lockedNoticeLine(count))
+    }
+    .sheet(isPresented: Self.setAsideShowing(app)) {
+      SetAsideSheet()
     }
     .sheet(item: Bindable(app.router).sheet, onDismiss: { app.router.sheetDismissed() }) { route in
       switch route {
@@ -139,6 +143,12 @@ struct MainView: View {
     }
   }
 
+  static func setAsideShowing(_ app: AppModel) -> Binding<Bool> {
+    Binding(
+      get: { app.syncNotices.setAside > 0 && app.router.sheet == nil && app.router.cover == nil },
+      set: { if !$0, app.router.sheet == nil, app.router.cover == nil { app.syncNotices.acknowledgeSetAside() } })
+  }
+
   private var lockedNoticeShowing: Binding<Bool> {
     Binding(
       get: { app.bankTexts?.lockedNotice != nil && app.router.sheet == nil && app.router.cover == nil },
@@ -169,12 +179,20 @@ struct TransactionHost: View {
   let app: AppModel
   @State private var model: TransactionViewModel
 
-  init(app: AppModel, id: TxnID) {
+  init(app: AppModel, id: TxnID, close: (() -> Void)? = nil) {
     self.app = app
-    _model = State(initialValue: TransactionViewModel(app: app, id: id))
+    _model = State(initialValue: TransactionViewModel(app: app, id: id, close: close))
   }
 
   var body: some View { TransactionSheet(app: app, model: model) }
+}
+
+extension View {
+  func nestedTransactionSheet<Item: Identifiable>(item: Binding<Item?>, app: AppModel) -> some View where Item.ID == TxnID {
+    sheet(item: item, onDismiss: { app.router.transaction = [] }) { opened in
+      TransactionHost(app: app, id: opened.id) { item.wrappedValue = nil }
+    }
+  }
 }
 
 /// Change a budget keeps one view model while it is up.

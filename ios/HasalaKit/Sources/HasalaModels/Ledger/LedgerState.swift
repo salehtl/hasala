@@ -292,6 +292,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var splits: [SplitLine]
   public var isRefund: Bool
   public var isTransfer: Bool
+  public var isMatchedTransfer: Bool
   public var archived: Bool
   public var projectID: ProjectID?
   public var billID: BillID?
@@ -319,6 +320,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var mergedInto: TxnID?
   public var mayRepeat: MayRepeat?
   public var refundOf: TxnID?
+  public var refundLinkBroken: Bool
   public var isReversal: Bool
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
@@ -333,7 +335,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     postedAt: LocalDateTime, postedTimeKnown: Bool = true, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
-    isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
+    isTransfer: Bool = false, isMatchedTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
     provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil,
     heldCopy: HeldCopy? = nil,
     samePurchase: SamePurchaseMatch? = nil,
@@ -351,6 +353,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     combinedCopy: TxnID? = nil,
     mayRepeat: MayRepeat? = nil,
     refundOf: TxnID? = nil,
+    refundLinkBroken: Bool = false,
     isReversal: Bool = false
   ) {
     self.id = id
@@ -373,6 +376,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.splits = splits
     self.isRefund = isRefund
     self.isTransfer = isTransfer
+    self.isMatchedTransfer = isMatchedTransfer
     self.archived = archived
     self.projectID = projectID
     self.billID = billID
@@ -395,6 +399,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.combinedCopy = combinedCopy
     self.mayRepeat = mayRepeat
     self.refundOf = refundOf
+    self.refundLinkBroken = refundLinkBroken
     self.isReversal = isReversal
   }
 
@@ -440,6 +445,12 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   }
 
   public var isEstimate: Bool { homeMinor != nil && homeSource == .rate }
+
+  public mutating func setStatedHome(_ minor: Int64) {
+    homeMinor = minor
+    homeSource = .stated
+    homeRateMicro = nil
+  }
 
   public var isNotCounted: Bool { homeMinor == nil }
 
@@ -762,6 +773,17 @@ public struct PlanState: Sendable, Hashable, Codable {
 
   public func setToZero(_ category: CategoryID, _ month: YearMonth) -> Bool { zeroSet.contains(Self.key(category, month)) }
 
+  public mutating func setBudget(_ category: CategoryID, _ month: YearMonth, to amount: Money) {
+    let key = Self.key(category, month)
+    budgets[key] = amount
+    if amount.minor == 0 { zeroSet.insert(key) } else { zeroSet.remove(key) }
+  }
+
+  public mutating func setBudget(_ category: CategoryID, _ month: YearMonth, to amount: Money, thisMonth: YearMonth) {
+    setBudget(category, month, to: amount)
+    if month == thisMonth { expiredMoves[category] = nil }
+  }
+
   public func budget(_ category: CategoryID, _ month: YearMonth) -> Money {
     budgets[Self.key(category, month)] ?? .aed(0)
   }
@@ -770,7 +792,7 @@ public struct PlanState: Sendable, Hashable, Codable {
 /// Mailbox health for Profile and Bank alerts (spec 04 §7.10). Content-free.
 public struct MailboxHealth: Sendable, Hashable, Codable {
   public enum Status: String, Sendable, Hashable, Codable {
-    case working, quiet, notConnected, reconnect
+    case working, notConnected, reconnect
     /// The first import after connecting is still reading the backfill window.
     case importing
   }

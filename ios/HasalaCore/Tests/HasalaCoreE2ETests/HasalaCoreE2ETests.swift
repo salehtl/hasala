@@ -7,6 +7,7 @@ import CoreSoftAuth
 import CoreSync
 import CoreTestSupport
 import Foundation
+import Synchronization
 import Testing
 
 @Suite("Accounts: signup, creation, sign-in, enrolment")
@@ -206,6 +207,73 @@ struct AccountTests {
     #expect(await AccountSignIn.signOut(a.env) == true)
     #expect(try a.env.secrets.session() == nil)
   }
+
+  @Test("sign-out of a session the Keychain will not read now is not reported as confirmed")
+  func signOutNotNow() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    a.keychain.locked = true
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    a.keychain.locked = false
+    #expect(try a.env.secrets.session() != nil)
+  }
+
+  @Test("sign-out of a session item that cannot be read removes it, so the sign-out holds on the next launch")
+  func signOutUnreadable() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    try a.keychain.write(.session(apiHost: "api.hasala.app"), Data("not json".utf8))
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    #expect(try a.keychain.read(.session(apiHost: "api.hasala.app")) == nil)
+  }
+
+  @Test("sign-out reports no confirmation for a session it could not read, and keeps what it could not act on")
+  func signOutUnconfirmed() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    a.keychain.locked = true
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    a.keychain.locked = false
+    #expect(try a.env.secrets.session()?.pending_logout == false)
+    try a.keychain.write(.session(apiHost: "api.hasala.app"), Data("not a session".utf8))
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    try a.env.secrets.deleteSession()
+    #expect(await AccountSignIn.signOut(a.env) == true)
+  }
+
+  func bearerFailure(_ env: AccountEnvironment) -> CeremonyError? {
+    do {
+      _ = try AccountSignIn.liveBearer(env)
+      return nil
+    } catch {
+      return error
+    }
+  }
+
+  @Test("no session, or a pending logout, is the server's 401; a session held back by the Keychain is not")
+  func liveBearer() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    #expect(bearerFailure(a.env) == nil)
+    a.keychain.locked = true
+    let held = try #require(bearerFailure(a.env))
+    #expect(held.failure == nil)
+    guard case .secret(.notNow) = held else {
+      Issue.record("expected the Keychain's not-now")
+      return
+    }
+    a.keychain.locked = false
+    var pending = try #require(try a.env.secrets.session())
+    pending.pending_logout = true
+    try a.env.secrets.writeSession(pending)
+    #expect(bearerFailure(a.env)?.failure?.status == 401)
+    try a.env.secrets.deleteSession()
+    #expect(bearerFailure(a.env)?.failure?.status == 401)
+  }
 }
 
 @Suite("Step-up helper")
@@ -224,6 +292,27 @@ struct StepUpTests {
     let r = try await a.env.client.api.send(
       APIRequest(method: .post, path: "/api/v1/auth/logout-all", body: try APIClient.encode(Body(step_up: proof.stepUp)), bearer: token))
     #expect(r.status == 204)
+  }
+
+  @Test("a session signed out while offline cannot prove a step-up")
+  func signedOutSessionProvesNothing() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    var held = try #require(try a.env.secrets.session())
+    held.pending_logout = true
+    try a.env.secrets.writeSession(held)
+    do {
+      _ = try await StepUpHelper.prove(
+        a.env, params: .sessionLogoutAll, factor: .device(password: password), binding: a.binding, reason: "x")
+      Issue.record("expected the signed-out refusal")
+    } catch {
+      guard case .api(.refused(let failure)) = error, failure.status == 401 else {
+        Issue.record("got \(error)")
+        return
+      }
+    }
+    #expect(a.dak.signatureCount == 0)
   }
 
   @Test("a challenge that is not this client's C is refused before any prompt")
@@ -375,6 +464,53 @@ struct AccountManagementTests {
     #expect(try storedOps(ctxB).map(\.opID) == [op(1).opID])
   }
 
+  @Test("delete: the step before the wipe runs once the server agreed, with every item still here")
+  func deleteRunsItsStepBeforeTheWipe() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let keychain = a.keychain
+    let seen = Mutex<Int?>(nil)
+    try await AccountManagement.deleteAccount(
+      a.env, ctx: ctx, factor: .device(password: password), binding: try #require(a.binding),
+      beforeWipe: { seen.withLock { $0 = keychain.count } })
+    #expect(try #require(seen.withLock { $0 }) > 0)
+    #expect(a.keychain.count == 0)
+  }
+
+  @Test("delete: a refused deletion never reaches the step before the wipe")
+  func aRefusedDeleteDoesNotRunItsStep() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let seen = Mutex(false)
+    await #expect(throws: CeremonyError.self) {
+      try await AccountManagement.deleteAccount(
+        a.env, ctx: ctx, factor: .device(password: "not the password at all 7"), binding: try #require(a.binding),
+        beforeWipe: { seen.withLock { $0 = true } })
+    }
+    #expect(!seen.withLock { $0 })
+    #expect(a.keychain.count > 0)
+  }
+
+  @Test("remove: the step before the wipe runs once the server agreed, with every item still here")
+  func removeRunsItsStepBeforeTheWipe() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, ctxA) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    let r = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+    _ = try await Enrolment.enrolWriter(b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+    let keychain = a.keychain
+    let seen = Mutex<Int?>(nil)
+    try await AccountManagement.removeThisIPhone(
+      a.env, engine: SyncEngine(context: ctxA), factor: .device(password: password), binding: try #require(a.binding),
+      beforeWipe: { seen.withLock { $0 = keychain.count } })
+    #expect(try #require(seen.withLock { $0 }) > 0)
+    #expect(a.keychain.count == 0)
+  }
+
   @Test("delete: step-up account.delete plus the DWK's DeletionMessage; afterwards 410 wipes other iPhones")
   func delete() async throws {
     let w = World()
@@ -389,5 +525,66 @@ struct AccountManagementTests {
     } catch {
       #expect(error.failure?.status == 410 && error.failure?.code == "account_deleted")
     }
+  }
+
+  @Test("delete: the answer is lost and the server says the account is gone, so it ends here too")
+  func deleteAnswerLost() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    w.server.loseNextAccountDeleteAnswer()
+    try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: try #require(a.binding))
+    #expect(a.keychain.count == 0)
+  }
+
+  @Test("delete: the answer is lost and the check can't reach the server; asking again finds it gone")
+  func deleteAnswerLostAndCheckFails() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let held = a.keychain.count
+    w.server.loseNextAccountDeleteAnswer()
+    w.server.refuseNext("GET /api/v1/account", status: 503, code: "unavailable")
+    await #expect(throws: CeremonyError.self) {
+      try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+    }
+    #expect(a.keychain.count == held)
+    try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+    #expect(a.keychain.count == 0)
+  }
+
+  @Test("delete: a failure the server did not act on keeps the account and everything here")
+  func deleteFailsAndAccountStays() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let held = a.keychain.count
+    w.server.refuseNext("DELETE /api/v1/account", status: 503, code: "unavailable")
+    await #expect(throws: CeremonyError.self) {
+      try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+    }
+    #expect(a.keychain.count == held)
+    let token = try #require(try a.env.secrets.session()).token
+    #expect(try await a.env.client.account(bearer: token).user_id == binding.user_id)
+  }
+
+  @Test("delete: a session waiting for its logout counts as signed out, so nothing is sent")
+  func deleteWithPendingLogout() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let token = try #require(try a.env.secrets.session()).token
+    w.server.refuseNext("POST /api/v1/auth/logout", status: 503, code: "unavailable")
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    do {
+      try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+      Issue.record("expected the session to count as signed out")
+    } catch {
+      #expect(error.failure?.status == 401)
+    }
+    #expect(try await a.env.client.account(bearer: token).user_id == binding.user_id)
   }
 }

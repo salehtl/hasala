@@ -7,10 +7,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/pgtest"
@@ -227,5 +230,233 @@ func TestARevocationTheLedgerDidNotRecordIsNotReportedAsDone(t *testing.T) {
 	w := req(c, "POST", path, form, nil)
 	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "restore ledger") {
 		t.Fatalf("revoke with a failed ledger write: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestAResendPastTheMintLimitIsRefusedAndAudited(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	var entry string
+	if err := pool.QueryRow(bg, `INSERT INTO waitlist_entries (email_tag, email_norm, state, bank_slug, source, created_at,
+		updated_at, confirmed_at, invited_at) VALUES (decode(repeat('ab', 32), 'hex'), 'limit@example.com', 'invited', 'enbd', 'web',
+		now(), now(), now(), now()) RETURNING id`).Scan(&entry); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	if err := pool.QueryRow(bg, `INSERT INTO invite_codes (code_hash, email_tag, waitlist_entry_id, origin, state, created_at,
+		minted_at, expires_at, mint_count) VALUES (decode(repeat('cd', 32), 'hex'), decode(repeat('ab', 32), 'hex'), $1, 'admin',
+		'active', now(), now(), now() + interval '1 day', $2) RETURNING id`, entry, invites.MaxMints).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	path := "/invites/" + id + "/resend"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id, c.now())}}
+	w := req(c, "POST", path, form, nil)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "refused") {
+		t.Fatalf("resend at the limit: %d %s", w.Code, w.Body)
+	}
+	var queued int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE invite_id = $1`, id).Scan(&queued); err != nil || queued != 0 {
+		t.Fatalf("%d mail rows, %v", queued, err)
+	}
+	var result, code string
+	if err := pool.QueryRow(bg, `SELECT result, error_code FROM admin_audit WHERE action = 'console.invite.resend'`).
+		Scan(&result, &code); err != nil {
+		t.Fatal(err)
+	}
+	if result != "refused" || code != "mint_limit" {
+		t.Fatalf("audit %s %s", result, code)
+	}
+}
+
+func TestARevocationTheLedgerMissedIsRecordedByPostingItAgain(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	broken := true
+	c.Record = func(e purgeledger.Entry) error {
+		if broken {
+			return os.ErrPermission
+		}
+		return purgeledger.AppendEntries(ledger, e)
+	}
+	c.Missing = func(e purgeledger.Entry) (bool, error) { return purgeledger.Missing(ledger, e, time.Time{}) }
+	id, _, err := invites.MintPrinted(bg, pool, "", invites.DefaultTTL, false, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/invites/" + id.String() + "/revoke"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id.String(), c.now())}}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusInternalServerError {
+		t.Fatalf("revoke with a failed ledger write: %d %s", w.Code, w.Body)
+	}
+	var closed time.Time
+	if err := pool.QueryRow(bg, `SELECT closed_at FROM invite_codes WHERE id = $1`, id).Scan(&closed); err != nil {
+		t.Fatal(err)
+	}
+
+	broken = false
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("posting again: %d %s", w.Code, w.Body)
+	}
+	entries, err := purgeledger.Read(ledger)
+	if err != nil || len(entries) != 1 || entries[0].Kind != purgeledger.KindInviteRevoked || entries[0].ID != id ||
+		!entries[0].At.Equal(closed.Truncate(time.Second)) {
+		t.Fatalf("ledger %+v %v, want the revocation at %v", entries, err, closed)
+	}
+
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusConflict {
+		t.Fatalf("a third post: %d %s", w.Code, w.Body)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 1 {
+		t.Fatalf("ledger %+v %v after a third post, want one entry", entries, err)
+	}
+	var ok, refused int
+	_ = pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE result = 'ok'), count(*) FILTER (WHERE result = 'refused')
+		FROM admin_audit WHERE action = 'console.invite.revoke'`).Scan(&ok, &refused)
+	if ok != 2 || refused != 1 {
+		t.Fatalf("audit ok=%d refused=%d", ok, refused)
+	}
+}
+
+func TestPostingARevokeForAnInviteThatWasNeverRevokedStaysRefused(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	c.Record = func(e purgeledger.Entry) error { return purgeledger.AppendEntries(ledger, e) }
+	c.Missing = func(e purgeledger.Entry) (bool, error) { return purgeledger.Missing(ledger, e, time.Time{}) }
+	id := uuid.New()
+	path := "/invites/" + id.String() + "/revoke"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id.String(), c.now())}}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusConflict {
+		t.Fatalf("revoke of an unknown invite: %d %s", w.Code, w.Body)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 0 {
+		t.Fatalf("ledger %+v %v, want nothing recorded", entries, err)
+	}
+}
+
+func onceConsole(t *testing.T) (*Console, *time.Time) {
+	t.Helper()
+	c := New(pgtest.New(t), host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	now := time.Now().Truncate(time.Second)
+	c.Now = func() time.Time { return now }
+	return c, &now
+}
+
+func countInvites(t *testing.T, c *Console) (invitesMade, mails int) {
+	t.Helper()
+	if err := c.Pool.QueryRow(bg, `SELECT (SELECT count(*) FROM invite_codes), (SELECT count(*) FROM mail_log)`).Scan(&invitesMade, &mails); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func TestAMintFormMintsOnce(t *testing.T) {
+	c, now := onceConsole(t)
+	tok := c.csrf("owner@github", "/invites/mint", "", c.now())
+	form := url.Values{"csrf": {tok}, "note": {"friend"}}
+	if w := req(c, "POST", "/invites/mint", form, nil); w.Code != http.StatusOK {
+		t.Fatalf("mint: %d %s", w.Code, w.Body)
+	}
+	w := req(c, "POST", "/invites/mint", form, nil)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "Go back and reload") {
+		t.Fatalf("the same form again: %d %s", w.Code, w.Body)
+	}
+	if made, _ := countInvites(t, c); made != 1 {
+		t.Fatalf("%d invites from one form", made)
+	}
+	var refused int
+	_ = c.Pool.QueryRow(bg, `SELECT count(*) FROM admin_audit WHERE action = 'console.invite.mint' AND result = 'refused'`).Scan(&refused)
+	if refused != 1 {
+		t.Fatalf("%d refused audit rows, want the repeat audited", refused)
+	}
+
+	*now = now.Add(time.Second)
+	fresh := url.Values{"csrf": {c.csrf("owner@github", "/invites/mint", "", c.now())}}
+	if w := req(c, "POST", "/invites/mint", fresh, nil); w.Code != http.StatusOK {
+		t.Fatalf("a reloaded form: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestAMintFormThatFailedCanBeSentAgain(t *testing.T) {
+	c, _ := onceConsole(t)
+	tok := c.csrf("owner@github", "/invites/mint", "", c.now())
+	bad := url.Values{"csrf": {tok}, "email": {"not an address"}}
+	if w := req(c, "POST", "/invites/mint", bad, nil); w.Code != http.StatusConflict {
+		t.Fatalf("a bad address: %d %s", w.Code, w.Body)
+	}
+	good := url.Values{"csrf": {tok}, "email": {"guest@example.com"}}
+	if w := req(c, "POST", "/invites/mint", good, nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("the corrected form: %d %s", w.Code, w.Body)
+	}
+	if made, mails := countInvites(t, c); made != 1 || mails != 1 {
+		t.Fatalf("%d invites and %d mails", made, mails)
+	}
+}
+
+func TestADoubleSubmittedMintFormMintsOnce(t *testing.T) {
+	c, _ := onceConsole(t)
+	form := url.Values{"csrf": {c.csrf("owner@github", "/invites/mint", "", c.now())}}
+	codes := make(chan int, 8)
+	for range cap(codes) {
+		go func() { codes <- req(c, "POST", "/invites/mint", form, nil).Code }()
+	}
+	done, refused := 0, 0
+	for range cap(codes) {
+		switch code := <-codes; code {
+		case http.StatusOK:
+			done++
+		case http.StatusConflict:
+			refused++
+		default:
+			t.Fatalf("status %d", code)
+		}
+	}
+	if made, _ := countInvites(t, c); done != 1 || refused != cap(codes)-1 || made != 1 {
+		t.Fatalf("%d done, %d refused, %d invites", done, refused, made)
+	}
+}
+
+func TestAResendFormSendsOnce(t *testing.T) {
+	c, now := onceConsole(t)
+	mint := url.Values{"csrf": {c.csrf("owner@github", "/invites/mint", "", c.now())}, "email": {"guest@example.com"}}
+	if w := req(c, "POST", "/invites/mint", mint, nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("mint: %d %s", w.Code, w.Body)
+	}
+	var id string
+	if err := c.Pool.QueryRow(bg, `SELECT id FROM invite_codes`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	path := "/invites/" + id + "/resend"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id, c.now())}}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("resend: %d %s", w.Code, w.Body)
+	}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusConflict {
+		t.Fatalf("the same form again: %d %s", w.Code, w.Body)
+	}
+	if _, mails := countInvites(t, c); mails != 2 {
+		t.Fatalf("%d mails, want the first and one resend", mails)
+	}
+
+	*now = now.Add(time.Second)
+	again := url.Values{"csrf": {c.csrf("owner@github", path, id, c.now())}}
+	if w := req(c, "POST", path, again, nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("a resend from a reloaded page: %d %s", w.Code, w.Body)
+	}
+	if _, mails := countInvites(t, c); mails != 3 {
+		t.Fatalf("%d mails after a deliberate second resend", mails)
+	}
+}
+
+func TestSpentFormsAreForgottenWhenTheyExpire(t *testing.T) {
+	var s spentTokens
+	at := time.Now()
+	if !s.claim("a", at) || s.claim("a", at) {
+		t.Fatal("a form was not spent by its first use")
+	}
+	s.claim("b", at.Add(csrfTTL+time.Second))
+	if len(s.until) != 1 {
+		t.Fatalf("%d forms held after one expired", len(s.until))
 	}
 }

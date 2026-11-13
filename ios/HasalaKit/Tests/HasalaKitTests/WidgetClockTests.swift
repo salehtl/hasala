@@ -43,4 +43,16 @@ struct WidgetClockTests {
     let none = WidgetReading(nil, at: utc("2026-11-01T05:00:00Z"))
     #expect(none.snapshot == nil && !none.stale)
   }
+
+  @Test func aFileThatCannotBeUsedAsksToOpenTheApp() {
+    let at = utc("2026-11-01T05:00:00Z")
+    let unusable = WidgetReading(StoredWidgetSnapshot.unusable, at: at)
+    #expect(unusable.snapshot == nil && unusable.stale)
+    let absent = WidgetReading(StoredWidgetSnapshot.absent, at: at)
+    #expect(absent.snapshot == nil && !absent.stale)
+    let today = snapshot(on: LocalDate(2026, 11, 1))
+    #expect(WidgetReading(StoredWidgetSnapshot.usable(today), at: at) == WidgetReading(today, at: at))
+    let yesterday = snapshot(on: LocalDate(2026, 10, 31))
+    #expect(WidgetReading(StoredWidgetSnapshot.usable(yesterday), at: at).stale)
+  }
 }

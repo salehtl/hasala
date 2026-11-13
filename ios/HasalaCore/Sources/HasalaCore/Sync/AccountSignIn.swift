@@ -26,6 +26,11 @@ public struct SignInResult: Sendable {
   public var boundWriter: WriterID? { grant.writer_id.flatMap(WriterID.init) }
 }
 
+struct SigningWriter: Sendable {
+  let userID: UserID
+  let writerID: WriterID
+}
+
 public enum AccountSignIn {
   /// C2-P / C2b-P. `bound` is this iPhone's binding when it has a live writer.
   public static func withPassword(
@@ -53,7 +58,27 @@ public enum AccountSignIn {
 
   /// C2 / C2b. `wantPRF` asks the assertion for the PRF output (an unbound
   /// iPhone that will unlock with Face ID).
-  public static func withPasskey(_ env: AccountEnvironment, bound: AccountBinding?, wantPRF: Bool)
+  public static func withPasskey(_ env: AccountEnvironment, bound: AccountBinding?, wantPRF: Bool, only: [Data] = [])
+    async throws(CeremonyError) -> SignInResult
+  {
+    try await passkeyLogin(env, writer: signingWriter(bound), wantPRF: wantPRF, only: only)
+  }
+
+  public static func replacingHeldSession(_ env: AccountEnvironment, wantPRF: Bool, only: [Data] = [])
+    async throws(CeremonyError) -> SignInResult
+  {
+    guard let held = try await NewDevice.heldRegistration(env) else {
+      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF, only: only)
+    }
+    do {
+      return try await passkeyLogin(env, writer: held, wantPRF: wantPRF, only: only)
+    } catch {
+      guard error.failureClass == .otherAccountDevice || error.failureClass == .deviceRefused else { throw error }
+      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF, only: only)
+    }
+  }
+
+  private static func passkeyLogin(_ env: AccountEnvironment, writer: SigningWriter?, wantPRF: Bool, only: [Data])
     async throws(CeremonyError) -> SignInResult
   {
     guard let passkeys = env.passkeys else { throw .passkey(.unsupported) }
@@ -63,25 +88,57 @@ public enum AccountSignIn {
     let assertion: RawAssertion
     do {
       assertion = try await passkeys.assert(
-        challenge: options.challenge, allowCredentialIDs: options.allowCredentialIDs,
+        challenge: options.challenge, allowCredentialIDs: only.isEmpty ? options.allowCredentialIDs : only,
         prfSalt: wantPRF ? KeyDerivation.prfSalt : nil)
     } catch {
       throw .passkey(error)
     }
-    let device = try binding(env, bound: bound, challenge: options.challenge)
+    let device = try proof(env, writer: writer, challenge: options.challenge)
     let grant = try await apiStep { () async throws(APIError) in
       try await env.client.loginFinish(
         LoginFinishRequest(ceremonyID: begin.ceremony_id, credential: assertion.credential, device: device))
     }
-    try AccountCreation.writeSession(env, grant)
+    try AccountCreation.writeSession(env, grant, signupEmailNorm: AccountCreation.heldSignupAddress(env, userID: grant.user_id))
     return SignInResult(grant: grant, emailNorm: nil, serverSalt: nil, assertion: assertion)
+  }
+
+  public static func forPasskeyUnlock(_ env: AccountEnvironment) async throws(CeremonyError) -> SignInResult {
+    var wrapped: [Data] = []
+    if let bearer = try? AccountCreation.currentBearer(env), let listed = try? await env.client.keyWraps(bearer: bearer) {
+      wrapped = listed.wraps.compactMap { try? Base64.decodeURL($0.credential_id) }
+    }
+    return try await replacingHeldSession(env, wantPRF: true, only: wrapped)
+  }
+
+  public static func passkeyUnlockOffer(_ env: AccountEnvironment, after r: SignInResult) async -> (
+    signIn: SignInResult, canUnlock: Bool
+  ) {
+    guard let a = r.assertion, a.prfFirst != nil else { return (r, false) }
+    guard let listed = try? await env.client.keyWraps(bearer: r.grant.session_token) else { return (r, true) }
+    let wrapped = listed.wraps.compactMap { try? Base64.decodeURL($0.credential_id) }
+    if wrapped.contains(a.credentialID) { return (r, true) }
+    a.prfFirst?.wipe()
+    let spent = SignInResult(grant: r.grant, emailNorm: r.emailNorm, serverSalt: r.serverSalt, assertion: nil)
+    return (spent, !wrapped.isEmpty)
   }
 
   /// The SessionBind proof for a bound iPhone, or `nil` when unbound.
   static func binding(_ env: AccountEnvironment, bound: AccountBinding?, challenge: Data) throws(CeremonyError)
     -> DeviceBindingJSON?
   {
+    try proof(env, writer: signingWriter(bound), challenge: challenge)
+  }
+
+  private static func signingWriter(_ bound: AccountBinding?) -> SigningWriter? {
     guard let bound, let u = bound.userID, let w = bound.writerID else { return nil }
+    return SigningWriter(userID: u, writerID: w)
+  }
+
+  private static func proof(_ env: AccountEnvironment, writer: SigningWriter?, challenge: Data) throws(CeremonyError)
+    -> DeviceBindingJSON?
+  {
+    guard let writer else { return nil }
+    let (u, w) = (writer.userID, writer.writerID)
     guard let seed = try secretStep({ () throws(SecretStoreError) in try env.secrets.writerSeed(userID: u, writerID: w) })
     else { return nil }
     defer { seed.wipe() }
@@ -91,12 +148,29 @@ public enum AccountSignIn {
     return DeviceBindingJSON(writerID: w.string, sigB64: Base64.encode(sig))
   }
 
+  public static func liveBearer(_ env: AccountEnvironment) throws(CeremonyError) -> String {
+    guard let s = try secretStep({ () throws(SecretStoreError) in try env.secrets.session() }), !s.pending_logout else {
+      throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
+    }
+    return s.token
+  }
+
   /// §4.7 row 1: `POST /auth/logout` BEFORE the session item goes; offline →
   /// keep it with `pending_logout: true` and treat the app as signed out.
   /// Returns whether the server confirmed (`204` or `401`).
   @discardableResult
   public static func signOut(_ env: AccountEnvironment) async -> Bool {
-    guard let s = try? env.secrets.session() else { return true }
+    let stored: SessionRecord?
+    do {
+      stored = try env.secrets.session()
+    } catch .notNow {
+      return false
+    } catch {
+      try? env.secrets.deleteSession()
+      return false
+    }
+    guard let s = stored else { return true }
+    removeUnboundStore(env, of: s)
     do {
       try await env.client.logout(bearer: s.token)
     } catch {
@@ -112,6 +186,22 @@ public enum AccountSignIn {
     try? env.secrets.deleteSession()
     return true
   }
+
+  public static func forgetEndedSession(_ env: AccountEnvironment) {
+    guard let s = try? env.secrets.activeSession() else { return }
+    removeUnboundStore(env, of: s)
+    try? env.secrets.deleteSession()
+  }
+
+  private static func removeUnboundStore(_ env: AccountEnvironment, of session: SessionRecord) {
+    guard let user = UserID(session.user_id), let dir = env.storeDirectory(for: user) else { return }
+    do {
+      if try env.secrets.binding() != nil { return }
+    } catch {
+      return
+    }
+    try? FileManager.default.removeItem(at: dir)
+  }
 }
 
 /// The step-up helper (spec 04 §6.3; 01 §10.2; `02` §8.1).
@@ -123,9 +213,6 @@ public enum StepUpHelper {
     case passkey
     /// The current password and the DAK (Face ID or the passcode).
     case device(password: String)
-    /// The emailed code and the DAK (`password.reset` only). Call
-    /// `beginDeviceCode` first, then `proveDeviceCode` per typed code.
-    case deviceCode
   }
 
   public struct Proof: @unchecked Sendable {  // `prf` is handed to one ceremony, which wipes it
@@ -144,7 +231,6 @@ public enum StepUpHelper {
       switch factor {
       case .passkey: .passkey
       case .device: .device
-      case .deviceCode: .deviceCode
       }
     guard params.proofKinds.contains(kind) else { throw kind == .passkey ? .noDeviceKey : .needsPasskey }
     let bearer = try AccountCreation.currentBearer(env)
@@ -187,22 +273,16 @@ public enum StepUpHelper {
           nonce: begin.nonce,
           proof: .device(writerID: w.string, sigB64: Base64.encode(sig), verifierB64: s.withUnsafeBytes { Base64.encode($0) })),
         prf: nil, credentialID: nil)
-    case .deviceCode:
-      guard let binding, let u = binding.userID, let w = binding.writerID else { throw .noDeviceKey }
-      // The DAK signs ONCE; a wrong code re-sends the same signature (≤ 5 tries).
-      let sig = try await dakSign(env, challenge: challenge, userID: u, writerID: w, reason: reason)
-      return Proof(
-        stepUp: StepUpJSON(nonce: begin.nonce, proof: .deviceCode(writerID: w.string, sigB64: Base64.encode(sig), code: "")),
-        prf: nil, credentialID: nil)
     }
   }
 
   /// A `device_code` proof with the typed code, reusing the stored signature.
-  public static func withCode(_ proof: Proof, code: String) -> StepUpJSON {
+  public static func withCode(_ proof: Proof, code: String) throws(CeremonyError) -> StepUpJSON {
     let p = proof.stepUp.proof
-    return StepUpJSON(
-      nonce: proof.stepUp.nonce,
-      proof: .deviceCode(writerID: p.writer_id ?? "", sigB64: p.sig ?? "", code: code))
+    guard p.kind == StepUpProofKind.deviceCode.rawValue, let writer = p.writer_id, let sig = p.sig else {
+      throw .noDeviceKey
+    }
+    return StepUpJSON(nonce: proof.stepUp.nonce, proof: .deviceCode(writerID: writer, sigB64: sig, code: code))
   }
 
   static func dakSign(_ env: AccountEnvironment, challenge: Data, userID: UserID, writerID: WriterID, reason: String)
@@ -222,6 +302,11 @@ public enum StepUpHelper {
 public enum AccountWipe {
   public static func wipe(_ env: AccountEnvironment, userID: UserID, writerID: WriterID?) {
     try? env.secrets.wipeAccount(userID: userID, writerID: writerID)
-    if let dir = env.storeDirectory(for: userID) { try? FileManager.default.removeItem(at: dir) }
+    guard !stillBound(env, userID: userID), let dir = env.storeDirectory(for: userID) else { return }
+    try? FileManager.default.removeItem(at: dir)
+  }
+
+  private static func stillBound(_ env: AccountEnvironment, userID: UserID) -> Bool {
+    do { return try env.secrets.binding()?.user_id == userID.string } catch { return true }
   }
 }

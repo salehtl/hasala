@@ -94,6 +94,48 @@ extension FakeLedger {
     }())
   }
 
+  @Test(arguments: [Backend.sqlite, .memory])
+  func theConnectedTimeOutlivesTheLaterImport(_ backend: Backend) async {
+    let rig = Rig(backend: backend)
+    seedPast(rig)
+    _ = await skip(rig)
+    #expect(await rig.engine.status().connectedAtMs == t0)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    rig.clock.advance(5 * Self.day)
+    #expect(await rig.engine.importPastMail().completed)
+    let s = await rig.state()
+    #expect(s.readFromMs == nil && s.scanStartedMs == t0)
+    #expect(await rig.engine.status().connectedAtMs == t0)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.engine.status().connectedAtMs == t0)
+  }
+
+  @Test func aLaterImportThatCouldNotBeSavedDidNotStart() async throws {
+    let rig = Rig(backend: .memory)
+    seedPast(rig)
+    _ = await skip(rig)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    let floor = await rig.state().readFromMs
+    await rig.memory.setFailNextCommit(true)
+
+    let refused = await rig.engine.importPastMail()
+    #expect(refused.haltedOn == .offline && !refused.completed)
+    #expect(!refused.pastImportStarted)
+    #expect(await rig.state().readFromMs == floor)
+    #expect(try await rig.store.pendingImports().isEmpty)
+
+    let retried = await rig.engine.importPastMail()
+    #expect(retried.pastImportStarted && retried.completed && retried.ops == 2)
+  }
+
+  @Test func aLaterImportWithNothingToDoDidNotStart() async {
+    let rig = Rig()
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    let imported = await rig.engine.importPastMail()
+    #expect(imported.phase == .active && !imported.pastImportStarted && !imported.completed)
+  }
+
   @Test func aLaterImportThatStopsFinishesOnALaterCycle() async throws {
     let rig = Rig()
     seedPast(rig)
@@ -101,6 +143,7 @@ extension FakeLedger {
     _ = await rig.engine.runCycle(trigger: .launch)
     await rig.ledger.setSyncFails(true)
     let cut = await rig.engine.importPastMail()
+    #expect(cut.pastImportStarted)
     #expect(cut.haltedOn == .offline && cut.ops == 0)
     #expect(await rig.state().readFromMs == nil)
     #expect(try await rig.store.pendingImports().count > 0)

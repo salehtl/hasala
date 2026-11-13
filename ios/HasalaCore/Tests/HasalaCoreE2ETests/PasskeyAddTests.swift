@@ -17,6 +17,29 @@ struct SplitPasskeys: PasskeyProvider {
   func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
     try await asserting.assert(challenge: challenge, allowCredentialIDs: allowCredentialIDs, prfSalt: prfSalt)
   }
+
+  func reportUnknown(credentialID: Data) async {
+    await creating.reportUnknown(credentialID: credentialID)
+  }
+}
+
+struct TwoPasskeys: PasskeyProvider {
+  let wrapped: SoftPasskey
+  let bare: SoftPasskey
+
+  func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
+    try await bare.register(options, prfSalt: prfSalt)
+  }
+
+  func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
+    let bareAllowed = allowCredentialIDs.isEmpty || bare.credentials.contains { allowCredentialIDs.contains($0.id) }
+    return try await (bareAllowed ? bare : wrapped).assert(
+      challenge: challenge, allowCredentialIDs: allowCredentialIDs, prfSalt: prfSalt)
+  }
+
+  func reportUnknown(credentialID: Data) async {
+    await bare.reportUnknown(credentialID: credentialID)
+  }
 }
 
 @Suite("Adding a passkey (passkey.add)")
@@ -75,6 +98,150 @@ struct PasskeyAddTests {
     }
   }
 
+  func env(_ phone: Phone, _ w: World, passkeys: any PasskeyProvider) -> AccountEnvironment {
+    AccountEnvironment(
+      client: phone.env.client, secrets: phone.env.secrets, approvalKeys: phone.dak, passkeys: passkeys, clock: w.clock,
+      random: phone.env.random, apiBase: phone.env.apiBase, accountsDirectory: nil)
+  }
+
+  @Test("an unlock with no assertion in hand asks only for a passkey that has a wrap")
+  func unlockAsksOnlyForAWrappedPasskey() async throws {
+    let w = World()
+    let wrappedKey = SoftPasskey()
+    let bareKey = SoftPasskey()
+    let a = w.phone("a", passkeys: wrappedKey)
+    let (account, words, _) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let body = try await Enrolment.unlockWithPhrase(a.env, userID: account.userID, typed: words.joined(separator: " "))
+    defer { body.wipe() }
+    let wrapped = try await AccountPasskeys.add(a.env, binding: binding, factor: .device(password: password), body: body, reason: "x")
+    let bare = try await AccountPasskeys.add(
+      env(a, w, passkeys: bareKey), binding: binding, factor: .device(password: password), body: nil, reason: "x")
+    #expect(wrapped.unlocksData && !bare.unlocksData)
+
+    let b = w.phone("b")
+    _ = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let unlocking = env(b, w, passkeys: TwoPasskeys(wrapped: wrappedKey, bare: bareKey))
+    let r = try await AccountSignIn.forPasskeyUnlock(unlocking)
+    let assertion = try #require(r.assertion)
+    #expect(assertion.credentialID == wrapped.credentialID)
+    let opened = try await Enrolment.unlockWithPRF(
+      unlocking, userID: account.userID, credentialID: assertion.credentialID, prf: assertion.prfFirst)
+    opened.wipe()
+  }
+
+  @Test("an account with no wrap still signs in with its passkey, and the words take over")
+  func unlockWithNoWrapAtAll() async throws {
+    let w = World()
+    let key = SoftPasskey()
+    let a = w.phone("a", passkeys: key)
+    let (account, _, _) = try await w.passwordAccount(a)
+    let bare = try await AccountPasskeys.add(
+      a.env, binding: try #require(a.binding), factor: .device(password: password), body: nil, reason: "x")
+    #expect(!bare.unlocksData)
+    let b = w.phone("b", passkeys: key)
+    _ = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let r = try await AccountSignIn.forPasskeyUnlock(b.env)
+    let assertion = try #require(r.assertion)
+    #expect(assertion.credentialID == bare.credentialID)
+    do throws(CeremonyError) {
+      _ = try await Enrolment.unlockWithPRF(
+        b.env, userID: account.userID, credentialID: assertion.credentialID, prf: assertion.prfFirst)
+      Issue.record("expected noPRF")
+    } catch {
+      guard case .noPRF = error else {
+        Issue.record("expected noPRF, got \(error)")
+        return
+      }
+    }
+  }
+
+  func accountWithTwoPasskeys(_ w: World) async throws -> (wrapped: Data, bare: Data, wrappedKey: SoftPasskey, both: TwoPasskeys) {
+    let wrappedKey = SoftPasskey()
+    let bareKey = SoftPasskey()
+    let a = w.phone("a", passkeys: wrappedKey)
+    let (account, words, _) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let body = try await Enrolment.unlockWithPhrase(a.env, userID: account.userID, typed: words.joined(separator: " "))
+    defer { body.wipe() }
+    let wrapped = try await AccountPasskeys.add(a.env, binding: binding, factor: .device(password: password), body: body, reason: "x")
+    let bare = try await AccountPasskeys.add(
+      env(a, w, passkeys: bareKey), binding: binding, factor: .device(password: password), body: nil, reason: "x")
+    return (wrapped.credentialID, bare.credentialID, wrappedKey, TwoPasskeys(wrapped: wrappedKey, bare: bareKey))
+  }
+
+  @Test("a passkey sign-in with no wrap of its own gives way to a passkey that has one")
+  func signInWithABarePasskeyUnlocksThroughAWrappedOne() async throws {
+    let w = World()
+    let two = try await accountWithTwoPasskeys(w)
+    let b = env(w.phone("b"), w, passkeys: two.both)
+    let first = try await AccountSignIn.withPasskey(b, bound: nil, wantPRF: true)
+    #expect(first.assertion?.credentialID == two.bare)
+    let offer = await AccountSignIn.passkeyUnlockOffer(b, after: first)
+    #expect(offer.canUnlock)
+    #expect(offer.signIn.assertion == nil)
+    let r = try await AccountSignIn.forPasskeyUnlock(b)
+    let assertion = try #require(r.assertion)
+    #expect(assertion.credentialID == two.wrapped)
+    let opened = try await Enrolment.unlockWithPRF(
+      b, userID: try #require(r.userID), credentialID: assertion.credentialID, prf: assertion.prfFirst)
+    opened.wipe()
+  }
+
+  @Test("a passkey sign-in that has its wrap keeps its assertion for the unlock")
+  func signInWithAWrappedPasskeyKeepsItsAssertion() async throws {
+    let w = World()
+    let two = try await accountWithTwoPasskeys(w)
+    let b = w.phone("b", passkeys: two.wrappedKey)
+    let first = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
+    let offer = await AccountSignIn.passkeyUnlockOffer(b.env, after: first)
+    #expect(offer.canUnlock)
+    let assertion = try #require(offer.signIn.assertion)
+    #expect(assertion.credentialID == two.wrapped)
+    let opened = try await Enrolment.unlockWithPRF(
+      b.env, userID: try #require(first.userID), credentialID: assertion.credentialID, prf: assertion.prfFirst)
+    opened.wipe()
+  }
+
+  @Test("a passkey sign-in on an account with no wrap offers only the words")
+  func signInWithNoWrapAtAllOffersTheWords() async throws {
+    let w = World()
+    let key = SoftPasskey()
+    let a = w.phone("a", passkeys: key)
+    _ = try await w.passwordAccount(a)
+    _ = try await AccountPasskeys.add(
+      a.env, binding: try #require(a.binding), factor: .device(password: password), body: nil, reason: "x")
+    let b = w.phone("b", passkeys: key)
+    let first = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
+    #expect(first.assertion?.prfFirst != nil)
+    let offer = await AccountSignIn.passkeyUnlockOffer(b.env, after: first)
+    #expect(!offer.canUnlock)
+    #expect(offer.signIn.assertion == nil)
+  }
+
+  @Test("a passkey that gives no PRF output is not offered for the unlock")
+  func signInWithoutPRFOffersTheWords() async throws {
+    let w = World()
+    let two = try await accountWithTwoPasskeys(w)
+    two.wrappedKey.setPRFSupported(false)
+    let b = w.phone("b", passkeys: two.wrappedKey)
+    let first = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
+    let offer = await AccountSignIn.passkeyUnlockOffer(b.env, after: first)
+    #expect(!offer.canUnlock)
+  }
+
+  @Test("when the wraps can't be read, the sign-in's assertion is offered as before")
+  func unreadableWrapsKeepTheOffer() async throws {
+    let w = World()
+    let two = try await accountWithTwoPasskeys(w)
+    let b = w.phone("b", passkeys: two.wrappedKey)
+    let first = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
+    w.server.refuseNext("GET /api/v1/keys/wraps", status: 503, code: "unavailable")
+    let offer = await AccountSignIn.passkeyUnlockOffer(b.env, after: first)
+    #expect(offer.canUnlock)
+    #expect(offer.signIn.assertion?.credentialID == two.wrapped)
+  }
+
   @Test("a wrong password adds nothing and the passkey sheet never opens")
   func wrongPassword() async throws {
     let w = World()
@@ -107,6 +274,153 @@ struct PasskeyAddTests {
     }
     let token = try #require(try a.env.secrets.session()).token
     #expect(try await a.env.client.account(bearer: token).has_passkey == false)
+  }
+
+  func passkeyAccount(_ w: World, first: SoftPasskey, second: SoftPasskey) async throws -> (Phone, EnrolledAccount, AccountEnvironment) {
+    let a = w.phone("a", passkeys: first)
+    let signup = try await AccountCreation.beginSignup(
+      a.env, inviteCode: invite, email: "maya@example.com", displayName: "Maya", inviteLinkKey: nil)
+    try await AccountCreation.verifySignup(a.env, signup, code: try #require(w.server.lastCode))
+    let keys = try NewAccountKeys.generate(random: a.env.random)
+    let reg = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+    let account = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys)
+    let env = AccountEnvironment(
+      client: a.env.client, secrets: a.env.secrets, approvalKeys: a.dak,
+      passkeys: SplitPasskeys(asserting: first, creating: second), clock: w.clock, random: a.env.random,
+      apiBase: a.env.apiBase, accountsDirectory: nil)
+    return (a, account, env)
+  }
+
+  @Test("published keys that do not match what the step-up opened stop the add before the passkey sheet")
+  func publishedKeysMismatchStopsTheAdd() async throws {
+    let w = World()
+    let first = SoftPasskey()
+    let second = SoftPasskey()
+    let (a, account, env) = try await passkeyAccount(w, first: first, second: second)
+    let token = try #require(try a.env.secrets.session()).token
+    let wraps = try await a.env.client.keyWraps(bearer: token).wraps.count
+    w.server.misreportCommitment(user: account.userID)
+    let binding = try #require(a.binding)
+    do throws(CeremonyError) {
+      _ = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+      Issue.record("added a passkey past the integrity alarm")
+    } catch {
+      guard case .integrityAlarm("commitments") = error else {
+        Issue.record("\(error)")
+        return
+      }
+    }
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == wraps)
+    let b = w.phone("b", passkeys: second)
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: false)
+    }
+  }
+
+  @Test("an unlock that fails for an ordinary reason stops the add before the passkey sheet, and the next try wraps the passkey")
+  func ordinaryUnlockFailureStopsTheAdd() async throws {
+    let w = World()
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: SoftPasskey(), second: second)
+    let token = try #require(try a.env.secrets.session()).token
+    let wraps = try await a.env.client.keyWraps(bearer: token).wraps.count
+    let binding = try #require(a.binding)
+    w.server.refuseNext("GET /api/v1/keys", status: 503, code: "unavailable")
+    do throws(CeremonyError) {
+      _ = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+      Issue.record("added a passkey past a failed unlock")
+    } catch {
+      #expect(error.failure?.status == 503)
+    }
+    #expect(second.credentials.isEmpty)
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == wraps)
+    let added = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+    #expect(added.unlocksData)
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == wraps + 1)
+  }
+
+  @Test("a step-up passkey that has no wrap to open still adds a passkey, without a wrap")
+  func stepUpPasskeyWithoutAWrapStillAdds() async throws {
+    let w = World()
+    let first = SoftPasskey()
+    first.setPRFSupported(false)
+    let (a, _, env) = try await passkeyAccount(w, first: first, second: SoftPasskey())
+    first.setPRFSupported(true)
+    let added = try await AccountPasskeys.add(env, binding: try #require(a.binding), factor: .passkey, body: nil, reason: "x")
+    #expect(!added.unlocksData)
+    let token = try #require(try a.env.secrets.session()).token
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.isEmpty)
+  }
+
+  @Test("a writer key the Keychain cannot give stops the add before the step-up and the passkey sheet")
+  func unreadableWriterKeyStopsTheAdd() async throws {
+    let w = World()
+    let first = SoftPasskey()
+    let second = SoftPasskey()
+    let (a, account, env) = try await passkeyAccount(w, first: first, second: second)
+    let binding = try #require(a.binding)
+    try a.keychain.delete(.writerKey(userID: account.userID, writerID: account.writerID))
+    let signatures = first.credentials.first?.signCount
+    do throws(CeremonyError) {
+      _ = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+      Issue.record("added a passkey with no writer key")
+    } catch {
+      guard case .noDeviceKey = error else {
+        Issue.record("\(error)")
+        return
+      }
+    }
+    #expect(second.credentials.isEmpty)
+    #expect(first.credentials.first?.signCount == signatures)
+  }
+
+  @Test(
+    "a finish the server refused takes the new passkey off this iPhone",
+    arguments: [(403, "passkey_rejected"), (409, "conflict"), (429, "rate_limited")])
+  func refusedFinishReportsTheCredential(status: Int, code: String) async throws {
+    let w = World()
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: SoftPasskey(), second: second)
+    let binding = try #require(a.binding)
+    w.server.refuseNext("POST /api/v1/auth/passkey/add/finish", status: status, code: code)
+    do throws(CeremonyError) {
+      _ = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+      Issue.record("added past a refusal")
+    } catch {
+      #expect(error.failure?.status == status)
+    }
+    #expect(second.reportedUnknown.count == 1)
+    #expect(second.credentials.isEmpty)
+  }
+
+  @Test("a server fault on the finish leaves the new passkey in place")
+  func serverFaultKeepsTheCredential() async throws {
+    let w = World()
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: SoftPasskey(), second: second)
+    w.server.refuseNext("POST /api/v1/auth/passkey/add/finish", status: 503, code: "unavailable")
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountPasskeys.add(env, binding: try #require(a.binding), factor: .passkey, body: nil, reason: "x")
+    }
+    #expect(second.reportedUnknown.isEmpty)
+    #expect(second.credentials.count == 1)
+  }
+
+  @Test("a lost answer on the finish leaves the new passkey in place")
+  func lostAnswerKeepsTheCredential() async throws {
+    let w = World()
+    let first = SoftPasskey()
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: first, second: second)
+    let losing = AccountEnvironment(
+      client: AuthClient(transport: AfterAnswer(inner: w.server, suffix: "/passkey/add/finish", lose: true)),
+      secrets: a.env.secrets, approvalKeys: a.dak, passkeys: SplitPasskeys(asserting: first, creating: second),
+      clock: w.clock, random: a.env.random, apiBase: a.env.apiBase, accountsDirectory: nil)
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountPasskeys.add(losing, binding: try #require(a.binding), factor: .passkey, body: nil, reason: "x")
+    }
+    #expect(second.reportedUnknown.isEmpty)
+    #expect(second.credentials.count == 1)
   }
 
   @Test("a passkey account's second passkey is wrapped with the body its own step-up opens")

@@ -16,22 +16,26 @@ struct GlanceEntry: TimelineEntry {
     self.stale = stale
   }
 
-  init(date: Date, stored: WidgetSnapshot?, selection: String?, isPreview: Bool = false) {
+  init(date: Date, stored: StoredWidgetSnapshot, selection: String?, isPreview: Bool = false) {
     let reading = WidgetPreview.reading(stored, at: date, isPreview: isPreview)
-    self.init(date: date, snapshot: reading.snapshot, selection: selection, stale: reading.stale)
+    self.init(date: date, snapshot: reading.snapshot, selection: reading.selection(selection), stale: reading.stale)
+  }
+
+  private static func stored() -> StoredWidgetSnapshot {
+    WidgetSnapshotStore.shared()?.load() ?? .absent
   }
 
   static func current(selection: String? = nil, isPreview: Bool = false) -> GlanceEntry {
-    GlanceEntry(date: .now, stored: WidgetSnapshotStore.shared()?.read(), selection: selection, isPreview: isPreview)
+    GlanceEntry(date: .now, stored: stored(), selection: selection, isPreview: isPreview)
   }
 
   static func timeline(selection: String? = nil, now: Date = .now) -> Timeline<GlanceEntry> {
-    let stored = WidgetSnapshotStore.shared()?.read()
+    let file = stored()
     let midnight = WidgetClock.nextMidnight(after: now)
     return Timeline(
       entries: [
-        GlanceEntry(date: now, stored: stored, selection: selection),
-        GlanceEntry(date: midnight, stored: stored, selection: selection),
+        GlanceEntry(date: now, stored: file, selection: selection),
+        GlanceEntry(date: midnight, stored: file, selection: selection),
       ],
       policy: .after(midnight))
   }

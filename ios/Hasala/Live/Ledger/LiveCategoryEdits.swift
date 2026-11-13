@@ -124,7 +124,9 @@ extension LedgerEditAuthor {
       }
       for row in rows {
         if a.count >= Sweep.maxOpsPerBlob { try flush() }
-        a.categorize(txnID: row.id, parentVersion: row.version, category: moveTo, needsReview: row.needsReview)
+        a.categorize(
+          txnID: row.id, parentVersion: row.version, category: moveTo, needsReview: row.needsReview,
+          source: row.categorySource == "user" ? .user : CoreReplay.CategorySource(kind: .held))
       }
       if a.count + 3 > Sweep.maxOpsPerBlob { try flush() }
       if assigned > 0 { a.moveMoney(month: m, from: id, to: budgetTo, amountMinor: assigned) }
@@ -133,7 +135,6 @@ extension LedgerEditAuthor {
       out.append(try a.build())
       return (out, out.last?.lastAuthoredMs)
     }
-    for b in blobs { try await outbox.enqueue(b.ops) }
-    try await observer.reproject()
+    try await enqueueAll(blobs)
   }
 }

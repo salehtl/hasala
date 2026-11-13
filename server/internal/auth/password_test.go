@@ -216,6 +216,60 @@ func TestPasswordPauseStopsUnboundGuessesButNotABoundDevice(t *testing.T) {
 	}
 }
 
+func failPasswordPastEachPause(t *testing.T, f *acctFixture, m *member, n int) {
+	t.Helper()
+	wrong := append([]byte(nil), m.s...)
+	wrong[0] ^= 1
+	for i := 0; i < n; i++ {
+		if _, err := m.loginPassword(wrong, nil); !errors.Is(err, ErrPasswordRejected) {
+			t.Fatal(err)
+		}
+		f.clock.advance(passwordPauseMax + time.Minute)
+	}
+}
+
+func TestADayWithNoGuessesForgetsThePasswordFailures(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	failPasswordPastEachPause(t, f, m, 11)
+	if n := f.count(`SELECT password_failures FROM users WHERE id = $1`, m.user.UserID); n != 11 {
+		t.Fatalf("failures %d, want 11", n)
+	}
+	f.clock.advance(24 * time.Hour)
+	if _, err := f.acct.SweepHourly(bgctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND password_failures = 0 AND password_paused_until IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a day with no guesses left the failures or the pause in place")
+	}
+	failPasswordPastEachPause(t, f, m, 1)
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND password_failures = 1 AND password_paused_until IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("one mistyped password after a quiet day paused the account")
+	}
+}
+
+func TestASweepWithinADayOfThePauseKeepsTheFailures(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	failPasswordPastEachPause(t, f, m, 11)
+	f.clock.advance(22 * time.Hour)
+	if _, err := f.acct.SweepHourly(bgctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND password_failures = 11 AND password_paused_until IS NOT NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a sweep inside the day forgot the failures or the pause")
+	}
+	before := f.clock.now()
+	failPasswordPastEachPause(t, f, m, 1)
+	var paused time.Time
+	if err := f.pool.QueryRow(bgctx, `SELECT password_paused_until FROM users WHERE id = $1`, m.user.UserID).Scan(&paused); err != nil {
+		t.Fatal(err)
+	}
+	if !paused.Equal(before.Add(passwordPauseMax)) {
+		t.Fatalf("pause until %v, want the full hour after %v", paused, before)
+	}
+}
+
 // The binding is checked before S: an invalid one is 400 bad_signature with no
 // PBKDF2, a revoked writer is writer_revoked, and an unknown writer or no
 // account is checked against a dummy key.

@@ -30,6 +30,7 @@ final class OnboardingStore {
   @ObservationIgnored private(set) var setup: SetupModel?
   /// C1 interrupted: the replacement phrase, made once (not on every re-render).
   @ObservationIgnored private(set) var replacement: SignupModel?
+  @ObservationIgnored private(set) var unlock: UnlockModel?
   @ObservationIgnored private var finish: FinishSetupModel?
   @ObservationIgnored private var firstScan = FirstScanRun()
   /// The facts setup was last brought in line with.
@@ -80,12 +81,33 @@ final class OnboardingStore {
     return made
   }
 
+  func consumeInvite() {
+    let session = self.session()
+    guard let link = session.pendingInvite else { return }
+    session.pendingInvite = nil
+    guard signup.profile == nil, signIn.recovered == nil, !signIn.finishingRecovery else {
+      session.notice = AccountSession.hasAccountNotice
+      return
+    }
+    signup.applyInviteLink(link)
+    signup.path = [.inviteReady]
+  }
+
   /// The replacement phrase's model (`.needsKeys`): one, its phrase made once.
   func replacementModel() -> SignupModel {
     if let replacement { return replacement }
     let made = SignupModel(account: services.account, unseenPhrase: services.unseenPhrase)
     made.startReplacement()
     replacement = made
+    return made
+  }
+
+  func unlockModel(passkeyCanUnlock: Bool) -> UnlockModel {
+    let offered = passkeyCanUnlock && services.account.capabilities.contains(.signInPasskey)
+    if let unlock, unlock.passkeyCanUnlock == offered { return unlock }
+    let session = self.session
+    let made = UnlockModel(account: services.account, passkeyCanUnlock: offered) { session().unlocked() }
+    unlock = made
     return made
   }
 
@@ -96,12 +118,14 @@ final class OnboardingStore {
   func phaseChanged(from old: AccountSession.Phase?, to new: AccountSession.Phase) {
     let previous = old ?? lastPhase
     lastPhase = new
+    if case .needsUnlock = new {} else { unlock = nil }
     if new == .signedOut, let previous, previous != .signedOut { forgetAccountDrafts() }
     if new != .signedOut, new != .checking { signIn.forgetRecovery() }
   }
 
   /// Sign-out, erase, wipe: every draft goes; the stories' page stays.
   func forgetAccountDrafts() {
+    signIn.forgetRecovery()
     setup = nil
     finish = nil
     firstScan = FirstScanRun()

@@ -86,6 +86,33 @@ struct BankTextsTests {
     #expect(!lane.usesTexts && lane.finishCalls == 0 && finished == 1 && m.facts.bankSkipped && !m.facts.textsChosen)
   }
 
+  @Test func skippingTheSourceDuringAConnectKeepsTheChoice() async throws {
+    let mailbox = MockMailbox()
+    let s = services(texts: MockBankTexts(), mailbox: mailbox)
+    mailbox.connectDelay = .milliseconds(200)
+    var finished = 0
+    let m = model(s) { finished += 1 }
+    m.chooseSource(.email)
+    async let connect: Void = m.connectMail(.gmail)
+    for _ in 0..<400 where !m.connectBusy { try await Task.sleep(for: .milliseconds(1)) }
+    #expect(m.connectBusy)
+    m.skipSource()
+    #expect(m.source == .email && finished == 0 && !m.facts.bankSkipped)
+    _ = await connect
+  }
+
+  @Test func aTestThatCannotStartStaysOnTheStep() {
+    let lane = MockBankTexts()
+    lane.startFails = true
+    let m = model(services(texts: lane))
+    m.chooseSource(.texts)
+    m.sendTestText()
+    #expect(m.path == [.textsSetUp] && m.failure != nil && lane.testsStarted == 0)
+    lane.startFails = false
+    m.sendTestText()
+    #expect(m.path == [.textsSetUp, .textsTest] && m.failure == nil && lane.testsStarted == 1)
+  }
+
   @Test func skippingTheSourceChoiceLeavesSetUp() {
     var finished = 0
     let lane = MockBankTexts()
@@ -336,17 +363,63 @@ struct BankTextsTests {
     mailbox.connectDelay = .zero
     let lane = MockBankTexts(mailbox: mailbox)
     lane.finishFails = true
-    guard case .failed = await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) else {
-      Issue.record("the switch went ahead")
-      return
-    }
+    #expect(
+      await SourceSwitch.toTexts(mailbox: mailbox, texts: lane)
+        == .failed("Hasala disconnected your mailbox, but couldn't finish the switch to bank texts. Try again."))
     #expect(lane.source == nil && !lane.readsEmail)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane, mailboxOff: true) == .failed(SourceSwitch.switchUnfinished))
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .failed(LiveBankTexts.saveFailed))
+    lane.finishFails = false
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane, mailboxOff: true) == .switched)
+    #expect(lane.source == .texts)
+  }
+
+  @Test func aSwitchThatDisconnectedAMailboxButStoppedShortStillSaysTheMailboxIsOffOnTheNextTry() async {
+    let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
+    mailbox.connectDelay = .zero
+    let lane = MockBankTexts(mailbox: mailbox, link: .linked)
+    let first = await SourceSwitch.attempt(mailbox: mailbox, texts: lane)
+    #expect(first == SourceSwitch.Attempt(outcome: .failed(SourceSwitch.linkRemains), mailboxOff: true))
+    lane.linkOverride = nil
+    lane.finishFails = true
+    #expect(
+      await SourceSwitch.attempt(mailbox: mailbox, texts: lane, mailboxOff: first.mailboxOff)
+        == SourceSwitch.Attempt(outcome: .failed(SourceSwitch.switchUnfinished), mailboxOff: true))
+
+    let two = MockMailbox(mailboxes: [MockMailbox.gmail, MockMailbox.outlook])
+    two.connectDelay = .zero
+    two.disconnectFailsFor = [MockMailbox.outlook.id]
+    let partway = MockBankTexts(mailbox: two)
+    let stopped = await SourceSwitch.attempt(mailbox: two, texts: partway)
+    #expect(stopped.mailboxOff)
+    two.disconnectFailsFor = []
+    try? await two.disconnect(MockMailbox.outlook.id, removeTransactions: false)
+    partway.finishFails = true
+    #expect(
+      await SourceSwitch.attempt(mailbox: two, texts: partway, mailboxOff: stopped.mailboxOff).outcome
+        == .failed(SourceSwitch.switchUnfinished))
+
+    let untouched = MockMailbox(mailboxes: [MockMailbox.gmail])
+    untouched.connectDelay = .zero
+    untouched.disconnectFails = true
+    let still = MockBankTexts(mailbox: untouched)
+    #expect(await !SourceSwitch.attempt(mailbox: untouched, texts: still).mailboxOff)
+  }
+
+  @Test func aSwitchWithNoMailboxToDisconnectThatCannotBeSavedSaysItCouldNotSave() async {
+    let mailbox = MockMailbox(mailboxes: [])
+    let lane = MockBankTexts(mailbox: mailbox)
+    lane.finishFails = true
+    #expect(
+      await SourceSwitch.toTexts(mailbox: mailbox, texts: lane)
+        == .failed("Hasala couldn't save this on your iPhone. Try again."))
+    #expect(lane.source == nil)
   }
 
   @Test func theTestTextIsWaitedFor() async throws {
     let lane = MockBankTexts(setUp: true)
     lane.testDelay = .milliseconds(10)
-    lane.startTest()
+    try lane.startTest()
     #expect(lane.test.isWaiting)
     for _ in 0..<200 where lane.test.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
     guard case .received = lane.test else {
@@ -354,7 +427,7 @@ struct BankTextsTests {
       return
     }
     lane.testOutcome = .nothing
-    lane.startTest()
+    try lane.startTest()
     for _ in 0..<200 where lane.test.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
     #expect(lane.test == .nothingYet)
   }
@@ -421,6 +494,22 @@ struct BankTextsTests {
     #expect(lane.replaced == ["row-2"])
     #expect(await m.add(replacing: false))
     #expect(lane.replaced == ["row-2"] && lane.added.count == 2)
+  }
+
+  @Test func aRetriedAddDropsTheOldFailureWhileItRuns() async throws {
+    let lane = MockBankTexts(setUp: true)
+    lane.readDelay = .zero
+    let m = PasteBankTextModel(lane: lane)
+    await m.paste(MockBankTexts.sampleText)
+    lane.nextAddFailure = .failed("Couldn't add it.")
+    let first = await m.add()
+    #expect(!first && m.failure == "Couldn't add it.")
+    lane.addDelay = .milliseconds(200)
+    let retry = Task { await m.add() }
+    for _ in 0..<200 where !m.adding { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(m.adding && m.failure == nil)
+    let added = await retry.value
+    #expect(added && m.failure == nil && lane.added.count == 1)
   }
 
   @Test func aCodeTextIsNotCheckedForAMatch() async {
@@ -670,21 +759,24 @@ struct BankTextsTests {
     #expect(BankTexts.ignoredLine(0) == nil)
     #expect(BankTexts.ignoredLine(1) == "1 text that looks like a payment was ignored in the last 30 days.")
     #expect(BankTexts.ignoredLine(3) == "3 texts that look like payments were ignored in the last 30 days.")
-    let linked = MockBankTexts(link: .linked, ignored: 3)
+    let linked = MockBankTexts(link: .linked, lastRan: now, ignored: 3)
     #expect(UseBankTextsSection.ignoredLine(linked) == BankTexts.ignoredLine(3))
     #expect(linked.sawAutomationRun && UseBankTextsSection.offersDeleteAutomation(linked))
+    #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(link: .linked, ignored: 3)))
     #expect(UseBankTextsSection.ignoredLine(MockBankTexts(link: .notLinked, ignored: 3)) == nil)
     #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(link: .linked)))
     #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(setUp: true, link: .notLinked)))
   }
 
-  @Test func theLastDisconnectSaysTheAutomationStaysWhenThisDeviceSawItRun() {
+  @Test func theLastDisconnectMentionsTheAutomationWhenThisDeviceSawItRunSinceTheConnect() {
     let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
     let ran = MockBankTexts(mailbox: mailbox, lastRan: now)
     #expect(ran.status == .notSetUp && ran.lastRanAt == now && ran.sawAutomationRun)
-    #expect(BankTexts.disconnectNote(ran, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == BankTexts.automationStillThere)
+    #expect(
+      BankTexts.disconnectNote(ran, mailbox: mailbox, disconnecting: MockMailbox.gmail.id)
+        == "If your Shortcuts automation is still there, Hasala will add bank texts from now on.")
     let ignored = MockBankTexts(mailbox: mailbox, ignored: 2)
-    #expect(BankTexts.disconnectNote(ignored, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) != nil)
+    #expect(BankTexts.disconnectNote(ignored, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     #expect(BankTexts.disconnectNote(MockBankTexts(mailbox: mailbox), mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     #expect(BankTexts.disconnectNote(nil, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
     let two = MockMailbox(mailboxes: [MockMailbox.gmail, MockMailbox.outlook])

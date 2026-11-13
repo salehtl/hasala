@@ -69,15 +69,21 @@ func (s *Server) EnableAccounts(keys *authkeys.Keys, gate *authkeys.Gate, mailer
 		if s.Passkeys.Record == nil {
 			s.Passkeys.Record = s.recordRestore
 		}
+		if s.Passkeys.Hold == nil {
+			s.Passkeys.Hold = s.holdRestore
+		}
 	}
 	if s.Writers != nil {
 		s.Writers.Mail = mailer
 		if s.Writers.Record == nil {
 			s.Writers.Record = s.recordRestore
 		}
+		if s.Writers.Hold == nil {
+			s.Writers.Hold = s.holdRestore
+		}
 	}
 	s.Accounts = &auth.Accounts{Pool: s.Pool, Keys: keys, Gate: gate, Sessions: s.Sessions, Passkeys: s.Passkeys,
-		StepUp: s.StepUp, Mail: mailer, Now: s.Now, Record: s.recordRestore}
+		StepUp: s.StepUp, Mail: mailer, Now: s.Now, Record: s.recordRestore, Hold: s.holdRestore}
 }
 
 // limited runs the unauthenticated limiters in order, before any DB work.

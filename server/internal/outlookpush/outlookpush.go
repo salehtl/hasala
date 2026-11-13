@@ -66,7 +66,9 @@ type Parsed struct {
 	// shape the link mints: no link can match them.
 	BadClientState int
 	// Ignored counts lifecycle entries with an event that wakes nobody.
-	Ignored int
+	Ignored     int
+	Removed     [][sha256.Size]byte
+	Reauthorize [][sha256.Size]byte
 }
 
 // entry is one notification. It has no resource, resourceData or any other
@@ -96,6 +98,8 @@ func Parse(body []byte, lifecycle bool) (Parsed, error) {
 	}
 	var p Parsed
 	seen := make(map[[sha256.Size]byte]bool, len(env.Value))
+	removed := make(map[[sha256.Size]byte]bool)
+	reauthorize := make(map[[sha256.Size]byte]bool)
 	for _, raw := range env.Value {
 		var e entry
 		if err := json.Unmarshal(raw, &e); err != nil {
@@ -116,6 +120,14 @@ func Parse(body []byte, lifecycle bool) (Parsed, error) {
 		if !seen[h] {
 			seen[h] = true
 			p.Hashes = append(p.Hashes, h)
+		}
+		if lifecycle && e.LifecycleEvent == EventSubscriptionRemoved && !removed[h] {
+			removed[h] = true
+			p.Removed = append(p.Removed, h)
+		}
+		if lifecycle && e.LifecycleEvent == EventReauthorizationRequired && !reauthorize[h] {
+			reauthorize[h] = true
+			p.Reauthorize = append(p.Reauthorize, h)
 		}
 	}
 	return p, nil

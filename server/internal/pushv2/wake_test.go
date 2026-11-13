@@ -349,3 +349,47 @@ func TestTryWakeWriterReportsAFullQueue(t *testing.T) {
 		t.Fatal("a wake for no writer was reported queued")
 	}
 }
+
+func TestWakesStillQueuedAtStopGoOut(t *testing.T) {
+	s := &fakeSender{}
+	d := NewDispatcher(nil, s)
+	for i := range 64 {
+		d.WakeTokens(bg, []Target{fixedTarget(byte(i))}, ReasonSecurity)
+	}
+	ctx, cancel := context.WithCancel(bg)
+	cancel()
+	select {
+	case <-d.Start(ctx):
+	case <-time.After(10 * time.Second):
+		t.Fatal("the dispatcher did not stop")
+	}
+	if s.count() != 64 {
+		t.Fatalf("sent %d of 64 wakes queued before the stop", s.count())
+	}
+}
+
+func TestTheDrainAtStopIsBounded(t *testing.T) {
+	s := &stuckSender{}
+	d := NewDispatcher(nil, s)
+	d.drainFor = 50 * time.Millisecond
+	for i := range 64 {
+		d.WakeTokens(bg, []Target{fixedTarget(byte(i))}, ReasonSecurity)
+	}
+	ctx, cancel := context.WithCancel(bg)
+	cancel()
+	select {
+	case <-d.Start(ctx):
+	case <-time.After(10 * time.Second):
+		t.Fatal("the drain outlived its limit")
+	}
+	if dropped := d.Stats.Dropped[ReasonSecurity].Load(); dropped == 0 || len(d.queue) != 0 {
+		t.Fatalf("dropped %d, %d left in the queue; want the unsent wakes counted", dropped, len(d.queue))
+	}
+}
+
+type stuckSender struct{}
+
+func (*stuckSender) Send(ctx context.Context, _ Target) Result {
+	<-ctx.Done()
+	return ResultTransient
+}

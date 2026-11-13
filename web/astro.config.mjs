@@ -3,9 +3,9 @@ import { defineConfig, fontProviders } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
 import { unified } from '@astrojs/markdown-remark';
 import { loadEnv } from 'vite';
-import { readdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import remarkOwnerNotes from './src/lib/remark-owner-notes.mjs';
+import { draftLegalPaths } from './src/lib/legal-status.mjs';
 import { INLINE_SCRIPTS } from './src/lib/inline-scripts.mjs';
 import cspUnion from './src/lib/csp-union.mjs';
 
@@ -34,17 +34,7 @@ const CF_ANALYTICS_REPORT = 'https://cloudflareinsights.com';
 // or a form post) stay out of the sitemap; they also carry noindex.
 const NOT_IN_SITEMAP = ['/i', '/freeze', '/joined', '/waitlist/confirm', '/waitlist/leave', '/404'];
 // Legal pages stay out of the sitemap (and carry noindex) while they are drafts.
-try {
-  for (const f of readdirSync(new URL('../docs/legal/', import.meta.url))) {
-    if (!f.endsWith('.md')) continue;
-    const head = readFileSync(new URL(`../docs/legal/${f}`, import.meta.url), 'utf8').split(/^---$/m)[1] ?? '';
-    const status = /^status:\s*["']?([\w-]+)/m.exec(head)?.[1] ?? 'draft';
-    if (status === 'draft') NOT_IN_SITEMAP.push(`/${f.replace(/\.md$/, '')}`);
-  }
-} catch {
-  // No docs/legal yet: the pages render an empty state and stay out too.
-  NOT_IN_SITEMAP.push('/privacy', '/terms', '/security', '/support');
-}
+NOT_IN_SITEMAP.push(...draftLegalPaths(new URL('../docs/legal/', import.meta.url)));
 
 export default defineConfig({
   site: 'https://hasala.app',

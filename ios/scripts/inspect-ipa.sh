@@ -22,9 +22,6 @@
 # Offline, no key; macOS tools by absolute path, so it also runs in the Nix devShell.
 set -euo pipefail
 
-# I12: the API endpoint a release talks to, exactly: Info.plist's HasalaAPIBaseURL,
-# which Xcode fills in from HASALA_API_BASE_URL (ios/Config/Shared.xcconfig).
-RELEASE_API_BASE_URL=https://api.hasala.app
 RELEASE_ASSIST_BASE_URL=https://assist.hasala.app
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

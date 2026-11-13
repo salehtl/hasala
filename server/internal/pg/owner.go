@@ -2,11 +2,15 @@ package pg
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 )
 
 // Role names (spec 02 §3.1, §5.2). hasala_migrate owns the schema and runs
@@ -190,19 +194,37 @@ func CheckMigrator(ctx context.Context, pool *pgxpool.Pool) error {
 // under the session advisory lock hashtext('hasala/migrate'), so two migrate
 // runs cannot interleave.
 func MigrateLocked(ctx context.Context, pool *pgxpool.Pool, to int64) error {
-	conn, err := pool.Acquire(ctx)
+	dir, err := fs.Sub(migrations, "migrations")
 	if err != nil {
 		return err
 	}
-	defer conn.Release()
-	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtext('hasala/migrate'))`); err != nil {
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+	runner, err := goose.NewProvider(goose.DialectPostgres, db, dir,
+		goose.WithSessionLocker(migrateSession{}), goose.WithVerbose(true))
+	if err != nil {
+		return err
+	}
+	if to > 0 {
+		_, err = runner.UpTo(ctx, to)
+	} else {
+		_, err = runner.Up(ctx)
+	}
+	return err
+}
+
+type migrateSession struct{}
+
+func (migrateSession) SessionLock(ctx context.Context, conn *sql.Conn) error {
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext('hasala/migrate'))`); err != nil {
 		return fmt.Errorf("pg: take the migrate lock: %w", err)
 	}
-	defer func() {
-		_, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(hashtext('hasala/migrate'))`)
-	}()
-	if to > 0 {
-		return MigrateTo(ctx, pool, to)
+	return nil
+}
+
+func (migrateSession) SessionUnlock(ctx context.Context, conn *sql.Conn) error {
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtext('hasala/migrate'))`); err != nil {
+		return fmt.Errorf("pg: release the migrate lock: %w", err)
 	}
-	return Migrate(ctx, pool)
+	return nil
 }

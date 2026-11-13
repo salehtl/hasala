@@ -28,8 +28,6 @@ public enum MailAuthError: Error, Sendable, Equatable {
   /// The Keychain is unreadable (before first unlock): try again later, change nothing.
   case notNow
   case offline
-  /// The token was revoked on purpose (disconnect, other device took over).
-  case revoked
 }
 
 public typealias GmailAuthError = MailAuthError
@@ -94,6 +92,8 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   /// Refresh when fewer than this many ms remain.
   public static let refreshMarginMs: Int64 = 60_000
 
+  public static let writeCheckValue = "hasala.keychain-write-check"
+
   public init(oauth: any MailOAuthClient, store: any MailRefreshTokenStore, clock: any Clock) {
     self.oauth = oauth
     self.store = store
@@ -106,6 +106,11 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     do { refresh = try store.read() } catch { throw .notNow }
     guard let refresh, !refresh.isEmpty else {
       cached = nil
+      throw .reconnectRequired
+    }
+    if refresh == Self.writeCheckValue {
+      cached = nil
+      try? store.delete()
       throw .reconnectRequired
     }
     do {
@@ -133,6 +138,32 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     cached = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
   }
 
+  @discardableResult
+  public func replace(with grant: MailTokenGrant) throws(MailAuthError) -> String? {
+    let prior: String?
+    do { prior = try store.read() } catch { throw .notNow }
+    try install(grant: grant)
+    return prior
+  }
+
+  public func checkWritable(for grant: MailTokenGrant) throws(MailAuthError) {
+    guard grant.refreshToken != nil else { throw .reconnectRequired }
+    let prior: String?
+    do { prior = try store.read() } catch { throw .notNow }
+    do {
+      try store.write(prior ?? Self.writeCheckValue)
+      if prior == nil { try store.delete() }
+    } catch {
+      if prior == nil { try? store.delete() }
+      throw .notNow
+    }
+  }
+
+  public func restore(_ token: String?) {
+    cached = nil
+    if let token { try? store.write(token) } else { try? store.delete() }
+  }
+
   /// Whether a refresh token is present (nil: unreadable now).
   public func hasRefreshToken() -> Bool? {
     do { return try store.read() != nil } catch { return nil }
@@ -156,17 +187,22 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   /// grant this iPhone stops using anyway.
   @discardableResult
   public func revokeAndForget(keepOnFailure: Bool = true) async -> Bool {
+    let revoked = await revoke(stopOnFailure: keepOnFailure)
+    if revoked || !keepOnFailure { try? store.delete() }
+    return revoked
+  }
+
+  public func revoke(stopOnFailure: Bool = true) async -> Bool {
     cached = nil
     let token: String?
     do { token = try store.read() } catch { return false }
-    if let token, !token.isEmpty {
+    if let token, !token.isEmpty, token != Self.writeCheckValue {
       do throws(MailOAuthError) {
         try await oauth.revoke(token: token)
       } catch {
-        if keepOnFailure { return false }
+        if stopOnFailure { return false }
       }
     }
-    try? store.delete()
     return true
   }
 

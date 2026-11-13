@@ -120,7 +120,8 @@ done
 
 # /tmp, not $TMPDIR: Postgres's unix socket lives here, and a socket path longer
 # than 103 bytes (a deep $TMPDIR on macOS) makes the server fail to start.
-TMP="$(mktemp -d /tmp/hasala-app-e2e.XXXXXX)"
+TMP="$(mktemp -d /tmp/pgtest-e2e-app.XXXXXX)"
+echo "$$" >"$TMP/owner.pid"
 STATE="$TMP/state"
 MAIL="$TMP/mail"
 mkdir -p "$STATE" "$MAIL" "$TMP/results"
@@ -151,8 +152,8 @@ cleanup() {
 	[[ -n "$WAKE_PID" ]] && kill "$WAKE_PID" 2>/dev/null
 	[[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null
 	[[ -n "$MAIL_PID" ]] && kill "$MAIL_PID" 2>/dev/null && wait "$MAIL_PID" 2>/dev/null
-	pg_ctl -D "$TMP/pg" -m immediate stop >/dev/null 2>&1
-	for sim in "${SIMS[@]}"; do
+	pg_ctl -D "$TMP/data" -m immediate stop >/dev/null 2>&1
+	for sim in ${SIMS[@]+"${SIMS[@]}"}; do
 		"$XCRUN" simctl shutdown "$sim" >/dev/null 2>&1
 		"$XCRUN" simctl delete "$sim" >/dev/null 2>&1
 	done
@@ -164,8 +165,8 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 # --- 1. Postgres ------------------------------------------------------------------
-initdb -D "$TMP/pg" -U postgres -A trust --no-sync >/dev/null
-pg_ctl -D "$TMP/pg" -l "$TMP/pg.log" -o "-k $TMP -c listen_addresses='' -c fsync=off" start >/dev/null
+initdb -D "$TMP/data" -U postgres -A trust --no-sync >/dev/null
+pg_ctl -D "$TMP/data" -l "$TMP/pg.log" -o "-k $TMP -c listen_addresses='' -c fsync=off" start >/dev/null
 for _ in $(seq 50); do pg_isready -h "$TMP" -q && break; sleep 0.1; done
 
 psql "host=$TMP user=postgres dbname=postgres" -v ON_ERROR_STOP=1 -q <<'SQL'
@@ -217,12 +218,17 @@ curl -fsS "http://127.0.0.1:$MAIL_PORT/healthz" >/dev/null || {
 
 "$HASALAD" serve >"$TMP/serve.log" 2>&1 &
 SERVER_PID=$!
+server_up=0
 for _ in $(seq 150); do
-	curl -fsS "$API/api/v1/healthz" >/dev/null 2>&1 && break
 	kill -0 "$SERVER_PID" 2>/dev/null || break
+	if curl -fsS "$API/api/v1/healthz" >/dev/null 2>&1 &&
+		/usr/sbin/lsof -a -p "$SERVER_PID" -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+		server_up=1
+		break
+	fi
 	sleep 0.1
 done
-curl -fsS "$API/api/v1/healthz" >/dev/null || {
+[[ "$server_up" == 1 ]] || {
 	log "hasalad did not come up"
 	cat "$TMP/serve.log" >&2
 	exit 1

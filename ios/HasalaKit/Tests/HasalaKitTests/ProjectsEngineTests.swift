@@ -49,6 +49,24 @@ struct ProjectsEngineTests {
     #expect(p.transactions.contains { $0.id == s.txns[review].id && $0.toReview })
   }
 
+  @Test func aRowWaitingInReviewIsPendingEvenWithItsFlagCleared() throws {
+    var s = state([Project(id: "move", name: "Moving", glyph: .flag, budget: nil, starts: nil, ends: nil)])
+    let carrefour = try #require(s.txns.firstIndex { $0.merchant.hasPrefix("Carrefour") && !$0.needsReview })
+    let category = try #require(s.txns[carrefour].categoryID)
+    s.txns[carrefour].projectID = "move"
+    s.txns[carrefour].categorySource = .model(tag: "apple-fm/1")
+    s.txns[carrefour].rejectedCategories = [category]
+    #expect(s.txns[carrefour].inReview && !s.txns[carrefour].needsReview)
+    let p = try #require(PlanEngine.project("move", s, now: now))
+    #expect(p.spent == .aed(0))
+    #expect(p.pending == s.txns[carrefour].amount)
+    #expect(p.categories.isEmpty)
+    #expect(p.transactions.contains { $0.id == s.txns[carrefour].id && $0.toReview })
+    let candidate = PlanEngine.projectCandidates("japan", s, filter: ProjectCandidateFilter())
+      .first { $0.id == s.txns[carrefour].id }
+    #expect(candidate?.toReview == true)
+  }
+
   @Test func openEndedDatesReadOnTheirOwn() {
     let s = state([
       Project(id: "a", name: "A", glyph: .flag, budget: nil, starts: LocalDate(2026, 10, 1), ends: nil),
@@ -73,6 +91,27 @@ struct ProjectsEngineTests {
       let t = s.txn(row.id)!
       return t.postedAt.date >= LocalDate(2026, 10, 1) && t.categoryID == "groceries"
     })
+  }
+
+  @Test func aRowChosenUnderAnEarlierFilterStaysChosen() throws {
+    let s = MayaLedger.state
+    let carrefour = try #require(PlanEngine.projectCandidates("japan", s, filter: ProjectCandidateFilter(merchant: "carre")).first)
+    let other = try #require(PlanEngine.projectCandidates("japan", s, filter: ProjectCandidateFilter())
+      .first { !$0.merchant.lowercased().contains("carre") })
+    let chosen = PlanEngine.projectChosen("japan", s, selected: [carrefour.id, other.id])
+    #expect(Set(chosen.map(\.id)) == [carrefour.id, other.id])
+    #expect(PlanEngine.projectChosen("japan", s, selected: []).isEmpty)
+  }
+
+  @Test func aChosenRowThatCanNoLongerJoinIsNotCounted() throws {
+    var s = MayaLedger.state
+    let rows = PlanEngine.projectCandidates("japan", s, filter: ProjectCandidateFilter(merchant: "carre"))
+    #expect(rows.count >= 3)
+    let (joined, archived, kept) = (rows[0].id, rows[1].id, rows[2].id)
+    s.txns[try #require(s.txns.firstIndex { $0.id == joined })].projectID = "japan"
+    s.txns[try #require(s.txns.firstIndex { $0.id == archived })].archived = true
+    #expect(PlanEngine.projectChosen("japan", s, selected: [joined, archived, kept]).map(\.id) == [kept])
+    #expect(PlanEngine.projectChosen("japan", s, selected: ["no-such-transaction"]).isEmpty)
   }
 
   @Test func aDraftExplainsWhyItCantBeSaved() {

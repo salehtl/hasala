@@ -72,11 +72,9 @@ import { API_BASE } from '../lib/env';
         <a class="btn btn--glass" href="/">It was me, don’t freeze</a>
       </div>
       <p class="freeze__status" role="status" aria-live="polite"></p>
-      <noscript>
-        <p class="freeze__status freeze__status--error">
-          This page needs JavaScript to read the freeze link from our email. Turn it on and open the link again.
-        </p>
-      </noscript>
+      <p class="freeze__status freeze__status--error" data-no-script>
+        This page needs JavaScript to read the freeze link from our email. Turn it on and open the link again.
+      </p>
 
       <p class="freeze__safety">
         <Icon name="shield" size={18} stroke={1.8} />
@@ -96,6 +94,7 @@ import { API_BASE } from '../lib/env';
   // onPage: it runs again whenever the router brings this page back (Back).
   import { onPage } from '../scripts/page';
   import { postFreeze } from '../lib/freeze';
+  import { arriveAtLink, markLinkDone } from '../lib/link-page';
 
   onPage((signal) => {
     const root = document.querySelector<HTMLElement>('[data-freeze]');
@@ -110,14 +109,24 @@ import { API_BASE } from '../lib/env';
       status.textContent = text;
     };
 
-    const token = location.hash.slice(1);
-    // The token leaves the address bar and the history entry (the router's
-    // state stays, so Back and Forward still work).
-    history.replaceState(history.state, '', '/freeze');
-    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    const finish = () => {
+      root.querySelector<HTMLElement>('[data-freeze-confirm]')!.hidden = true;
+      const done = root.querySelector<HTMLElement>('[data-freeze-done]')!;
+      done.hidden = false;
+      done.querySelector<HTMLElement>('[data-frozen-title]')?.focus();
+    };
+
+    root.querySelector('[data-no-script]')?.remove();
+    const arrival = arriveAtLink('freeze', '/freeze');
+    if (arrival.step === 'done') {
+      finish();
+      return;
+    }
+    if (arrival.step === 'incomplete') {
       say('This link is missing its freeze code. Open the link from our email again, on any device.');
       return;
     }
+    const { token } = arrival;
     button.hidden = false;
     button.addEventListener(
       'click',
@@ -129,10 +138,8 @@ import { API_BASE } from '../lib/env';
         status.textContent = '';
         const result = await postFreeze(root.dataset.api!, token);
         if (result === 'done') {
-          root.querySelector<HTMLElement>('[data-freeze-confirm]')!.hidden = true;
-          const done = root.querySelector<HTMLElement>('[data-freeze-done]')!;
-          done.hidden = false;
-          done.querySelector<HTMLElement>('[data-frozen-title]')?.focus();
+          markLinkDone('freeze');
+          finish();
           return;
         }
         button.disabled = false;

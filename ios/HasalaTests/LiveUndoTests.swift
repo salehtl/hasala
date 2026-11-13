@@ -48,6 +48,50 @@ struct LiveUndoTests {
     ])
   }
 
+  @Test func onlyTheNewestEditsKeepTheirUndo() async throws {
+    let a = try Mapper.account()
+    for b in try await Mapper.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: nil, profile: Mapper.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "undo.kept.tests")!), clock: { MayaLedger.now })
+    await store.reload()
+    let id = try #require(store.state.txns.first { !$0.archived && $0.splits.isEmpty && !$0.isHeldCopy && !$0.isTransfer }).id
+    let first = try #require(try store.apply(.markTransfer(id)))
+    var latest = first
+    for _ in 1..<LiveLedgerStore.undoKept { latest = try #require(try store.apply(.markTransfer(id))) }
+    #expect(store.canUndo(first) && store.canUndo(latest))
+    #expect(store.undos.count == LiveLedgerStore.undoKept)
+    let next = try #require(try store.apply(.markTransfer(id)))
+    #expect(!store.canUndo(first) && store.canUndo(latest) && store.canUndo(next))
+    #expect(store.undos[first.id] == nil)
+    #expect(store.undos.count == LiveLedgerStore.undoKept)
+  }
+
+  @Test func undoingATransferOnARowWithNoCategoryLeavesItToRulesAndSuggestions() async throws {
+    let a = try Mapper.account()
+    var id = ""
+    let extra = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+        id = try o.manualEntry(
+          amountMinor: 45_00, currency: "AED", direction: "debit", localWallMs: 1_791_633_600_000, merchant: "Test Kiosk",
+          category: nil)
+      })
+    let store = try await Self.store(a, suite: "undo.transfer.none.tests", extra: [extra])
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    let before = try #require(try a.projection.reader.txn(id))
+    #expect(before.category == nil && before.categorySource == "none")
+    let token = try #require(try store.apply(.markTransfer(id)))
+    try await Mapper.eventually { try a.projection.reader.txn(id)?.category == "transfer" }
+    #expect(try a.projection.reader.txn(id)?.categorySource == "user")
+    store.undo(token)
+    try await Mapper.eventually { try a.projection.reader.txn(id)?.category == nil }
+    let after = try #require(try a.projection.reader.txn(id))
+    #expect(after.category == nil && after.categorySource == "none" && after.needsReview == before.needsReview)
+    #expect(!failed)
+  }
+
   @Test func undoingAMoveTakesTheMoneyBack() async throws {
     let a = try Mapper.account()
     let store = try await Self.store(a, suite: "undo.move.tests")
@@ -129,6 +173,34 @@ struct LiveUndoTests {
     app.toastAction()
     try await Mapper.eventually { try a.projection.reader.txn(copy)?.heldCopy == true }
     #expect(try a.projection.reader.txn(copy)?.heldCopy == true)
+  }
+
+  @Test func undoingAMergeFollowsAnotherDevicesEditOfTheCopy() async throws {
+    let a = try Mapper.account()
+    var copy = ""
+    var blobs: [AuthoredBlob] = []
+    if let b = try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in
+      try o.ingest(payload: Self.alert(grant: "u/mbx-a", message: "m7", at: "08:00:00"), ingestID: String(repeating: "7", count: 64))
+      copy = try o.ingest(
+        payload: Self.alert(grant: "u/mbx-b", message: "m8", at: "08:05:00"), ingestID: String(repeating: "8", count: 64))
+    }) { blobs.append(b) }
+    let store = try await Self.store(a, suite: "undo.merge.peer.tests", extra: blobs)
+    let app = AppModel(store: store)
+    #expect(app.perform(.resolveCopy(copy, merge: true)))
+    try await Mapper.eventually { try a.projection.reader.mergedCopyVersion(copy) != nil }
+    let head = try #require(try a.projection.reader.mergedCopyVersion(copy))
+    let merged = copy
+    let peer = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in
+        o.categorize(txnID: merged, parentVersion: head, category: "groceries", needsReview: false)
+      }))
+    try await a.outbox.enqueue(peer.ops)
+    try await a.observer.reproject()
+    #expect(try a.projection.reader.mergedCopyVersion(copy) == head + 1)
+    app.toastAction()
+    try await Mapper.eventually { try a.projection.reader.txn(copy)?.heldCopy == true }
+    #expect(try a.projection.reader.txn(copy)?.heldCopy == true)
+    #expect(try a.projection.reader.forkNotices(kind: "txn").isEmpty)
   }
 
   @Test func undoingSamePurchaseKeepsTheRateEstimate() async throws {

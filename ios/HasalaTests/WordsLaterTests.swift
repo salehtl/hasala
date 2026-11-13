@@ -319,6 +319,41 @@ struct WordsLaterTests: AccountSuite {
     #expect(m.items.first == .phrase)
   }
 
+  @Test func aPasskeyAddedSinceTheLastTapLetsHomeShowTheWords() async throws {
+    let account = MockAccountService(existing: .passwordOnly, signedIn: true)
+    account.delay = .zero
+    var s = services(account)
+    let unseen = InMemoryUnseenPhrase()
+    unseen.noteUnseen(at: .now)
+    s.unseenPhrase = unseen
+    let session = AccountSession(services: s, phase: .ready)
+    let m = FinishSetupModel(services: s, session: { session })
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == .passkeyCantShowUnseenPhrase)
+    try await account.perform(.addPasskey, password: MockAccountService.existingPassword)
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == nil && m.phraseProblem == nil && m.phraseSecurity?.confirming == .viewPhrase)
+  }
+
+  @Test func aReadThatFailsOnALaterTapSaysSoRatherThanTrustingTheLastOne() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    var s = services(account)
+    let unseen = InMemoryUnseenPhrase()
+    unseen.noteUnseen(at: .now)
+    s.unseenPhrase = unseen
+    let session = AccountSession(services: s, phase: .ready)
+    let m = FinishSetupModel(services: s, session: { session })
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == nil && m.phraseSecurity?.state != nil)
+    account.securityStateFailure = .offline
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == .offline && m.phraseProblem == .offline && !m.phraseLoading)
+    account.securityStateFailure = nil
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == nil && m.phraseSecurity?.confirming == .viewPhrase)
+  }
+
   @Test func homeLeavesTheWordsOutWhenNothingIsPending() {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     let m = FinishSetupModel(services: services(account))
@@ -345,6 +380,10 @@ struct StoredUnseenPhraseTests {
     var allowed = true
     var scheduled: [Date] = []
     var cancelled = 0
+    var pending = false
+    var whileScheduling: (@MainActor () -> Void)?
+    var whileAsking: (@MainActor () -> Void)?
+    var refuseSchedule = false
   }
 
   @Test func theServerFillsAnEmptyCacheAndClearsAStaleOne() async {
@@ -370,12 +409,23 @@ struct StoredUnseenPhraseTests {
     let defaults = UserDefaults(suiteName: name)!
     defaults.removePersistentDomain(forName: name)
     let scheduler = StoredUnseenPhrase.Scheduler(
-      allowed: { calls.allowed },
+      allowed: {
+        calls.whileAsking?()
+        calls.whileAsking = nil
+        return calls.allowed
+      },
       schedule: { _, at in
+        calls.whileScheduling?()
+        calls.whileScheduling = nil
+        if calls.refuseSchedule { return false }
         calls.scheduled.append(at)
+        calls.pending = true
         return true
       },
-      cancel: { _ in calls.cancelled += 1 })
+      cancel: { _ in
+        calls.cancelled += 1
+        calls.pending = false
+      })
     return (StoredUnseenPhrase(defaults: defaults, scheduler: scheduler, now: { now }), defaults)
   }
 
@@ -394,6 +444,70 @@ struct StoredUnseenPhraseTests {
     #expect(!store.unseen && calls.cancelled == 1)
     await store.remindIfAllowed()
     #expect(calls.scheduled.count == 1)
+  }
+
+  @Test func wordsSeenWhileTheReminderIsBeingSetLeaveNoReminder() async {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+    let calls = Calls()
+    let (store, defaults) = make(calls, now: start.addingTimeInterval(60))
+    store.noteUnseen(at: start)
+    calls.whileScheduling = { store.noteSeen() }
+    await store.remindIfAllowed()
+    #expect(calls.scheduled.count == 1)
+    #expect(!calls.pending)
+    #expect(!store.unseen)
+    #expect(!defaults.bool(forKey: StoredUnseenPhrase.remindedKey))
+  }
+
+  @Test func aNewUnseenSpellWhileTheReminderIsBeingSetGetsItsOwnDate() async {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+    let later = start.addingTimeInterval(600)
+    let calls = Calls()
+    let (store, defaults) = make(calls, now: start.addingTimeInterval(700))
+    store.noteUnseen(at: start)
+    calls.whileScheduling = {
+      store.noteSeen()
+      store.noteUnseen(at: later)
+    }
+    await store.remindIfAllowed()
+    #expect(!calls.pending)
+    #expect(!defaults.bool(forKey: StoredUnseenPhrase.remindedKey))
+    await store.remindIfAllowed()
+    #expect(calls.pending)
+    #expect(calls.scheduled.last == later.addingTimeInterval(24 * 60 * 60))
+    #expect(defaults.bool(forKey: StoredUnseenPhrase.remindedKey))
+  }
+
+  @Test func aNewUnseenSpellWhilePermissionIsReadIsNotGivenTheOldDate() async {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+    let later = start.addingTimeInterval(600)
+    let calls = Calls()
+    let (store, _) = make(calls, now: start.addingTimeInterval(700))
+    store.noteUnseen(at: start)
+    calls.whileAsking = {
+      store.noteSeen()
+      store.noteUnseen(at: later)
+    }
+    await store.remindIfAllowed()
+    #expect(calls.scheduled.isEmpty)
+    await store.remindIfAllowed()
+    #expect(calls.scheduled == [later.addingTimeInterval(24 * 60 * 60)])
+  }
+
+  @Test func aReminderThatCouldNotBeSetIsNotMarkedAndIsTriedAgain() async {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+    let calls = Calls()
+    let (store, defaults) = make(calls, now: start.addingTimeInterval(60))
+    store.noteUnseen(at: start)
+    calls.refuseSchedule = true
+    await store.remindIfAllowed()
+    #expect(calls.scheduled.isEmpty)
+    #expect(calls.cancelled == 0)
+    #expect(!defaults.bool(forKey: StoredUnseenPhrase.remindedKey))
+    calls.refuseSchedule = false
+    await store.remindIfAllowed()
+    #expect(calls.pending)
+    #expect(defaults.bool(forKey: StoredUnseenPhrase.remindedKey))
   }
 
   @Test func noReminderWithoutPermissionOrAfterTheDay() async {

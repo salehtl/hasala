@@ -99,6 +99,13 @@ func TestArgumentMistakesAreRefusedBeforeTheDatabase(t *testing.T) {
 		{"account", "unfreeze", id, id, "--confirm", id},
 		{"account", "unfreeze", strings.ToUpper(id), "--confirm", strings.ToUpper(id)},
 		{"account", "unfreeze", id, "--confirm", id, "extra"},
+		{"mailbox"},
+		{"mailbox", "rekey"},
+		{"mailbox", "rekey", "--drop-links"},
+		{"mailbox", "rekey", "--keep-key-id", "0011223344556677"},
+		{"mailbox", "rekey", "--drop-links", "--keep-key-id", "0011"},
+		{"mailbox", "drop", "--drop-links", "--keep-key-id", "0011223344556677"},
+		{"mailbox", "rekey", "extra", "--drop-links", "--keep-key-id", "0011223344556677"},
 		{"migrate", "--status", "--pending"},
 		{"migrate", "--to", "-1"},
 		{"migrate", "extra"},
@@ -110,6 +117,16 @@ func TestArgumentMistakesAreRefusedBeforeTheDatabase(t *testing.T) {
 		}
 		if strings.Contains(msg, "postgres") {
 			t.Fatalf("hasalad %v reached the database before refusing its arguments: %s", argv, msg)
+		}
+	}
+}
+
+func TestMigrateRefusesAVersionItWouldIgnore(t *testing.T) {
+	env := []string{"HASALA_MIGRATE_DSN=postgres://hasala_migrate@127.0.0.1:1/none", "HASALA_PG_DSN=postgres://hasala_runtime@127.0.0.1:1/none"}
+	for _, argv := range [][]string{{"migrate", "--status", "--to", "5"}, {"migrate", "--pending", "--to", "5"}} {
+		code, _, msg := hasalad(t, env, argv...)
+		if code != 2 || !strings.Contains(msg, "--to") {
+			t.Fatalf("hasalad %v exited %d (%s), want 2 naming --to", argv, code, msg)
 		}
 	}
 }

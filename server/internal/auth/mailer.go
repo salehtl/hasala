@@ -6,9 +6,7 @@ package auth
 //     mailq.SendNow off the request path, so the answer's timing never
 //     depends on whether an email goes out;
 //   - alerts: enqueued with mailq.EnqueueTx in the event's own transaction;
-//     the alert renderer mints the freeze token at send time;
-//   - a queued code row (the operator's re-verification, C38): the code
-//     renderer issues the code inside the render transaction.
+//     the alert renderer mints the freeze token at send time.
 
 import (
 	"context"
@@ -16,6 +14,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,6 +38,10 @@ type Mailer struct {
 	// inline so they can read the code from the fake sender.
 	Async func(func())
 	Logf  func(format string, args ...any)
+
+	mu      sync.Mutex
+	sending int
+	idle    chan struct{}
 }
 
 func (m *Mailer) now() time.Time {
@@ -65,8 +68,10 @@ func (m *Mailer) SendCodes(codes ...IssuedCode) {
 		if !c.Send && !c.Notice {
 			continue
 		}
+		m.sendStarted()
 		run := func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer m.sendEnded()
+			ctx, cancel := context.WithTimeout(context.Background(), codeSendDeadline)
 			defer cancel()
 			e := mailq.Enqueue{Kind: mail.CodeKind(c.Purpose), Lane: mailq.LaneTransactional, To: c.To, Tag: c.Tag,
 				UserID: c.UserID, Params: map[string]any{"purpose": c.Purpose}}
@@ -77,13 +82,60 @@ func (m *Mailer) SendCodes(codes ...IssuedCode) {
 			}
 			if err := m.Queue.SendNow(ctx, e, render); err != nil {
 				m.logf("auth: code email (%s): %v", c.Purpose, err)
+				return
 			}
+			m.codeWentOut(c)
 		}
 		if m.Async != nil {
 			m.Async(run)
 		} else {
 			go run()
 		}
+	}
+}
+
+func (m *Mailer) codeWentOut(c IssuedCode) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := m.Queue.Pool.Exec(ctx,
+		`UPDATE email_codes SET awaiting_send_until = NULL WHERE code_id = $1 AND awaiting_send_until IS NOT NULL`, c.ID); err != nil {
+		m.logf("auth: code email (%s) went out, but its row was not updated: %v", c.Purpose, err)
+	}
+}
+
+func (m *Mailer) Wait(ctx context.Context) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.sending == 0 {
+		m.mu.Unlock()
+		return
+	}
+	if m.idle == nil {
+		m.idle = make(chan struct{})
+	}
+	idle := m.idle
+	m.mu.Unlock()
+	select {
+	case <-idle:
+	case <-ctx.Done():
+	}
+}
+
+func (m *Mailer) sendStarted() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sending++
+}
+
+func (m *Mailer) sendEnded() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sending--
+	if m.sending == 0 && m.idle != nil {
+		close(m.idle)
+		m.idle = nil
 	}
 }
 
@@ -114,11 +166,10 @@ func (m *Mailer) enqueueAlertTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID
 	return err
 }
 
-// Renderers are this package's renderers for queued rows: alerts and codes.
+// Renderers are this package's renderers for queued rows: alerts.
 func (m *Mailer) Renderers() map[string]mailq.Renderer {
 	return map[string]mailq.Renderer{
 		"alert": mailq.RenderFunc(m.renderAlert),
-		"code":  mailq.RenderFunc(m.renderQueuedCode),
 	}
 }
 
@@ -181,28 +232,6 @@ func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mai
 		link = base + "#" + base64.RawURLEncoding.EncodeToString(raw)
 	}
 	return mail.Alert(row.Recipient, row.Subkind, at, name, link)
-}
-
-// renderQueuedCode issues the code of a queued code row (the operator's
-// re-verification request) inside the render transaction.
-func (m *Mailer) renderQueuedCode(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
-	purpose, _ := row.Params["purpose"].(string)
-	if purpose != PurposeEmailVerify || row.UserID == nil || m.Keys == nil {
-		return mail.Message{}, fmt.Errorf("auth: no queued code renderer for purpose %q", purpose)
-	}
-	var name, addr string
-	if err := tx.QueryRow(ctx, `SELECT display_name, email_norm FROM users WHERE id = $1`, *row.UserID).Scan(&name, &addr); err != nil {
-		return mail.Message{}, err
-	}
-	if addr != row.Recipient {
-		return mail.Message{}, errors.New("auth: the account's address changed since the code was queued")
-	}
-	c, err := issueCodeTx(ctx, tx, m.Keys, m.now(), PurposeEmailVerify, addr, row.UserID, CeremonyEmailVerify,
-		row.UserID.String(), true)
-	if err != nil {
-		return mail.Message{}, err
-	}
-	return mail.Code(addr, PurposeEmailVerify, c.Code, name)
 }
 
 // BounceHook marks an account's address undeliverable when a send to its

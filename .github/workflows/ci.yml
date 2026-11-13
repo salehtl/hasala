@@ -171,8 +171,8 @@ jobs:
           # runs the HasalaCore lints over ios/, but `secrets` runs them too.
           # check.sh compares the bundled templates with the server seed, so
           # gate reads them. infra/ is read (nix flake check evaluates and
-          # builds its checks).
-          skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$|^ios/HasalaCore/Sources/HasalaCore/Resources/templates/'
+          # builds its checks), and module-eval reads the restore runbook.
+          skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$|^ios/HasalaCore/Sources/HasalaCore/Resources/(templates/|TemplatesManifest\.swift$)|^docs/runbooks/restore\.md$'
           # swift reads ios/ and conformance/, plus the server seed templates.
           skip_unless swift "$none|^(docs|web|server|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$" '^server/internal/tmpl/seed/'
           # ios-tools reads ios/, design/ (the Paper tokens the app is

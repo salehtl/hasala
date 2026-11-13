@@ -257,7 +257,7 @@ func (s *Server) accounts() *auth.Accounts {
 	if s.Accounts != nil {
 		return s.Accounts
 	}
-	return &auth.Accounts{Pool: s.Pool, Sessions: s.Sessions, Passkeys: s.Passkeys, StepUp: s.StepUp, Now: s.Now}
+	return &auth.Accounts{Pool: s.Pool, Sessions: s.Sessions, Passkeys: s.Passkeys, StepUp: s.StepUp, Now: s.Now, Record: s.recordRestore, Hold: s.holdRestore}
 }
 
 func (s *Server) handlePasskeyAddBegin(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {

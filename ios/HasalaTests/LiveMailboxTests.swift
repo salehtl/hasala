@@ -48,6 +48,19 @@ struct LiveMailboxTests {
     #expect(offer(.halted, halt: .noMailbox) == Self.signInAgain)
   }
 
+  @Test func theOfferIsUnknownOnlyWhileAnUnlinkedIPhoneWaitsForTheServer() {
+    func known(_ phase: MailboxPhase, sample: Bool = false, link: MailboxLinkStatus? = nil) -> Bool {
+      LiveMailboxConnecting.offerKnown(phase: phase, sampleLoaded: sample, serverLink: link)
+    }
+    #expect(!known(.unlinked))
+    #expect(known(.unlinked, link: .noLink))
+    #expect(known(.unlinked, link: .holder(isThisDevice: false, watchExpiresAtMs: nil)))
+    #expect(known(.unlinked, sample: true))
+    for phase in MailboxPhase.allCases where phase != .unlinked {
+      #expect(known(phase))
+    }
+  }
+
   /// The offer names the lane's provider (main's `theOfferNamesTheLanesProvider`): Outlook's
   /// broken link is signed in again as Outlook. v2 has no `.change`: a working link offers
   /// nothing, and a switch is Bank alerts' "Use another email".
@@ -310,6 +323,13 @@ struct LiveMailboxTests {
     #expect(lane.mailboxes.isEmpty && lane.offer == nil && lane.linkedProvider == nil)
   }
 
+  @Test func theLinksOwnStateBeatsTheRememberedProviderAfterAnInterruptedSwitch() {
+    #expect(AccountRuntime.interruptedSwitch(held: .outlook, remembered: .gmail) == .gmail)
+    #expect(AccountRuntime.interruptedSwitch(held: .gmail, remembered: .gmail) == nil)
+    #expect(AccountRuntime.interruptedSwitch(held: nil, remembered: .gmail) == nil)
+    #expect(AccountRuntime.interruptedSwitch(held: .outlook, remembered: nil) == nil)
+  }
+
   /// The mailbox page's "Last checked", on the iPhone's clock in its time zone; and a
   /// connect before the account has opened is refused, and says so.
   @Test func theLiveMailboxSaysWhenItLastChecked() async {
@@ -363,9 +383,9 @@ struct LiveMailboxTests {
     #expect(row(.active)?.state == .connected && row(.active)?.meta == "Checked 4 min ago")
     #expect(row(.active)?.banks == ["DIB"] && row(.active)?.id == "gmail")
     #expect(row(.reconnectRequired)?.state == .needsSignIn)
-    #expect(row(.halted, halt: .gmail)?.state == .connected)
-    #expect(row(.halted, halt: nil)?.state == .connected)
-    #expect(row(.halted, halt: .accountFull)?.state == .connected && row(.halted, halt: .accountFull)?.note != nil)
+    #expect(row(.halted, halt: .gmail)?.state == .readingStopped)
+    #expect(row(.halted, halt: nil)?.state == .readingStopped)
+    #expect(row(.halted, halt: .accountFull)?.state == .readingStopped && row(.halted, halt: .accountFull)?.note == nil)
     #expect(row(.otherDevice)?.note == "Read on your other iPhone")
     // Read on the other iPhone: no Disconnect and no switch from here.
     #expect(row(.otherDevice)?.readElsewhere == true && row(.otherDevice)?.state == .connected)
@@ -378,7 +398,7 @@ struct LiveMailboxTests {
       provider: .outlook, nowMs: now
     ).first
     #expect(haltedOutlook?.note == MailConnectFailure.noMailboxLine(.outlook))
-    #expect(row(.halted, halt: .gmail)?.note == "Reading your bank alerts stopped.")
+    #expect(row(.halted, halt: .gmail)?.note == nil)
     // An Outlook lane's row: its id and provider, a personal Microsoft account.
     let outlook = LiveMailboxConnecting.mailboxes(
       phase: .active, halt: nil, address: "maya.k@example.com", lastSuccessAtMs: nil, bankDomains: [],
@@ -414,10 +434,10 @@ struct LiveMailboxTests {
     #expect(!lane.mailboxesKnown && lane.mailboxes.isEmpty)
   }
 
-  /// A lane halted for a reason a new sign-in doesn't fix: its row reads connected and
-  /// nothing is offered, but the Profile card and Bank alerts must not say it works.
+  /// A lane halted for a reason a new sign-in doesn't fix: its row reads "Reading stopped"
+  /// and nothing is offered, and the Profile card and Bank alerts must not say it works.
   /// (`LedgerStateMapper.health` gives every halted phase `.reconnect`: the lane's hero is
-  /// "needs you".) Another iPhone reading the mailbox is still working.
+  /// "Bank alerts stopped".) Another iPhone reading the mailbox is still working.
   @Test func aHaltedLaneIsNotWorking() {
     let now: Int64 = 10_000_000_000
     func summary(
@@ -446,6 +466,47 @@ struct LiveMailboxTests {
     #expect(noMailbox.title == "Sign in again" && noMailbox.detail == MailConnectFailure.noMailboxLine(.gmail))
     let elsewhere = summary(.otherDevice, halt: nil, health: .working)
     #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
+  }
+
+  @Test func anotherIPhoneThatWentQuietIsNotShownAsWorking() throws {
+    let now: Int64 = 1_792_483_200_000
+    let day: Int64 = 86_400_000
+    let rows = LiveMailboxConnecting.mailboxes(
+      phase: .otherDevice, halt: nil, address: "maya@example.com", lastSuccessAtMs: now - 4 * 60_000,
+      bankDomains: ["dib.ae"], nowMs: now)
+    let health = MailboxHealth(status: .working, lastEmail: "9 days ago", banks: "DIB")
+    func reading(newestRowDaysAgo days: Int64?) -> ReadingState {
+      ReadingState.derive(
+        ReadingFacts(
+          nowMs: now, mail: ReadingFacts.Mail(provider: .gmail, phase: .otherDevice),
+          newestMailRowMs: days.map { now - $0 * day }))
+    }
+    func summary(_ state: ReadingState) -> MailboxesSummary {
+      MailboxesSummary(rows, health: health, offer: nil, reading: state)
+    }
+
+    let stale = reading(newestRowDaysAgo: 8)
+    let quiet = summary(stale)
+    #expect(quiet.title == "Bank alerts went quiet" && quiet.hue == .sand && quiet.needsYou)
+    #expect(quiet.detail == "Nothing new from your other iPhone since 12 Oct. Newer payments aren't counted.")
+    let hold = try #require(ReadingOnScreen.hold(stale, month: stale.today.yearMonth))
+    #expect(quiet.detail == hold.line)
+
+    let hero = BankAlertsPage.Hero(summary: quiet, health: health, mailboxes: rows, offer: nil)
+    #expect(hero.kind == .needsYou && hero.title == "Needs you" && hero.hue == .sand)
+    #expect(hero.detail == quiet.detail && hero.totalsLine == nil)
+
+    let undated = summary(reading(newestRowDaysAgo: nil))
+    #expect(undated.title == "Bank alerts went quiet" && undated.needsYou)
+    #expect(undated.detail == "Nothing new from your other iPhone. Newer payments aren't counted.")
+
+    let fresh = summary(reading(newestRowDaysAgo: 6))
+    #expect(fresh.title == "Bank alerts are working" && !fresh.needsYou)
+    #expect(fresh.detail == "Last email 9 days ago\nDIB")
+
+    let nothingReadHere = MailboxesSummary(
+      [], health: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), offer: .connect, reading: stale)
+    #expect(nothingReadHere.title == "Your email isn't connected")
   }
 
   @Test func homesImportPillFollowsTheFirstScan() {
@@ -573,6 +634,39 @@ struct MailGrantEndsTests {
     release.withLock { $0?.resume(); $0 = nil }
     #expect(await ends.connectGate(within: .seconds(10)) == nil)
     #expect(await MailGrantEnds().connectGate(within: .milliseconds(1)) == nil)
+  }
+
+  @Test func aCancelledDepartureStillWaitsForItsEnding() async {
+    let ends = MailGrantEnds()
+    let log = Log()
+    let departure = Task {
+      while !Task.isCancelled { await Task.yield() }
+      await ends.end {
+        try? await Task.sleep(for: .milliseconds(80))
+        log.add("ended")
+      }
+      log.add("left")
+    }
+    departure.cancel()
+    await departure.value
+    #expect(log.all == ["ended", "left"])
+  }
+
+  @Test func aCancelledDepartureWaitsOnlyForTheLimit() async {
+    let ends = MailGrantEnds()
+    let release = Mutex<CheckedContinuation<Void, Never>?>(nil)
+    let departure = Task {
+      while !Task.isCancelled { await Task.yield() }
+      await ends.end(within: .milliseconds(50)) {
+        await withCheckedContinuation { c in release.withLock { $0 = c } }
+      }
+    }
+    departure.cancel()
+    await departure.value
+    #expect(await ends.settled(within: .milliseconds(1)) == false)
+    while release.withLock({ $0 == nil }) { await Task.yield() }
+    release.withLock { $0?.resume(); $0 = nil }
+    #expect(await ends.settled(within: .seconds(10)))
   }
 
   /// One ending's worst case (every request at its limit, one after another) is inside a

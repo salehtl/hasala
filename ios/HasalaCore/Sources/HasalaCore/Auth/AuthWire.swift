@@ -299,13 +299,31 @@ public struct StepUpJSON: Codable, Sendable, Hashable {
       Proof(kind: "device_code", assertion: nil, writer_id: writerID, sig: sigB64, verifier: nil, code: code)
     }
 
-    public init(kind: String, assertion: PublicKeyCredentialJSON? = nil, writer_id: String? = nil, sig: String? = nil, verifier: String? = nil, code: String? = nil) {
+    private init(kind: String, assertion: PublicKeyCredentialJSON?, writer_id: String?, sig: String?, verifier: String?, code: String?) {
       self.kind = kind
       self.assertion = assertion
       self.writer_id = writer_id
       self.sig = sig
       self.verifier = verifier
       self.code = code
+    }
+
+    public init(from decoder: any Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      switch try c.decode(String.self, forKey: .kind) {
+      case "passkey":
+        self = .passkey(try c.decode(PublicKeyCredentialJSON.self, forKey: .assertion))
+      case "device":
+        self = .device(
+          writerID: try c.decode(String.self, forKey: .writer_id), sigB64: try c.decode(String.self, forKey: .sig),
+          verifierB64: try c.decode(String.self, forKey: .verifier))
+      case "device_code":
+        self = .deviceCode(
+          writerID: try c.decode(String.self, forKey: .writer_id), sigB64: try c.decode(String.self, forKey: .sig),
+          code: try c.decode(String.self, forKey: .code))
+      default:
+        throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown proof kind")
+      }
     }
   }
   public let nonce: String
@@ -350,11 +368,14 @@ public struct AccountInfo: Codable, Sendable, Hashable {
   public let password_salt: String?
   public let has_passkey: Bool?
   public let frozen: Bool?
+  public let freeze_trigger_at: String?
+  public let frozen_by: String?
+  public let holder_can_lift: Bool?
   public let restricted: Bool?
   public let review_account: Bool?
   public let phrase_unseen_since: String?
 
-  public init(user_id: String, status: String? = nil, has_keys: Bool? = nil, email: String? = nil, display_name: String? = nil, has_password: Bool? = nil, password_salt: String? = nil, has_passkey: Bool? = nil, frozen: Bool? = nil, restricted: Bool? = nil, review_account: Bool? = nil, phrase_unseen_since: String? = nil) {
+  public init(user_id: String, status: String? = nil, has_keys: Bool? = nil, email: String? = nil, display_name: String? = nil, has_password: Bool? = nil, password_salt: String? = nil, has_passkey: Bool? = nil, frozen: Bool? = nil, freeze_trigger_at: String? = nil, frozen_by: String? = nil, holder_can_lift: Bool? = nil, restricted: Bool? = nil, review_account: Bool? = nil, phrase_unseen_since: String? = nil) {
     self.user_id = user_id
     self.status = status
     self.has_keys = has_keys
@@ -364,6 +385,9 @@ public struct AccountInfo: Codable, Sendable, Hashable {
     self.password_salt = password_salt
     self.has_passkey = has_passkey
     self.frozen = frozen
+    self.freeze_trigger_at = freeze_trigger_at
+    self.frozen_by = frozen_by
+    self.holder_can_lift = holder_can_lift
     self.restricted = restricted
     self.review_account = review_account
     self.phrase_unseen_since = phrase_unseen_since

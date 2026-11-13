@@ -36,6 +36,32 @@ struct InMemoryLedgerTests {
     #expect(!ledger.state.rules.contains { $0.learnedToday })
   }
 
+  @Test func countingASamePurchaseOnceTakesTheBanksFigureAndUndoGivesBackTheEstimate() throws {
+    var s = Scenario.mayaSamePurchase.state
+    let i = try #require(s.txns.firstIndex { $0.id == "amazon-usd" })
+    s.txns[i].homeSource = .rate
+    s.txns[i].homeRateMicro = 3_672_500
+    let ledger = InMemoryLedger(state: s)
+    #expect(ledger.state.txn("amazon-usd")?.isEstimate == true)
+    let token = try #require(try ledger.apply(.resolveSamePurchase("amazon-aed", same: true)))
+    let counted = try #require(ledger.state.txn("amazon-usd"))
+    #expect(counted.homeMinor == 93_00 && counted.homeSource == .stated && counted.homeRateMicro == nil && !counted.isEstimate)
+    ledger.undo(token)
+    let back = try #require(ledger.state.txn("amazon-usd"))
+    #expect(back.homeMinor == 91_81 && back.homeSource == .rate && back.homeRateMicro == 3_672_500 && back.isEstimate)
+  }
+
+  @Test func aPurchaseWithNoHomeFigureCannotBeCountedOnce() throws {
+    var s = Scenario.mayaSamePurchase.state
+    let i = try #require(s.txns.firstIndex { $0.id == "amazon-usd" })
+    s.txns[i].homeMinor = nil
+    s.txns[i].homeSource = nil
+    let ledger = InMemoryLedger(state: s)
+    #expect(throws: ActionError.notFound) { try ledger.apply(.resolveSamePurchase("amazon-aed", same: true)) }
+    #expect(ledger.state.txn("amazon-aed")?.samePurchase != nil && ledger.state.txn("amazon-aed")?.archived == false)
+    #expect(ledger.state.txn("amazon-usd")?.homeMinor == nil)
+  }
+
   @Test func aSplitMustAddUp() throws {
     let ledger = InMemoryLedger()
     let bad = [SplitLine(id: 0, categoryID: "groceries", amount: .aed(300_00)),
@@ -94,6 +120,17 @@ struct InMemoryLedgerTests {
     #expect(lulu.note == "Weekly shop")
     #expect(!ledger.state.rules.contains { $0.learnedToday })
     #expect(ledger.state.rules.first { $0.id == "r-zuma" }?.enabled == false)
+  }
+
+  @Test func theNoteOfAMergedAlertStaysUntilTheMergeIsUndone() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaSamePurchase.state)
+    let merged = try #require(try ledger.apply(.resolveSamePurchase("amazon-aed", same: true)))
+    let note = try #require(ledger.state.txn("amazon-aed")?.note)
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) { try ledger.apply(.setNote("amazon-aed", "Lunch")) }
+    #expect(ledger.state.txn("amazon-aed")?.note == note && ledger.state.txn("amazon-aed")?.mergedInto == "amazon-usd")
+    ledger.undo(merged)
+    try ledger.apply(.setNote("amazon-aed", "Lunch"))
+    #expect(ledger.state.txn("amazon-aed")?.note == "Lunch")
   }
 
   @Test func undoLeavesAFieldChangedAgainSince() throws {

@@ -80,6 +80,7 @@ const (
 	senderCount   = 4
 	configPause   = 5 * time.Minute
 	tickEvery     = time.Second
+	drainTimeout  = 20 * time.Second
 )
 
 type job struct {
@@ -89,6 +90,7 @@ type job struct {
 	tokens  []Target
 	r       Reason
 	resolve bool // false: tokens are already final (a trailing wake)
+	sent    func()
 }
 
 // Stats are the dispatcher's counters (spec 02 §20.1's apns_* metrics).
@@ -104,17 +106,21 @@ type Dispatcher struct {
 	Now    func() time.Time
 	Stats  Stats
 
+	SessionIdle time.Duration
+
 	queue    chan job
-	mu       sync.Mutex // guards th, pause and envPause
+	mu       sync.Mutex // guards th, pause, envPause, closed and the sends to queue
 	th       *throttle
 	pause    time.Time
 	envPause map[string]time.Time
+	closed   bool
 	wg       sync.WaitGroup
+	drainFor time.Duration
 }
 
 // NewDispatcher builds a dispatcher; call Start to run it.
 func NewDispatcher(pool *pgxpool.Pool, s Sender) *Dispatcher {
-	return &Dispatcher{Pool: pool, Sender: s, queue: make(chan job, queueCapacity), th: newThrottle()}
+	return &Dispatcher{Pool: pool, Sender: s, queue: make(chan job, queueCapacity), th: newThrottle(), drainFor: drainTimeout}
 }
 
 func (d *Dispatcher) now() time.Time {
@@ -124,9 +130,12 @@ func (d *Dispatcher) now() time.Time {
 	return time.Now()
 }
 
-// Start runs the senders and the trailing-edge ticker until ctx is done; the
-// returned channel closes when every goroutine has stopped.
+// Start runs the senders and the trailing-edge ticker until ctx is done. A
+// wake already queued then still goes out, within drainFor; a later one is
+// refused. The returned channel closes when every goroutine has stopped.
 func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
+	runCtx, stopRun := context.WithCancel(context.WithoutCancel(ctx))
+	context.AfterFunc(ctx, func() { time.AfterFunc(d.drainFor, stopRun) })
 	for range senderCount {
 		d.wg.Add(1)
 		go func() {
@@ -134,9 +143,10 @@ func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 			for {
 				select {
 				case <-ctx.Done():
+					d.drain(runCtx)
 					return
 				case j := <-d.queue:
-					d.run(context.WithoutCancel(ctx), j)
+					d.run(runCtx, j)
 				}
 			}
 		}()
@@ -151,16 +161,42 @@ func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 			case <-ctx.Done():
 				return
 			case <-tick.C:
-				d.Flush(context.WithoutCancel(ctx))
+				d.Flush(runCtx)
 			}
 		}
 	}()
 	done := make(chan struct{})
-	go func() { d.wg.Wait(); close(done) }()
+	go func() { d.wg.Wait(); stopRun(); close(done) }()
 	return done
 }
 
+func (d *Dispatcher) drain(ctx context.Context) {
+	d.mu.Lock()
+	d.closed = true
+	d.mu.Unlock()
+	for {
+		select {
+		case j := <-d.queue:
+			if ctx.Err() != nil {
+				d.Stats.Dropped[j.r].Add(1)
+				slog.Warn("pushv2: shutdown limit reached, wake dropped", "reason", j.r.String())
+				continue
+			}
+			d.run(ctx, j)
+		default:
+			return
+		}
+	}
+}
+
 func (d *Dispatcher) enqueue(j job) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		d.Stats.Dropped[j.r].Add(1)
+		slog.Warn("pushv2: shutting down, wake dropped", "reason", j.r.String())
+		return false
+	}
 	select {
 	case d.queue <- j:
 		return true
@@ -177,11 +213,15 @@ func (d *Dispatcher) WakeWriter(ctx context.Context, userID uuid.UUID, writerID 
 }
 
 // TryWakeWriter is WakeWriter that reports whether the wake was queued.
-func (d *Dispatcher) TryWakeWriter(_ context.Context, userID uuid.UUID, writerID string, r Reason) bool {
+func (d *Dispatcher) TryWakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r Reason) bool {
+	return d.TryWakeWriterConfirmed(ctx, userID, writerID, r, nil)
+}
+
+func (d *Dispatcher) TryWakeWriterConfirmed(_ context.Context, userID uuid.UUID, writerID string, r Reason, sent func()) bool {
 	if writerID == "" {
 		return false
 	}
-	return d.enqueue(job{user: userID, writer: writerID, r: r, resolve: true})
+	return d.enqueue(job{user: userID, writer: writerID, r: r, resolve: true, sent: sent})
 }
 
 // WakeOthers wakes every device of userID except exceptWriterID ("" = all).
@@ -204,16 +244,31 @@ func (d *Dispatcher) Notify(ctx context.Context, userID uuid.UUID) error {
 	return nil
 }
 
-// targets resolves a job's tokens from apns_tokens.
-func (d *Dispatcher) targets(ctx context.Context, j job) ([]Target, error) {
-	switch {
-	case !j.resolve:
-		return j.tokens, nil
-	case j.others:
-		return CollectTokens(ctx, d.Pool, j.user, j.writer)
-	default:
-		return WriterTokens(ctx, d.Pool, j.user, j.writer)
+const liveTokenRows = `apns_tokens a JOIN sessions s ON s.token_hash = a.session_hash
+	  AND s.revoked_at IS NULL AND s.expires_at > $1 AND ($2::timestamptz IS NULL OR s.last_used_at > $2)`
+
+func (d *Dispatcher) sessionCutoffs() (time.Time, *time.Time) {
+	now := d.now()
+	if d.SessionIdle <= 0 {
+		return now, nil
 	}
+	usedAfter := now.Add(-d.SessionIdle)
+	return now, &usedAfter
+}
+
+// targets resolves a job's tokens from apns_tokens: those of live sessions.
+func (d *Dispatcher) targets(ctx context.Context, j job) ([]Target, error) {
+	if !j.resolve {
+		return j.tokens, nil
+	}
+	now, usedAfter := d.sessionCutoffs()
+	rows, err := d.Pool.Query(ctx,
+		`SELECT a.token_hex, a.environment FROM `+liveTokenRows+`
+		  WHERE a.user_id = $3 AND (a.writer_id = $4) = $5`, now, usedAfter, j.user, j.writer, !j.others)
+	if err != nil {
+		return nil, err
+	}
+	return collectTargets(rows)
 }
 
 func (d *Dispatcher) run(ctx context.Context, j job) {
@@ -222,6 +277,7 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 		slog.Warn("pushv2: resolve wake targets", "reason", j.r.String(), "err", err.Error())
 		return
 	}
+	delivered := false
 	for _, t := range ts {
 		d.mu.Lock()
 		paused := d.pausedFor(t)
@@ -236,35 +292,43 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 		}
 		switch dec {
 		case sendNow:
-			d.send(ctx, t)
+			if d.send(ctx, t) == ResultSent {
+				delivered = true
+			}
 		case dropCap, dropCool:
 			d.Stats.Dropped[j.r].Add(1)
 		}
+	}
+	if delivered && j.sent != nil {
+		j.sent()
 	}
 }
 
 // Flush sends every trailing wake whose window has closed. The ticker calls it
 // every second; tests call it with a fake clock. A trailing wake goes out only
-// if the token's row still exists for the account it was owed to: a token
-// revoked, logged out or moved to another account since is not woken.
+// if the token's row still exists for the account it was owed to and its
+// session is live: a token revoked, logged out, expired or moved to another
+// account since is not woken.
 func (d *Dispatcher) Flush(ctx context.Context) {
 	d.mu.Lock()
-	owed, dropped := d.th.due(d.now())
-	paused := make([]bool, len(owed))
-	for i, w := range owed {
-		paused[i] = d.pausedFor(w.t)
-	}
+	owed, dropped := d.th.due(d.now(), d.pausedFor)
 	d.mu.Unlock()
 	for _, r := range dropped {
 		d.Stats.Dropped[r].Add(1)
 	}
-	for i, w := range owed {
-		if paused[i] || !d.stillRegistered(ctx, w) {
+	for _, w := range owed {
+		if !d.stillRegistered(ctx, w) || !d.chargeTrailing(w) {
 			d.Stats.Dropped[w.r].Add(1)
 			continue
 		}
 		d.send(ctx, w.t)
 	}
+}
+
+func (d *Dispatcher) chargeTrailing(w trailing) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return !d.pausedFor(w.t) && d.th.charge(w, d.now())
 }
 
 func (d *Dispatcher) pausedFor(t Target) bool {
@@ -280,11 +344,12 @@ func (d *Dispatcher) stillRegistered(ctx context.Context, w trailing) bool {
 	if w.owner != uuid.Nil {
 		owner = &w.owner
 	}
+	now, usedAfter := d.sessionCutoffs()
 	var ok bool
 	err := d.Pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM apns_tokens
-		  WHERE token_hex = $1 AND environment = $2 AND ($3::uuid IS NULL OR user_id = $3))`,
-		w.t.TokenHex, w.t.Environment, owner).Scan(&ok)
+		`SELECT EXISTS (SELECT 1 FROM `+liveTokenRows+`
+		  WHERE a.token_hex = $3 AND a.environment = $4 AND ($5::uuid IS NULL OR a.user_id = $5))`,
+		now, usedAfter, w.t.TokenHex, w.t.Environment, owner).Scan(&ok)
 	if err != nil {
 		slog.Warn("pushv2: check trailing wake token", "reason", w.r.String(), "err", err.Error())
 		return false
@@ -292,9 +357,9 @@ func (d *Dispatcher) stillRegistered(ctx context.Context, w trailing) bool {
 	return ok
 }
 
-func (d *Dispatcher) send(ctx context.Context, t Target) {
+func (d *Dispatcher) send(ctx context.Context, t Target) Result {
 	if d.Sender == nil {
-		return
+		return ResultTransient
 	}
 	res := d.Sender.Send(ctx, t)
 	switch res {
@@ -336,6 +401,7 @@ func (d *Dispatcher) send(ctx context.Context, t Target) {
 		d.Stats.Transient.Add(1)
 		slog.Warn("pushv2: APNs send failed", "result", res.String())
 	}
+	return res
 }
 
 // Querier is what the token readers need: a pool or a transaction.
@@ -349,17 +415,6 @@ type Querier interface {
 func CollectTokens(ctx context.Context, q Querier, userID uuid.UUID, exceptWriterID string) ([]Target, error) {
 	rows, err := q.Query(ctx,
 		`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id <> $2`, userID, exceptWriterID)
-	if err != nil {
-		return nil, err
-	}
-	return collectTargets(rows)
-}
-
-// WriterTokens reads one writer's tokens, for a revoke: the revoked writer is
-// woken too (spec 02 §12.5, §9.5), and its token row goes with it.
-func WriterTokens(ctx context.Context, q Querier, userID uuid.UUID, writerID string) ([]Target, error) {
-	rows, err := q.Query(ctx,
-		`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, userID, writerID)
 	if err != nil {
 		return nil, err
 	}

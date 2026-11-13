@@ -88,6 +88,14 @@ public enum HomeWidgetKind: String, Sendable, Hashable, CaseIterable, Codable, C
     default: "Your first bank alert fills this in."
     }
   }
+
+  public var chooseSentence: String? {
+    switch self {
+    case .project: "Touch and hold to choose a project."
+    case .goal: "Touch and hold to choose a goal."
+    default: nil
+    }
+  }
 }
 
 public enum HomeWidgetConfig: Sendable, Hashable, Codable {
@@ -268,10 +276,12 @@ public struct HomeLayout: Sendable, Hashable, Codable {
 public struct HomeCanvasItem: Sendable, Hashable, Identifiable, CanvasSized {
   public var entry: HomeLayout.Entry
   public var widget: HomeWidget?
+  public var waitingSentence: String
 
-  public init(entry: HomeLayout.Entry, widget: HomeWidget?) {
+  public init(entry: HomeLayout.Entry, widget: HomeWidget?, waitingSentence: String? = nil) {
     self.entry = entry
     self.widget = widget
+    self.waitingSentence = waitingSentence ?? entry.kind.waitingSentence
   }
 
   public var id: String { entry.id }

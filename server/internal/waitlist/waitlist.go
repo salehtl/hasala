@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,7 @@ type Service struct {
 	// then on the console's list to approve. It gets nothing about the entry.
 	OnConfirmed func()
 	Record      func(purgeledger.Entry)
+	Hold        purgeledger.HoldFunc
 
 	mu        sync.Mutex
 	countsAt  time.Time
@@ -188,8 +190,12 @@ func (s *Service) Confirm(ctx context.Context, token string) (string, error) {
 		entry); err != nil {
 		return "", err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE waitlist_tokens SET used_at = now() WHERE token_hash = $1`, hash); err != nil {
+	used, err := tx.Exec(ctx, `UPDATE waitlist_tokens SET used_at = now() WHERE token_hash = $1`, hash)
+	if err != nil {
 		return "", err
+	}
+	if used.RowsAffected() == 0 {
+		return "", ErrLinkExpired
 	}
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM waitlist_tokens WHERE entry_id = $1 AND purpose = 'confirm' AND used_at IS NULL`, entry); err != nil {
@@ -234,12 +240,14 @@ func (s *Service) Leave(ctx context.Context, token string) error {
 	if err := DeleteEntryTx(ctx, tx, entry); err != nil {
 		return err
 	}
+	held, err := s.Hold.Tx(ctx, tx, purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistLeave})
+	if err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	if s.Record != nil {
-		s.Record(purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistLeave})
-	}
+	held.Release(s.Record)
 	return nil
 }
 
@@ -291,6 +299,9 @@ func OnInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UU
 			  WHERE id = $1`, e); err != nil {
 			return fmt.Errorf("waitlist: join: %w", err)
 		}
+		if _, err := tx.Exec(ctx, `DELETE FROM waitlist_tokens WHERE entry_id = $1 AND purpose = 'confirm'`, e); err != nil {
+			return fmt.Errorf("waitlist: join: drop the entry's confirm links: %w", err)
+		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE invite_codes SET state = 'revoked', closed_at = now()
 			  WHERE waitlist_entry_id = $1 AND id <> $2 AND state IN ('awaiting_testflight','queued','active')`,
@@ -312,6 +323,10 @@ func OnInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UU
 		}
 	}
 	return nil
+}
+
+func OnAddressTakenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, accountTag []byte) error {
+	return OnInviteRedeemedTx(ctx, tx, uuid.Nil, userID, accountTag)
 }
 
 // MintToken creates one confirm or leave token for an entry inside tx and
@@ -392,11 +407,29 @@ func readEntry(ctx context.Context, tx pgx.Tx, id uuid.UUID) (entryView, error) 
 		   FROM waitlist_entries e LEFT JOIN banks b ON b.slug = e.bank_slug
 		  WHERE e.id = $1 FOR UPDATE OF e`, id).
 		Scan(&v.email, &v.state, &v.bankName, &v.confirmedAt, &v.invitedAt, &v.until)
-	return v, err
+	return v, staleIfGone(err)
+}
+
+func readEntryIn(ctx context.Context, tx pgx.Tx, id uuid.UUID, states ...string) (entryView, error) {
+	v, err := readEntry(ctx, tx, id)
+	if err != nil {
+		return v, staleIfGone(err)
+	}
+	if !slices.Contains(states, v.state) {
+		return v, ErrStale
+	}
+	return v, nil
+}
+
+func staleIfGone(err error) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrStale
+	}
+	return err
 }
 
 // ErrStale is a queued email whose subject changed state before it was sent.
-var ErrStale = errors.New("waitlist: the entry no longer needs this email")
+var ErrStale error = mailq.Stale("waitlist: the entry no longer needs this email")
 
 func toMessage(row mailq.Row, r mailq.Rendered) mail.Message {
 	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text, HTML: r.HTML}
@@ -424,9 +457,9 @@ func (s *Service) Register(q *mailq.Queue) {
 		if row.EntryID == nil {
 			return mail.Message{}, ErrStale
 		}
-		v, err := readEntry(ctx, tx, *row.EntryID)
-		if err != nil || v.state != "pending" {
-			return mail.Message{}, ErrStale
+		v, err := readEntryIn(ctx, tx, *row.EntryID, "pending")
+		if err != nil {
+			return mail.Message{}, err
 		}
 		confirm, err := MintToken(ctx, tx, *row.EntryID, "confirm")
 		if err != nil {
@@ -448,9 +481,9 @@ func (s *Service) Register(q *mailq.Queue) {
 		if row.EntryID == nil {
 			return mail.Message{}, ErrStale
 		}
-		v, err := readEntry(ctx, tx, *row.EntryID)
-		if err != nil || (v.state != "confirmed" && v.state != "invited") {
-			return mail.Message{}, ErrStale
+		v, err := readEntryIn(ctx, tx, *row.EntryID, "confirmed", "invited")
+		if err != nil {
+			return mail.Message{}, err
 		}
 		leave, err := LeaveLinks(ctx, tx, s.WebBase, *row.EntryID)
 		if err != nil {
@@ -467,6 +500,9 @@ func (s *Service) Register(q *mailq.Queue) {
 		var name *string
 		err := tx.QueryRow(ctx, `SELECT to_jsonb(u) ->> 'display_name' FROM users u WHERE email_norm = $1`,
 			row.Recipient).Scan(&name)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return mail.Message{}, err
+		}
 		greeting := "Hi,"
 		if err == nil && name != nil {
 			greeting = mail.Greeting(*name)
@@ -483,14 +519,17 @@ func (s *Service) renderBankSupported(ctx context.Context, tx pgx.Tx, row mailq.
 	}
 	var bank, status string
 	if err := tx.QueryRow(ctx, `SELECT name, status FROM banks WHERE slug = $1`, *row.BankSlug).
-		Scan(&bank, &status); err != nil || status != "supported" {
+		Scan(&bank, &status); err != nil {
+		return mail.Message{}, staleIfGone(err)
+	}
+	if status != "supported" {
 		return mail.Message{}, ErrStale
 	}
 	if row.UserID != nil {
 		var name string
 		if err := tx.QueryRow(ctx, `SELECT display_name FROM users WHERE id = $1 AND email_norm = $2`,
 			*row.UserID, row.Recipient).Scan(&name); err != nil {
-			return mail.Message{}, ErrStale
+			return mail.Message{}, staleIfGone(err)
 		}
 		r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Greeting: mail.Greeting(name),
 			Email: row.Recipient, BankName: bank, AccountAudience: true,
@@ -500,9 +539,8 @@ func (s *Service) renderBankSupported(ctx context.Context, tx pgx.Tx, row mailq.
 	if row.EntryID == nil {
 		return mail.Message{}, ErrStale
 	}
-	v, err := readEntry(ctx, tx, *row.EntryID)
-	if err != nil || (v.state != "confirmed" && v.state != "invited") {
-		return mail.Message{}, ErrStale
+	if _, err := readEntryIn(ctx, tx, *row.EntryID, "confirmed", "invited"); err != nil {
+		return mail.Message{}, err
 	}
 	leave, err := LeaveLinks(ctx, tx, s.WebBase, *row.EntryID)
 	if err != nil {

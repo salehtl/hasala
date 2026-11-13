@@ -68,6 +68,8 @@ struct BankTextsAlertsPage: View {
 
   static let skippedTitle = "Skipped texts"
 
+  static func heldRemoval(_ mailbox: (any MailboxConnecting)?) -> MailHeldRemoval? { mailbox?.heldRemoval }
+
   static let readsRows: [(icon: HIcon, text: String, tip: String?)] = [
     (.chat, "Hasala reads each text as it arrives.", nil),
     (.bank, BankTexts.anyBankLine, nil),
@@ -83,6 +85,12 @@ struct BankTextsAlertsPage: View {
         }
         automation
         if !BankTexts.setAsideRows(lane.setAside).isEmpty { setAsideSection }
+        if let mailbox = app.mailbox, let held = Self.heldRemoval(mailbox) {
+          VStack(alignment: .leading, spacing: 12) {
+            HSectionHeader("Needs a look")
+            HListCard { HeldRemovalRow(app: app, lane: mailbox, held: held) }
+          }
+        }
         howItReads
         switchSection
       }
@@ -182,8 +190,12 @@ struct BankTextsAlertsPage: View {
           HDivider(inset: .disc68)
         }
         MailActionRow(title: "Test it again", identifier: "bankAlerts.texts.test", icon: .chat) {
-          lane.startTest()
-          testing = true
+          do throws(BankTextsFailure) {
+            try lane.startTest()
+            testing = true
+          } catch {
+            app.say(error.message)
+          }
         }
         HDivider(inset: .disc68)
         MailActionRow(
@@ -292,6 +304,7 @@ struct UseBankTextsSection: View {
   @Binding var guiding: Bool
   @State private var asking = false
   @State private var switching = false
+  @State private var mailboxOff = false
   @State private var pasting = false
   @Environment(\.openURL) private var openURL
 
@@ -368,7 +381,9 @@ struct UseBankTextsSection: View {
     switching = true
     Task {
       defer { switching = false }
-      switch await SourceSwitch.toTexts(mailbox: app.mailbox, texts: lane) {
+      let attempt = await SourceSwitch.attempt(mailbox: app.mailbox, texts: lane, mailboxOff: mailboxOff)
+      if attempt.mailboxOff { mailboxOff = true }
+      switch attempt.outcome {
       case .switched:
         guiding = true
       case .failed(let line):

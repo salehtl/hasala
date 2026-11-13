@@ -22,6 +22,7 @@ public struct MailboxStateRow: Sendable, Equatable {
   public var lastCycleAt: Int64?
   public var lastSuccessAt: Int64?
   public var lastHolderCheckAt: Int64?
+  public var provider: String?
 
   public init(phase: String) { self.phase = phase }
 }
@@ -100,6 +101,30 @@ public struct MailboxUnparsedSenderRow: Sendable, Equatable {
   }
 }
 
+public struct MailboxRetirePlanRow: Sendable, Equatable {
+  public var grantID: String
+  public var provider: String
+  public var legacy: Bool
+  public var total: Int
+  public var edited: Int
+  public var countKnown: Bool
+  public var held = false
+  public var address: String?
+  public init(
+    grantID: String, provider: String, legacy: Bool, total: Int, edited: Int, countKnown: Bool, held: Bool = false,
+    address: String? = nil
+  ) {
+    self.grantID = grantID
+    self.provider = provider
+    self.legacy = legacy
+    self.total = total
+    self.edited = edited
+    self.countKnown = countKnown
+    self.held = held
+    self.address = address
+  }
+}
+
 public struct BankHealthRecord: Sendable, Equatable {
   public var domain: String
   public var lastEmailAt: Int64?
@@ -137,8 +162,13 @@ public struct MailboxWrite: Sendable {
   /// (domain, local month `YYYY-MM`, internalDate ms) per read message.
   public var health: [(domain: String, month: String, internalDate: Int64)] = []
   public var addImports: [(domain: String, sinceMs: Int64)] = []
+  public var senderAddresses: [(address: String, at: Int64)] = []
   public var doneImports: [String] = []
   public var unparsedSenders: [MailboxUnparsedSenderRow] = []
+  public var strikes: [(messageID: String, count: Int, at: Int64)] = []
+  public var beginRetire: MailboxRetirePlanRow?
+  public var holdRetire: MailboxRetirePlanRow?
+  public var endRetire: (grantID: String, provider: String)?
   public var reader: Data?
   public var state: MailboxStateRow?
   public var clearAll = false
@@ -168,6 +198,8 @@ public final class MailboxTableStore: Sendable {
       ["pending_ops", "mailbox_", "bank_health"].contains { sql.hasPrefix("CREATE TABLE \($0)") }
     } + LedgerSchema.mailboxSenderAddress + LedgerSchema.mailboxParsing + LedgerSchema.mailboxPendingImport
     + LedgerSchema.mailboxUnparsedSender + LedgerSchema.mailboxReader + LedgerSchema.mailboxReadFrom
+    + LedgerSchema.mailboxMessageStrike + LedgerSchema.mailboxRetirePlan
+    + LedgerSchema.mailboxProvider + LedgerSchema.mailboxRetireHeld
 
   public func loadReader() throws -> Data? {
     try db.read { db in try Data.fetchOne(db, sql: "SELECT json FROM mailbox_reader WHERE id = 1") }
@@ -209,6 +241,22 @@ public final class MailboxTableStore: Sendable {
     }
   }
 
+  public func strikes(messageID: String) throws -> Int {
+    try db.read { db in
+      try Int.fetchOne(db, sql: "SELECT count FROM mailbox_message_strike WHERE message_id = ?", arguments: [messageID]) ?? 0
+    }
+  }
+
+  public func pendingRetires() throws -> [MailboxRetirePlanRow] {
+    try db.read { db in
+      try Row.fetchAll(db, sql: "SELECT * FROM mailbox_retire_plan ORDER BY grant_id, provider").map {
+        MailboxRetirePlanRow(
+          grantID: $0["grant_id"], provider: $0["provider"], legacy: $0["legacy"], total: $0["total"], edited: $0["edited"],
+          countKnown: $0["count_known"], held: $0["held"], address: $0["address"])
+      }
+    }
+  }
+
   public func senderAddresses() throws -> [String] {
     try db.read { db in try String.fetchAll(db, sql: "SELECT address FROM mailbox_sender_address ORDER BY at, address") }
   }
@@ -236,6 +284,7 @@ public final class MailboxTableStore: Sendable {
       s.lastCycleAt = r["last_cycle_at"]
       s.lastSuccessAt = r["last_success_at"]
       s.lastHolderCheckAt = r["last_holder_check_at"]
+      s.provider = r["provider"]
       return s
     }
   }
@@ -313,17 +362,38 @@ public final class MailboxTableStore: Sendable {
     try db.read { db in try String.fetchAll(db, sql: "SELECT op_id FROM pending_ops ORDER BY local_seq") }
   }
 
+  static func add(imports: [(domain: String, sinceMs: Int64)], _ db: Database) throws {
+    for i in imports {
+      try db.execute(
+        sql: """
+          INSERT INTO mailbox_pending_import (domain, since_ms) VALUES (?, ?)
+          ON CONFLICT(domain) DO UPDATE SET since_ms = min(since_ms, excluded.since_ms)
+          """, arguments: [i.domain, i.sinceMs])
+    }
+  }
+
   public func commit(_ w: MailboxWrite) throws {
     try db.write { db in
       if w.clearAll {
         for t in [
           "mailbox_accounted", "mailbox_set_aside", "mailbox_unreadable", "mailbox_staging", "bank_health", "mailbox_parsing",
-          "mailbox_pending_import", "mailbox_reader",
+          "mailbox_pending_import", "mailbox_reader", "mailbox_message_strike",
         ] {
           try db.execute(sql: "DELETE FROM \(t)")
         }
       }
       if w.clearReader { try db.execute(sql: "DELETE FROM mailbox_reader") }
+      if let e = w.endRetire {
+        try db.execute(sql: "DELETE FROM mailbox_retire_plan WHERE grant_id = ? AND provider = ?", arguments: [e.grantID, e.provider])
+      }
+      for (b, held) in [(w.beginRetire, false), (w.holdRetire, true)] {
+        guard let b else { continue }
+        try db.execute(
+          sql: """
+            INSERT OR REPLACE INTO mailbox_retire_plan (grant_id, provider, legacy, total, edited, count_known, held, address)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, arguments: [b.grantID, b.provider, b.legacy, b.total, b.edited, b.countKnown, held, b.address])
+      }
       for p in w.pending {
         try db.execute(
           sql: """
@@ -335,6 +405,12 @@ public final class MailboxTableStore: Sendable {
         try db.execute(
           sql: "INSERT OR REPLACE INTO mailbox_accounted (message_id, outcome, internal_date, at) VALUES (?, ?, ?, ?)",
           arguments: [a.messageID, a.outcome, a.internalDate, a.at])
+        try db.execute(sql: "DELETE FROM mailbox_message_strike WHERE message_id = ?", arguments: [a.messageID])
+      }
+      for s in w.strikes {
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO mailbox_message_strike (message_id, count, at) VALUES (?, ?, ?)",
+          arguments: [s.messageID, s.count, s.at])
       }
       for s in w.setAside {
         try db.execute(
@@ -388,6 +464,8 @@ public final class MailboxTableStore: Sendable {
       }
       if let below = w.pruneAccountedBelow {
         try db.execute(sql: "DELETE FROM mailbox_accounted WHERE internal_date < ?", arguments: [below])
+        try db.execute(sql: "DELETE FROM mailbox_message_strike WHERE at < ?", arguments: [below])
+        try db.execute(sql: "DELETE FROM mailbox_parsing WHERE at < ?", arguments: [below])
       }
       for h in w.health {
         let row = try Row.fetchOne(db, sql: "SELECT * FROM bank_health WHERE domain = ?", arguments: [h.domain])
@@ -404,12 +482,10 @@ public final class MailboxTableStore: Sendable {
           sql: "INSERT OR REPLACE INTO bank_health (domain, last_email_at, month, read_this_month) VALUES (?, ?, ?, ?)",
           arguments: [h.domain, last, month, count])
       }
-      for i in w.addImports {
+      try Self.add(imports: w.addImports, db)
+      for a in w.senderAddresses {
         try db.execute(
-          sql: """
-            INSERT INTO mailbox_pending_import (domain, since_ms) VALUES (?, ?)
-            ON CONFLICT(domain) DO UPDATE SET since_ms = min(since_ms, excluded.since_ms)
-            """, arguments: [i.domain, i.sinceMs])
+          sql: "INSERT OR IGNORE INTO mailbox_sender_address (address, at) VALUES (?, ?)", arguments: [a.address, a.at])
       }
       for d in w.doneImports {
         try db.execute(sql: "DELETE FROM mailbox_pending_import WHERE domain = ?", arguments: [d])
@@ -420,12 +496,12 @@ public final class MailboxTableStore: Sendable {
             INSERT OR REPLACE INTO mailbox_state
               (id, phase, address, watermark_ms, profile_history_id, backfill_days, scan_started_ms,
                list_page_token, watch_expires_at, halted_on, halted_detail, last_cycle_at, last_success_at,
-               last_holder_check_at, read_from_ms)
-            VALUES (1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+               last_holder_check_at, read_from_ms, provider)
+            VALUES (1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             s.phase, s.address, s.watermarkMs, s.profileHistoryID, s.backfillDays, s.scanStartedMs, s.watchExpiresAt,
-            s.haltedOn, s.haltedDetail, s.lastCycleAt, s.lastSuccessAt, s.lastHolderCheckAt, s.readFromMs,
+            s.haltedOn, s.haltedDetail, s.lastCycleAt, s.lastSuccessAt, s.lastHolderCheckAt, s.readFromMs, s.provider,
           ])
       }
     }

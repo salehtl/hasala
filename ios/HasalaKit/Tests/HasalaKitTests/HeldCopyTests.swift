@@ -30,12 +30,86 @@ struct HeldCopyTests {
     #expect(!ReviewEngine.queue(ledger.state).contains { $0.id == "starbucks-copy" })
   }
 
+  @Test func aKeptCopyStaysOutOfARuleAfterKeptBothAndAfterUndo() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
+    #expect(ledger.state.txn("starbucks-copy")?.ruled == false)
+
+    let keep = try #require(try ledger.apply(.resolveCopy("starbucks-copy", merge: false)))
+    #expect(ledger.state.txn("starbucks-copy")?.isHeldCopy == false)
+    #expect(ledger.state.txn("starbucks-copy")?.ruled == false)
+
+    ledger.undo(keep)
+    #expect(ledger.state.txn("starbucks-copy")?.isHeldCopy == true)
+    #expect(ledger.state.txn("starbucks-copy")?.ruled == false)
+
+    try ledger.apply(.resolveCopy("starbucks-copy", merge: false))
+    let kept = try #require(ledger.state.txn("starbucks-copy"))
+    let rulesBefore = ledger.state.rules.count
+    try ledger.apply(.categorize("starbucks", "groceries", learnRule: true, project: nil))
+    #expect(ledger.state.rules.count == rulesBefore + 1)
+    #expect(ledger.state.txn("starbucks")?.categoryID == "groceries")
+    let after = try #require(ledger.state.txn("starbucks-copy"))
+    #expect(after.categoryID == kept.categoryID)
+    #expect(after.categorySource == kept.categorySource)
+    #expect(after.ruleID == kept.ruleID)
+    #expect(after.needsReview == kept.needsReview)
+  }
+
+  @Test func aDeclinedSamePurchaseStaysOutOfARuleAfterKeptBothAndAfterUndo() throws {
+    var s = Scenario.mayaSamePurchase.state
+    for id in ["amazon-aed", "amazon-usd"] {
+      let i = try #require(s.txns.firstIndex { $0.id == id })
+      s.txns[i].merchantGroup = "amazon"
+    }
+    let ledger = InMemoryLedger(state: s)
+    #expect(ledger.state.txn("amazon-aed")?.ruled == false)
+    #expect(ledger.state.txn("amazon-usd")?.ruled == false)
+
+    let keep = try #require(try ledger.apply(.resolveSamePurchase("amazon-aed", same: false)))
+    #expect(keep.title == "Kept both")
+    #expect(ledger.state.txn("amazon-aed")?.samePurchase == nil)
+    #expect(ledger.state.txn("amazon-aed")?.ruled == false)
+    #expect(ledger.state.txn("amazon-usd")?.ruled == true)
+
+    ledger.undo(keep)
+    #expect(ledger.state.txn("amazon-aed")?.samePurchase != nil)
+    #expect(ledger.state.txn("amazon-aed")?.ruled == false)
+    #expect(ledger.state.txn("amazon-usd")?.ruled == false)
+
+    try ledger.apply(.resolveSamePurchase("amazon-aed", same: false))
+    let kept = try #require(ledger.state.txn("amazon-aed"))
+    let rulesBefore = ledger.state.rules.count
+    try ledger.apply(.categorize("amazon-usd", "groceries", learnRule: true, project: nil))
+    #expect(ledger.state.rules.count == rulesBefore + 1)
+    #expect(ledger.state.txn("amazon-usd")?.categoryID == "groceries")
+    let after = try #require(ledger.state.txn("amazon-aed"))
+    #expect(after.categoryID == kept.categoryID)
+    #expect(after.categorySource == kept.categorySource)
+    #expect(after.ruleID == kept.ruleID)
+    #expect(after.needsReview == kept.needsReview)
+  }
+
   @Test func mergeRemovesTheCopy() throws {
     let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
     #expect(try ledger.apply(.resolveCopy("starbucks-copy", merge: true))?.title == "Merged")
     #expect(ledger.state.txn("starbucks-copy") == nil)
     #expect(ledger.state.spent("dining", in: october) == MayaLedger.state.spent("dining", in: october))
     #expect(throws: ActionError.notFound) { try ledger.apply(.resolveCopy("starbucks", merge: true)) }
+  }
+
+  @Test func undoingAMergeHoldsTheCopyAgainInItsPlace() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
+    let before = ledger.state
+    let token = try #require(try ledger.apply(.resolveCopy("starbucks-copy", merge: true)))
+    #expect(ledger.state.txn("starbucks-copy") == nil)
+    ledger.undo(token)
+    #expect(ledger.state.txns.map(\.id) == before.txns.map(\.id))
+    #expect(ledger.state.txn("starbucks-copy") == before.txn("starbucks-copy"))
+    #expect(ledger.state.txn("starbucks-copy")?.isHeldCopy == true)
+    #expect(ReviewEngine.queue(ledger.state).contains { $0.id == "starbucks-copy" })
+    #expect(ledger.state.spent("dining", in: october) == before.spent("dining", in: october))
+    ledger.undo(token)
+    #expect(ledger.state.txns.map(\.id) == before.txns.map(\.id))
   }
 
   @Test func theSameInboxSaysSo() {

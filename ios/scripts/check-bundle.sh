@@ -109,11 +109,7 @@ if [[ ! -f "$golden" ]] || ! want="$(head -n 1 -- "$golden")" || [[ ! "$want" =~
 	fail "golden/maya-v1.sha256 is missing or is not one SHA-256 in hex"
 	want=""
 fi
-pinned=""
-if [[ -f "$manifest" ]]; then
-	line="$(grep -E '^[[:space:]]*public static let sha256 = "[0-9a-f]{64}"' -- "$manifest" || true)"
-	[[ "$line" =~ \"([0-9a-f]{64})\" ]] && pinned="${BASH_REMATCH[1]}"
-fi
+pinned="$(hasala_sample_manifest_sha256 "$manifest" || true)"
 if [[ -z "$pinned" ]]; then
 	fail "cannot read SampleManifest.sha256 from ${manifest#"$ios/"}"
 elif [[ -n "$want" && "$want" != "$pinned" ]]; then

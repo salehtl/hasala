@@ -12,6 +12,7 @@ protocol PlanModel: AnyObject, Observable {
   func moveMoney(to category: CategoryID?)
   func autoAssign()
   func copyLastMonth()
+  func keepExpiredMoves()
   /// Pushes the category's month (Plan · Dining).
   func open(_ category: CategoryID)
   /// Pushes the project (Plan · Japan trip).
@@ -58,6 +59,12 @@ final class PlanViewModel: PlanModel {
     let edits = snap.lastMonthBudgets.sorted { $0.key < $1.key }.map { LedgerEdit.setBudget($0.key, snap.month, $0.value) }
     guard !edits.isEmpty else { return }
     app.perform(edits, title: edits.count == 1 ? nil : "\(edits.count) budgets copied from last month")
+  }
+
+  func keepExpiredMoves() {
+    let edits = snapshot.keepExpiredMoves(app.store.state)
+    guard !edits.isEmpty else { return }
+    app.perform(edits, title: edits.count == 1 ? nil : "\(edits.count) budgets changed")
   }
 
   func newProject() { app.editProject(nil) }
@@ -197,6 +204,7 @@ protocol BudgetSheetModel: AnyObject, Observable {
   func setBudget(_ amount: Money, takingFrom source: CategoryID?) -> Bool
   /// Why `amount` can't come from `source`, said before anything is sent; nil when it can.
   func refusal(moving amount: Money, from source: CategoryID?) -> String?
+  func refusal(noLongerOffered source: CategoryID) -> String
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool
   func close()
 }
@@ -291,8 +299,14 @@ final class BudgetSheetViewModel: BudgetSheetModel {
       return amount.minor > plan.readyToAssign.minor ? "Ready to assign doesn't have that much" : nil
     }
     guard let r = plan.row(source) else { return nil }
-    return amount.minor > r.leftMinor ? "\(r.name) doesn't have that much left" : nil
+    return amount.minor > r.leftMinor ? Self.notEnough(r) : nil
   }
+
+  func refusal(noLongerOffered source: CategoryID) -> String {
+    plan.row(source).map(Self.notEnough) ?? "This category is gone"
+  }
+
+  private static func notEnough(_ row: PlanRowModel) -> String { "\(row.name) doesn't have that much left" }
 
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool {
     guard from != to else { return false }

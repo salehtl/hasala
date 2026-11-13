@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/console"
@@ -44,6 +45,9 @@ func runConsole(env *runEnv, args []string) error {
 	c := console.New(pool, cfg.Console.Host, cfg.Console.Tailnet, cfg.Console.Logins, cfg.Auth.InviteTTL)
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
 		c.Record = func(e purgeledger.Entry) error { return purgeledger.AppendEntries(p, e) }
+		c.Missing = func(e purgeledger.Entry) (bool, error) {
+			return purgeledger.Missing(p, e, time.Now().Add(-purgeledger.Retention))
+		}
 	}
 	servers := []struct {
 		addr, what string

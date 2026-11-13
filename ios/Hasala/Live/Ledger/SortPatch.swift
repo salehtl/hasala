@@ -1,17 +1,18 @@
 import HasalaModels
 
 nonisolated enum SortPatch {
-  static func file(_ t: inout Txn, _ c: CategoryID, at: LocalDateTime) {
-    t.categoryID = c
-    t.categorySource = .user
-    t.ruleID = nil
-    t.needsReview = false
-    t.isTransfer = c == "transfer"
-    t.splits = []
-    t.categorizedAt = at
-    t.reachable = false
-    t.ruled = false
-    t.priorFiling = nil
+  static func file(_ s: inout LedgerState, _ i: Int, _ c: CategoryID, at: LocalDateTime) {
+    s.txns[i].categoryID = c
+    s.txns[i].categorySource = .user
+    s.txns[i].ruleID = nil
+    s.txns[i].needsReview = false
+    s.txns[i].isTransfer = RefundEdit.filedAsTransfer(s.txns[i])
+    s.txns[i].splits = []
+    s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
+    s.txns[i].categorizedAt = at
+    s.txns[i].reachable = false
+    s.txns[i].ruled = false
+    s.txns[i].priorFiling = nil
   }
 
   static func picked(_ s: inout LedgerState, _ ref: MerchantGroupRef?, _ c: CategoryID?) {
@@ -49,8 +50,9 @@ nonisolated enum SortPatch {
       s.txns[i].categorySource = .rule(pattern: s.txns[i].spelling.lowercased())
       s.txns[i].ruleID = nil
       s.txns[i].needsReview = false
-      s.txns[i].isTransfer = c == "transfer"
+      s.txns[i].isTransfer = RefundEdit.filedAsTransfer(s.txns[i])
       s.txns[i].splits = []
+      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
       s.txns[i].categorizedAt = at
       s.txns[i].reachable = false
     }
@@ -79,8 +81,11 @@ nonisolated enum SortPatch {
           s.txns[i].categoryID = nil
           s.txns[i].categorySource = nil
           s.txns[i].ruleID = nil
-          s.txns[i].isTransfer = false
         }
+      }
+      if byRule {
+        s.txns[i].isTransfer = RefundEdit.filedAsTransfer(s.txns[i])
+        s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
       }
       s.txns[i].reachable = s.txns[i].waits
     }

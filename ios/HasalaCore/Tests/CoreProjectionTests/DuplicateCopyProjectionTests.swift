@@ -29,6 +29,25 @@ struct DuplicateCopyProjectionTests {
     return try r.moneyLines(from: d, to: d).filter { $0.flow == .spend }.reduce(0) { $0 + ($1.signedHome ?? 0) }
   }
 
+  @Test("a merged copy reports its head, so an undo after a peer's edit names the right parent")
+  func mergedCopyHead() throws {
+    typealias T = TransferPairProjectionTests
+    let peer = #"{"v":4,"type":"txn_categorized","op_id":"op-peer","authored_at":"2026-10-02T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(2))"},"parent_version":2,"payload":{"category":"groceries","needs_review":false,"source":{"kind":"user"}}}"#
+    let log = [Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.alert(2, grant: M.b, at: "08:06:00"), Self.resolve("merge", parent: 1)]
+    #expect(try M.reader(try M.fold(log)).mergedCopyVersion(M.ulid(2)) == 2)
+    let edited = log + [peer]
+    let r = try M.reader(try M.fold(edited))
+    #expect(try r.txn(M.ulid(2)) == nil)
+    let head = try #require(try r.mergedCopyVersion(M.ulid(2)))
+    #expect(head == 3)
+    let undone = try M.fold(edited + [T.resolve(2, other: 1, nil, parent: Int(head), op: "op-undo")])
+    #expect(undone.forks.isEmpty)
+    let back = try M.reader(undone)
+    #expect(try back.txn(M.ulid(2))?.heldCopy == true)
+    #expect(try back.mergedCopyVersion(M.ulid(2)) == nil)
+    #expect(try back.mergedCopyVersion(M.ulid(1)) == nil)
+  }
+
   @Test("a held probable copy is in review and out of every total; keep both counts it")
   func heldThenKept() throws {
     let s = try M.fold([Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.alert(2, grant: M.b, at: "08:06:00")])
@@ -43,6 +62,40 @@ struct DuplicateCopyProjectionTests {
     let r2 = try M.reader(kept)
     #expect(try r2.txn(M.ulid(2))?.heldCopy == false && r2.txn(M.ulid(2))?.reviewLane == nil)
     #expect(try Self.spent(r2) == 5400)
+  }
+
+  static let cash = #"{"v":4,"type":"txn_ingested","op_id":"op-3","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(3))"},"parent_version":null,"ingest_id":"\#(M.ingestID(3))","payload":{"amount_minor":"2700","currency":"AED","direction":"debit","posted_at":"2026-10-03T08:00:00.000Z","merchant_raw":"STARBUCKS DIFC","last4":"4412","needs_review":false,"category":"dining","category_source":{"kind":"user"},"entry_method":"manual"}}"#
+  static let retireA = #"{"v":4,"type":"mailbox_retired","op_id":"op-retire","authored_at":"2026-10-01T08:00:00.000Z","parent_version":null,"payload":{"grant_id":"\#(M.a)","provider":"gmail","legacy":false}}"#
+
+  static func confirmed(_ r: LedgerReader) throws -> [String: Bool] {
+    let d = CivilDate(wire: "2026-10-03")!
+    return Dictionary(try r.moneyLines(from: d, to: d).map { ($0.txnID, $0.confirmed) }, uniquingKeysWith: { $0 && $1 })
+  }
+
+  @Test("a remove that brings a merged copy back flags the row that named the removed one against it, so one purchase is not confirmed twice")
+  func promotedCopyFlagged() throws {
+    let log = [Self.home, Self.alert(1, grant: M.a, at: "08:00:00", mid: Self.mid), Self.alert(2, grant: M.b, at: "08:00:00", mid: Self.mid), Self.cash]
+    #expect(try Self.confirmed(M.reader(try M.fold(log))) == [M.ulid(1): true, M.ulid(3): false])
+    let r = try M.reader(try M.fold(log + [Self.retireA]))
+    #expect(try Self.confirmed(r) == [M.ulid(2): true, M.ulid(3): false])
+    #expect(try r.txn(M.ulid(3))?.possibleDuplicateOf == M.ulid(2) && r.txn(M.ulid(3))?.reviewLane == "duplicate")
+  }
+
+  @Test("a remove that releases a held copy flags the row that named the removed one against it, so one purchase is not confirmed twice")
+  func releasedCopyFlagged() throws {
+    let log = [Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.alert(2, grant: M.b, at: "08:06:00"), Self.cash]
+    #expect(try Self.confirmed(M.reader(try M.fold(log))) == [M.ulid(1): true, M.ulid(3): false])
+    let r = try M.reader(try M.fold(log + [Self.retireA]))
+    #expect(try Self.confirmed(r) == [M.ulid(2): true, M.ulid(3): false])
+    #expect(try r.txn(M.ulid(2))?.heldCopy == false && r.txn(M.ulid(2))?.possibleDuplicateOf == nil)
+    #expect(try r.txn(M.ulid(3))?.possibleDuplicateOf == M.ulid(2) && r.txn(M.ulid(3))?.reviewLane == "duplicate")
+  }
+
+  @Test("a remove that leaves nothing of the row a notice names clears the notice, and the row that named it counts")
+  func nothingSurvives() throws {
+    let r = try M.reader(try M.fold([Self.home, Self.alert(1, grant: M.a, at: "08:00:00"), Self.cash, Self.retireA]))
+    #expect(try Self.confirmed(r) == [M.ulid(3): true])
+    #expect(try r.txn(M.ulid(3))?.possibleDuplicateOf == nil)
   }
 
   @Test("a merged copy leaves the rows and stays known by its message and ingest id")

@@ -56,6 +56,7 @@ final class AccountRuntime {
   /// run asks again (an offline launch must not hide "Use sample data" for good).
   private(set) var reviewAccount = false
   @ObservationIgnored private(set) var closed = false
+  @ObservationIgnored private var connects = 0
   /// The last `GET /account` answer, when one arrived.
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
@@ -117,8 +118,13 @@ final class AccountRuntime {
     LocalAccountData.setMailboxProvider(provider)
   }
 
+  func connectStarted() { connects += 1 }
+
+  func connectEnded() { connects -= 1 }
+
   func linkedHere(_ provider: MailboxProvider) {
     activate(provider)
+    serverLink = .holder(isThisDevice: true, watchExpiresAtMs: nil)
     linkCopy.connected()
   }
 
@@ -126,16 +132,31 @@ final class AccountRuntime {
     linkCopy.disconnected(outcome)
   }
 
-  /// The lane to run when the account opens: the provider this iPhone ran last, else the one
-  /// it keeps a grant for, else Gmail (else Outlook, in a build with only that client).
-  nonisolated static func initialLane(_ lanes: [MailboxProvider: MailboxLane], remembered: MailboxProvider?) async
-    -> MailboxLane?
-  {
-    if let r = remembered, let lane = lanes[r] { return lane }
+  /// The lane to run when the account opens: the provider saved with the link's own state,
+  /// else the provider this iPhone ran last, else the one it keeps a grant for, else Gmail
+  /// (else Outlook, in a build with only that client).
+  nonisolated static func initialLane(
+    _ lanes: [MailboxProvider: MailboxLane], held: MailboxProvider? = nil, remembered: MailboxProvider?
+  ) async -> MailboxLane? {
+    for p in [held, remembered].compactMap({ $0 }) {
+      if let lane = lanes[p] { return lane }
+    }
     for p in [MailboxProvider.outlook, .gmail] {
       if let lane = lanes[p], await lane.hasGrant() == true { return lane }
     }
     return lanes[.gmail] ?? lanes[.outlook]
+  }
+
+  nonisolated static func interruptedSwitch(held: MailboxProvider?, remembered: MailboxProvider?) -> MailboxProvider? {
+    guard let held, let remembered, held != remembered else { return nil }
+    return remembered
+  }
+
+  func finishInterruptedSwitch(held: MailboxProvider?, remembered: MailboxProvider?, defaults: UserDefaults = .standard) {
+    guard let held, let old = Self.interruptedSwitch(held: held, remembered: remembered) else { return }
+    LocalAccountData.setMailboxProvider(held, defaults)
+    guard let lane = lanes[old] else { return }
+    lane.work.start { await lane.endGrant() }
   }
 
   /// Plain-language words for a halt a reconnect alone doesn't fix.
@@ -158,32 +179,42 @@ final class AccountRuntime {
       provider: lane.provider)
   }
 
-  @ObservationIgnored private(set) var movedAwayMs: Int64? = LocalAccountData.mailboxMovedAway()
-  @ObservationIgnored var lastPhase: MailboxPhase?
+  var mailOfferKnown: Bool {
+    guard lane != nil else { return true }
+    guard store.loaded, let phase = store.mailboxPhase else { return false }
+    return LiveMailboxConnecting.offerKnown(
+      phase: phase, sampleLoaded: store.holdsSample || reviewAccount, serverLink: serverLink)
+  }
 
-  func noteMovedAway(from old: MailboxPhase?, to new: MailboxPhase) {
-    lastPhase = new
-    if LiveReading.movedAway(from: old, to: new) {
-      let now = context.clock.nowMs()
-      LocalAccountData.setMailboxMovedAway(now)
-      movedAwayMs = now
-    } else if new != .otherDevice, movedAwayMs != nil {
-      LocalAccountData.setMailboxMovedAway(nil)
-      movedAwayMs = nil
-    }
+  @ObservationIgnored private(set) var moveNote = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: nil)
+
+  func startMoveNote(current: MailboxPhase?) {
+    moveNote = MailboxMoveNote(
+      kept: LocalAccountData.mailboxPhaseSeen(), movedAwayMs: LocalAccountData.mailboxMovedAway(), current: current)
+    LocalAccountData.setMailboxPhaseSeen(moveNote.lastPhase)
+  }
+
+  private func seeMailboxPhase(_ phase: MailboxPhase) {
+    guard phase != moveNote.lastPhase else { return }
+    moveNote.see(phase, nowMs: context.clock.nowMs())
+    LocalAccountData.setMailboxPhaseSeen(phase)
+    LocalAccountData.setMailboxMovedAway(moveNote.movedAwayMs)
   }
 
   func reading(
-    textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool = LiveReading.backgroundRefreshOff
+    textsChosen: Bool, textsLastRunMs: Int64?, textsTestMissed: Bool = false,
+    backgroundRefreshOff: Bool = LiveReading.backgroundRefreshOff
   ) -> ReadingState {
-    LiveReading.state(readingInputs(textsChosen: textsChosen, textsLastRunMs: textsLastRunMs,
+    LiveReading.state(readingInputs(textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, textsTestMissed: textsTestMissed,
                                     backgroundRefreshOff: backgroundRefreshOff))
   }
 
-  func readingInputs(textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool) -> LiveReading.Inputs {
+  func readingInputs(
+    textsChosen: Bool, textsLastRunMs: Int64?, textsTestMissed: Bool, backgroundRefreshOff: Bool
+  ) -> LiveReading.Inputs {
     let provider = lane?.provider ?? .gmail
-    let status = lane == nil ? nil : store.mailboxStatus
-    if let phase = status?.phase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
+    let status = lane == nil ? nil : store.readMailboxStatus
+    if status != nil, let phase = store.mailboxPhase { seeMailboxPhase(phase) }
     let held = status.flatMap { s in
       lane.flatMap { LiveMailboxConnecting.heldElsewhere(phase: s.phase, link: serverLink, provider: $0.provider) }
     }
@@ -192,9 +223,9 @@ final class AccountRuntime {
     return LiveReading.Inputs(
       nowMs: context.clock.nowMs(), known: store.loaded && (lane == nil || status != nil),
       sample: store.holdsSample || reviewAccount, status: status, provider: provider, progress: store.importProgress,
-      heldElsewhere: held, textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, trustedBanks: trusted,
+      heldElsewhere: held, textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, textsTestMissed: textsTestMissed, trustedBanks: trusted,
       newestMailRowMs: (try? projection.reader.newestMailboxPostedMs()) ?? nil, txns: store.state.txns,
-      backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: movedAwayMs)
+      backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: moveNote.movedAwayMs)
   }
 
   func retryMailbox() async {
@@ -227,10 +258,11 @@ final class AccountRuntime {
     if serverLink != link { serverLink = link }
     // Another iPhone's link names the provider this one reads it through, if it reads it
     // here instead ("Read them here instead").
-    if case .holder(false, _) = link, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
+    if case .holder(false, _) = link, connects == 0, !closed, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
       let p = provider.flatMap({ MailboxProvider(rawValue: $0.rawValue) }), p != activeProvider
     {
       activate(p)
+      await lanes[p]?.resume(restartingCut: false)
     }
     return link
   }
@@ -240,13 +272,14 @@ final class AccountRuntime {
   static func open(
     env: AccountEnvironment, binding: AccountBinding, enrolled: EnrolledAccount?, build: BuildInfo,
     profile: ProfileInfo, usesPasskey: @escaping @Sendable () async -> Bool,
-    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared
+    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared,
+    mailHTTP: (any HTTPExchange)? = nil, providerDefaults: UserDefaults = .standard
   ) async throws -> AccountRuntime {
     let context: SyncContext
     if let enrolled, enrolled.userID.string == binding.user_id {
-      context = Enrolment.context(env, account: enrolled)
+      context = Enrolment.context(env, account: enrolled, build: build.buildNumber)
     } else {
-      context = try Enrolment.context(env, binding: binding)
+      context = try Enrolment.context(env, binding: binding, build: build.buildNumber)
     }
     let projection: ProjectionStore
     if let dir = env.storeDirectory(for: context.userID) {
@@ -274,9 +307,11 @@ final class AccountRuntime {
       lanes[p] = MailboxLane(
         provider: p, build: build, secrets: env.secrets, userID: context.userID, persistence: persistence,
         ledger: mailboxLedger, server: mailboxServer, stepUp: stepUp, categorizer: categorizer,
-        presenter: WebAuthenticationPresenter(for: p))
+        presenter: WebAuthenticationPresenter(for: p), mailHTTP: mailHTTP)
     }
-    let active = ActiveLane(await initialLane(lanes, remembered: LocalAccountData.mailboxProvider()))
+    let held = (try? await persistence.loadState())?.heldProvider.flatMap { MailboxProvider(rawValue: $0.rawValue) }
+    let remembered = LocalAccountData.mailboxProvider(providerDefaults)
+    let active = ActiveLane(await initialLane(lanes, held: held, remembered: remembered))
     let editor = LedgerEditAuthor(observer: observer, outbox: outbox)
     let store = LiveLedgerStore(
       reader: projection.reader, author: editor, profile: profile, prefs: DevicePrefsStore(), clock: LiveLedgerStore.runClock())
@@ -306,6 +341,7 @@ final class AccountRuntime {
       autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader,
       cloudBudget: { await link.budget() },
       cloudSpent: { await link.spent($0) },
+      willFile: { await link.willFile($0) },
       trusts: TrustCounts.shared.autoFile)
     let backlog = BacklogSorter(
       pass: { await suggestions.backlogPass($0, dayLeft: $1) }, waiting: { await suggestions.backlogWaiting($0) },
@@ -321,6 +357,7 @@ final class AccountRuntime {
         sync: { trigger, deadline in
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
+          await Self.authorOpeningOps(after: out, observer: observer, outbox: outbox)
           let phase = await engine.status.phase
           let shown = Self.shownStop(out.stop, phase: phase)
           if shown == nil { await backlog.allowRuns(true) }
@@ -360,12 +397,13 @@ final class AccountRuntime {
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
+    rt.finishInterruptedSwitch(held: held, remembered: remembered, defaults: providerDefaults)
     rt.linkCopy.ownLink(store.mailboxPhase)
-    rt.lastPhase = store.mailboxPhase
+    rt.startMoveNote(current: store.mailboxPhase)
     store.readingSource = { [weak rt] in
       guard let rt else { return nil }
       let texts = bankTextFacts.read(nowMs: context.clock.nowMs())
-      return rt.reading(textsChosen: texts.chosen, textsLastRunMs: texts.lastRunMs)
+      return rt.reading(textsChosen: texts.chosen, textsLastRunMs: texts.lastRunMs, textsTestMissed: bankTextFacts.testMissed)
     }
     await store.reload()
     await rt.followImports()
@@ -408,16 +446,17 @@ final class AccountRuntime {
       await backlog.allowRuns(true)
     }
     await refreshAccount()
-    let launched = await coordinator.run(.launch)
-    // Only after a launch run that reached the server's head: an iPhone that couldn't
-    // pull yet (offline) would author the account's opening ops a second time.
-    if launched.stop == nil { await authorOpeningOpsIfNeeded() }
+    await coordinator.run(.launch)
   }
 
   /// `GET /account` (#40), read live: the review flag and the account's own name.
   func refreshAccount() async {
-    guard let token = try? env.secrets.session()?.token else { return }
+    guard let token = try? env.secrets.activeSession()?.token else { return }
     guard let info = try? await env.client.account(bearer: token), info.user_id == binding.user_id else { return }
+    await adopt(info)
+  }
+
+  private func adopt(_ info: AccountInfo) async {
     account = info
     reviewAccount = info.review_account == true
     await onAccount?(info)
@@ -444,55 +483,36 @@ final class AccountRuntime {
   }
 
   nonisolated static func importing(_ lane: MailboxLane) async -> Bool {
-    let phase = await lane.status().phase
-    return phase == .scanning || phase == .authoringBackfill
+    await lane.status().phase.isImporting
   }
 
-  /// Home currency AED and the USD peg (04 §6.2), once per account: authored only when
-  /// the ledger (after the launch pull) has no home currency yet.
-  func authorOpeningOpsIfNeeded() async {
-    guard (try? projection.reader.homeCurrency()) == nil else { return }
-    let observer = self.observer
-    do {
-      let ctx = try await observer.authorContext()
-      guard
-        let blob = try observer.stamps.build(
-          ctx,
-          { a throws(AuthorError) in
-            a.setHomeCurrency("AED")
-            try a.setRate(currency: "USD", rateMicro: 3_672_500)
-          })
-      else { return }
+  nonisolated static func authorOpeningOps(after out: RunOutcome, observer: LedgerPageObserver, outbox: Outbox) async {
+    try? await observer.writes.run {
+      guard let blob = try await observer.openingOps(after: out) else { return }
       try await outbox.enqueue(blob.ops)
       try await observer.reproject()
-    } catch {
-      // Retried on the next launch.
     }
   }
 
   /// "Use sample data" (spec 04 §6.13): a live `GET /account` for the gate, the bundled
-  /// seed as blobs (the observer checks the review flag and the empty ledger again), each
-  /// blob through the outbox, then one upload.
+  /// seed as blobs (the observer checks the review flag and the empty ledger again), all
+  /// of it through the outbox in one save, then one upload.
   func loadSample() async throws(SetupFailure) {
-    guard let token = try? env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    guard let token = try? env.secrets.activeSession()?.token else { throw .failed("You're signed out. Sign in again.") }
     let info: AccountInfo
     do {
       info = try await env.client.account(bearer: token)
     } catch {
       throw .offline
     }
-    reviewAccount = info.review_account == true
-    let blobs: [AuthoredBlob]
+    await adopt(info)
+    let outbox = self.outbox
     do {
-      blobs = try await observer.sampleBatches(account: info)
+      try await observer.loadSample(account: info) { try await outbox.enqueue($0) }
+    } catch .notSaved {
+      throw .failed("Couldn't save the sample data. Try again.")
     } catch {
       throw .failed("Sample data isn't available for this account.")
-    }
-    do {
-      for b in blobs { try await outbox.enqueue(b.ops) }
-      try await observer.reproject()
-    } catch {
-      throw .failed("Couldn't save the sample data. Try again.")
     }
     await store.reload()
     Task { await coordinator.run(.authored) }
@@ -507,7 +527,29 @@ final class AccountRuntime {
     switchOn = nil
     await backlog.suspend()
     await coordinator.close()
+    await engine.stop()
     for lane in lanes.values { await lane.close() }
+    await mailboxLedger.textWrites.hold()
+    await backlog.settled()
+    await coordinator.finished()
+  }
+
+  func holdWork() async {
+    await backlog.holdRuns()
+    await coordinator.pause()
+    for lane in lanes.values { await lane.stop() }
+    await mailboxLedger.textWrites.hold()
+    await store.writesFinished()
+    await observer.writes.finished()
+  }
+
+  func resumeWork() async {
+    mailboxLedger.textWrites.releaseHold()
+    let running = lane
+    for other in lanes.values { await other.resume(restartingCut: other === running) }
+    let held = await coordinator.resume()
+    await backlog.releaseRuns()
+    if let held { Task { await coordinator.run(held) } }
   }
 
   func followSwitch() {
@@ -518,7 +560,7 @@ final class AccountRuntime {
       Task { await sorter.switchedOff() }
     }
     switchOn = center.addObserver(forName: MerchantSuggestionsSetting.turnedOn, object: defaults, queue: nil) { _ in
-      Task { await sorter.ensure(retry: true) }
+      Task { await sorter.switchedOn() }
     }
   }
 

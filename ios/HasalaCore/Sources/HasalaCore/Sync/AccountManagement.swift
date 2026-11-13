@@ -22,12 +22,14 @@ public enum AccountManagement {
   /// it, so it never overlaps another run's flush (a second, concurrent
   /// flush could seal the same pending op twice).
   public static func removeThisIPhone(
-    _ env: AccountEnvironment, engine: SyncEngine, factor: StepUpHelper.Factor, binding: AccountBinding
+    _ env: AccountEnvironment, engine: SyncEngine, factor: StepUpHelper.Factor, binding: AccountBinding,
+    losingUnsent: Bool = false, beforeWipe: @Sendable () async -> Void = {}
   ) async throws(CeremonyError) {
     let ctx = engine.context
     for attempt in 0..<2 {
-      try await catchUp(engine)
-      let head = (try? ctx.store.chainHeads()[ctx.writerID]) ?? .genesis
+      try await catchUp(engine, losingUnsent: losingUnsent)
+      let head: Chain.Head
+      do { head = try ctx.store.chainHeads()[ctx.writerID] ?? .genesis } catch { throw .store(error) }
       let bearer = try AccountCreation.currentBearer(env)
       let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
       let nonce = try b64(challenge.nonce, "writer nonce")
@@ -49,6 +51,7 @@ public enum AccountManagement {
             final_counter: String(head.counter), final_head: Base64.encode(head.hash.bytes), sig: Base64.encode(sig),
             step_up: proof.stepUp),
           bearer: bearer)
+        await beforeWipe()
         AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
         return
       } catch {
@@ -59,6 +62,19 @@ public enum AccountManagement {
   }
 
   public static func deleteAccount(
+    _ env: AccountEnvironment, ctx: SyncContext, factor: StepUpHelper.Factor, binding: AccountBinding,
+    beforeWipe: @Sendable () async -> Void = {}
+  ) async throws(CeremonyError) {
+    do throws(CeremonyError) {
+      try await requestDeletion(env, ctx: ctx, factor: factor, binding: binding)
+    } catch {
+      guard await accountIsGone(env, after: error) else { throw error }
+    }
+    await beforeWipe()
+    AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
+  }
+
+  private static func requestDeletion(
     _ env: AccountEnvironment, ctx: SyncContext, factor: StepUpHelper.Factor, binding: AccountBinding
   ) async throws(CeremonyError) {
     let proof = try await StepUpHelper.prove(
@@ -76,16 +92,39 @@ public enum AccountManagement {
         DeleteAccountRequest(step_up: proof.stepUp, writer_id: ctx.writerID.string, sig: Base64.encode(sig)),
         bearer: bearer)
     }
-    AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
+  }
+
+  private static func accountIsGone(_ env: AccountEnvironment, after error: CeremonyError) async -> Bool {
+    guard case .api(let failure) = error else { return false }
+    if failure.is(410, "account_deleted") { return true }
+    switch failure {
+    case .transport(.cancelled), .malformed: return false
+    case .refused(let f) where f.status < 500: return false
+    default: break
+    }
+    guard let bearer = try? AccountCreation.currentBearer(env) else { return false }
+    do {
+      _ = try await env.client.account(bearer: bearer)
+      return false
+    } catch {
+      return error.is(410, "account_deleted")
+    }
   }
 
   /// Uploads what is queued and pulls to the head, so the pinned head is
-  /// current: one engine run (coalesced with any run in flight). A latch
-  /// stops only the upload; the pull still runs and the head is the verified
-  /// one either way.
-  static func catchUp(_ engine: SyncEngine) async throws(CeremonyError) {
+  /// current: one engine run (coalesced with any run in flight).
+  static func catchUp(_ engine: SyncEngine, losingUnsent: Bool = false) async throws(CeremonyError) {
     if let stop = await engine.run(.refresh).stop {
       throw .badResponse("sync before removal: \(stop)")
+    }
+    let unsent: Int
+    let latch: OutboxLatch?
+    do {
+      unsent = try engine.context.store.pendingCount()
+      latch = try engine.context.store.syncState().latch
+    } catch { throw .store(error) }
+    guard unsent == 0 || losingUnsent && latch?.keepsChangesFromUploading == true else {
+      throw .badResponse("sync before removal: unsent ops")
     }
   }
 

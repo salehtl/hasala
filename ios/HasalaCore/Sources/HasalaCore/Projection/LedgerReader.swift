@@ -50,6 +50,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var effectiveAccountID: String?
   public var projectID: String?
   public var refundState: String?
+  public var refundOf: String?
   public var refundTarget: String?
   public var transferState: String?
   public var isNewMerchant: Bool
@@ -111,6 +112,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     effectiveAccountID = r["effective_account_id"]
     projectID = r["project_id"]
     refundState = r["refund_state"]
+    refundOf = r["refund_of"]
     refundTarget = r["refund_target"]
     transferState = r["transfer_state"]
     isNewMerchant = r["is_new_merchant"]
@@ -247,6 +249,14 @@ public struct LedgerReader: Sendable {
     }
   }
 
+  public func mergedCopyVersion(_ id: String) throws -> Int64? {
+    try db.read { db in
+      try Int64.fetchOne(
+        db, sql: "SELECT alias_version FROM txn_alias WHERE alias_txn_id = ? AND alias_version IS NOT NULL ORDER BY txn_id, idx LIMIT 1",
+        arguments: [id])
+    }
+  }
+
   public func parts(_ txnID: String) throws -> [PartRow] {
     try db.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM txn_part WHERE txn_id = ? ORDER BY idx", arguments: [txnID]).map {
@@ -281,6 +291,18 @@ public struct LedgerReader: Sendable {
         db, sql: "SELECT * FROM txn WHERE superseded_by IS NULL AND archived IS NOT NULL ORDER BY posted_ms DESC, id DESC LIMIT ?",
         arguments: [limit]
       ).map(TxnRow.init)
+    }
+  }
+
+  public func holdsSample() throws -> Bool {
+    try db.read { db in
+      try Bool.fetchOne(
+        db,
+        sql: """
+          SELECT EXISTS(
+            SELECT 1 FROM txn WHERE superseded_by IS NULL AND (unparsed = 0 OR archived IS NOT NULL)
+            AND mailbox_message_id GLOB 'sample-*')
+          """) ?? false
     }
   }
 
@@ -391,6 +413,7 @@ public struct LedgerReader: Sendable {
     public let id: String
     public let version: Int64
     public let needsReview: Bool
+    public let categorySource: String
   }
 
   public func categoryMembers(_ category: String) throws -> [CategoryMemberRow] {
@@ -398,9 +421,11 @@ public struct LedgerReader: Sendable {
       try Row.fetchAll(
         db,
         sql:
-          "SELECT id, version, needs_review FROM txn WHERE superseded_by IS NULL AND unparsed = 0 AND split = 0 AND category = ? ORDER BY posted_ms DESC, id DESC",
+          "SELECT id, version, needs_review, category_source FROM txn WHERE superseded_by IS NULL AND unparsed = 0 AND split = 0 AND category = ? ORDER BY posted_ms DESC, id DESC",
         arguments: [category]
-      ).map { CategoryMemberRow(id: $0["id"], version: $0["version"], needsReview: $0["needs_review"]) }
+      ).map {
+        CategoryMemberRow(id: $0["id"], version: $0["version"], needsReview: $0["needs_review"], categorySource: $0["category_source"])
+      }
     }
   }
 
@@ -509,7 +534,7 @@ public struct LedgerReader: Sendable {
         let id: String = r["id"]
         p.incomeSources[id] = IncomeSource(
           id: id, name: r["name"], categoryID: r["category_id"], amountMinor: r["amount_minor"], payday: r["payday"], active: r["active"],
-          write: none)
+          write: PlanWrite(opID: "", writerID: "", atMs: r["written_ms"]))
       }
       for r in try Row.fetchAll(db, sql: "SELECT * FROM category_plan_role ORDER BY category_id") {
         p.roles[r["category_id"] as String] = PlanRoleRecord(role: r["role"], write: none)
@@ -576,9 +601,9 @@ extension TxnRow {
   public var samePurchaseRow: SamePurchase.Row {
     SamePurchase.Row(
       id: id, live: supersededBy == nil, unparsed: unparsed, archived: archived != nil, manual: entryMethod == "manual",
-      amountMinor: amountMinor, currency: currency, amountHomeMinor: amountHomeMinor, direction: direction, bank: bank, last4: last4,
-      postedMs: postedMs, merchantKey: merchantKey, possibleDuplicateOf: possibleDuplicateOf,
-      duplicateDisposition: duplicateDisposition, heldCopy: heldCopy)
+      amountMinor: amountMinor, currency: currency, amountHomeMinor: amountHomeMinor, homeStated: homeSource == .stated, direction: direction,
+      bank: bank, last4: last4, postedMs: postedMs, merchantKey: merchantKey, possibleDuplicateOf: possibleDuplicateOf,
+      duplicateDisposition: duplicateDisposition, heldCopy: heldCopy, note: note)
   }
 
   public var pickRow: LastPick.Row {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -141,6 +142,7 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	gone, frozen, removed, changed, left := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	thawed, keyless, bounced, wrote := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	signedOut, moved, revoked := uuid.New(), uuid.New(), uuid.New()
+	suspended, unsuspended := uuid.New(), uuid.New()
 	cred := bytes.Repeat([]byte{0xc4}, 16)
 	long := bytes.Repeat([]byte{0x5e}, 1023)
 	d := testDevice()
@@ -158,6 +160,8 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 		{ID: signedOut, At: at, Kind: KindSessions},
 		{ID: moved, At: at, Kind: KindEmail},
 		{ID: revoked, At: at, Kind: KindInviteRevoked},
+		{ID: suspended, At: at, Kind: KindSuspend},
+		{ID: unsuspended, At: at, Kind: KindUnsuspend},
 	}
 	if err := AppendEntries(path, want...); err != nil {
 		t.Fatal(err)
@@ -286,6 +290,8 @@ func TestAMalformedEventIsAnError(t *testing.T) {
 		"email with field":     id + at + "email x",
 		"invite with field":    id + at + "invite-revoked x",
 		"cancel with field":    id + at + "purge-cancelled x",
+		"suspend with field":   id + at + "suspend x",
+		"unsuspend with field": id + at + "unsuspend x",
 		"freeze without time":  id + at + "freeze",
 		"freeze bad time":      id + at + "freeze soon",
 		"freeze after":         id + at + "freeze 2026-10-20T05:30:00Z extra",
@@ -336,6 +342,9 @@ func TestAppendEntriesRefusesWhatItCannotReadBack(t *testing.T) {
 		"device short sig":       {ID: uuid.New(), At: at, Kind: KindDevice, Device: bad},
 		"password with trigger":  {ID: uuid.New(), At: at, Kind: KindPassword, Trigger: at},
 		"unfreeze with trigger":  {ID: uuid.New(), At: at, Kind: KindUnfreeze, Trigger: at},
+		"suspend with trigger":   {ID: uuid.New(), At: at, Kind: KindSuspend, Trigger: at},
+		"unsuspend with id":      {ID: uuid.New(), At: at, Kind: KindUnsuspend, Credential: make([]byte, 16)},
+		"suspend with device":    {ID: uuid.New(), At: at, Kind: KindSuspend, Device: testDevice()},
 		"purge with device":      {ID: uuid.New(), At: at, Device: testDevice()},
 	} {
 		if err := AppendEntries(path, e); err == nil {
@@ -430,5 +439,262 @@ func TestTheLedgerAndItsLockAreGroupWritableUnderAStrictUmask(t *testing.T) {
 		if st.Mode().Perm() != 0o660 {
 			t.Fatalf("%s mode %v, want 0660 so the console's group can append", p, st.Mode().Perm())
 		}
+	}
+}
+
+func TestAWriteThatStopsPartWayLeavesTheLedgerAsItWas(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
+	kept := uuid.New()
+	if err := Append(path, []uuid.UUID{kept}, at); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := errors.New("no space left")
+	writeEntries = func(f *os.File, b []byte) (int, error) {
+		n, _ := f.Write(b[:10])
+		return n, full
+	}
+	defer func() { writeEntries = (*os.File).Write }()
+	if err := Append(path, []uuid.UUID{uuid.New()}, at); !errors.Is(err, ErrNotWritten) || !errors.Is(err, full) {
+		t.Fatalf("a write that stopped part way: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("ledger %q, want %q", after, before)
+	}
+}
+
+func tornTails(id string) map[string]string {
+	at := "2026-10-20T05:30:00Z"
+	return map[string]string{
+		"inside the id":   id[:10],
+		"inside the time": id + " 2026-10",
+		"after the time":  id + " " + at + " ",
+		"inside a kind":   id + " " + at + " passw",
+		"inside a freeze": id + " " + at + " freeze 2026-10",
+	}
+}
+
+func TestAnAppendAfterATornLastLineCutsItAndEveryLineReads(t *testing.T) {
+	first, gone := uuid.New(), uuid.NewString()
+	line := first.String() + " 2026-10-20T05:30:00Z\n"
+	for name, tail := range tornTails(gone) {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "purged")
+			if err := os.WriteFile(path, []byte(line+tail), 0o660); err != nil {
+				t.Fatal(err)
+			}
+			next := uuid.New()
+			if err := AppendEntries(path, Entry{ID: next, At: time.Now(), Kind: KindPurgeCancelled}); err != nil {
+				t.Fatal(err)
+			}
+			entries, err := Read(path)
+			if err != nil {
+				t.Fatalf("after the append: %v", err)
+			}
+			if len(entries) != 2 || entries[0].ID != first || entries[1].ID != next {
+				t.Fatalf("entries %+v", entries)
+			}
+			raw, _ := os.ReadFile(path)
+			if strings.Contains(string(raw), gone) {
+				t.Fatalf("the torn line stayed: %q", raw)
+			}
+		})
+	}
+}
+
+func TestATornLastLineIsCutOnceAndLeavesTheCompleteLines(t *testing.T) {
+	first, gone := uuid.New(), uuid.NewString()
+	line := first.String() + " 2026-10-20T05:30:00Z\n"
+	for name, tail := range tornTails(gone) {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "purged")
+			if err := os.WriteFile(path, []byte(line+tail), 0o660); err != nil {
+				t.Fatal(err)
+			}
+			n, err := TrimTornTail(path)
+			if err != nil || n != int64(len(tail)) {
+				t.Fatalf("cut %d bytes (%v), want %d", n, err, len(tail))
+			}
+			entries, err := Read(path)
+			if err != nil || len(entries) != 1 || entries[0].ID != first {
+				t.Fatalf("after the cut: %+v %v", entries, err)
+			}
+			if n, err := TrimTornTail(path); n != 0 || err != nil {
+				t.Fatalf("a second cut: %d %v", n, err)
+			}
+		})
+	}
+}
+
+func TestALedgerOfOnlyATornLineIsCutToEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	if err := os.WriteFile(path, []byte(uuid.NewString()[:10]), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := TrimTornTail(path); n != 10 || err != nil {
+		t.Fatalf("cut %d %v", n, err)
+	}
+	if entries, err := Read(path); err != nil || len(entries) != 0 {
+		t.Fatalf("after the cut: %+v %v", entries, err)
+	}
+}
+
+func TestATailThatReadsAsAWholeEntryIsRefusedAndKept(t *testing.T) {
+	id := uuid.NewString()
+	for name, tail := range map[string]string{
+		"deletion": id + " 2026-10-20T05:30:00Z",
+		"event":    id + " 2026-10-20T05:30:00Z password",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "purged")
+			if err := os.WriteFile(path, []byte(tail), 0o660); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := TrimTornTail(path); err == nil {
+				t.Fatal("a whole entry with no newline was cut")
+			}
+			if err := Append(path, []uuid.UUID{uuid.New()}, time.Now()); !errors.Is(err, ErrNotWritten) {
+				t.Fatalf("an append onto a whole entry with no newline: %v", err)
+			}
+			raw, _ := os.ReadFile(path)
+			if string(raw) != tail {
+				t.Fatalf("the file changed to %q", raw)
+			}
+			if _, err := Read(path); err == nil {
+				t.Fatal("a file with no last newline was read")
+			}
+		})
+	}
+}
+
+func TestCuttingATornLastLineDoesNotExcuseADamagedLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	id := uuid.NewString()
+	if err := os.WriteFile(path, []byte(id+" yesterday\n"+id[:10]), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TrimTornTail(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(path); err == nil {
+		t.Fatal("a damaged line was read")
+	}
+}
+
+func TestAMissingLedgerHasNothingToCut(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	if n, err := TrimTornTail(path); n != 0 || err != nil {
+		t.Fatalf("%d %v", n, err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the cut created the ledger: %v", err)
+	}
+	if _, err := TrimTornTail(""); err == nil {
+		t.Fatal("no path was accepted")
+	}
+}
+
+func TestConcurrentAppendsAfterATornLastLineAllRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	if err := os.WriteFile(path, []byte(uuid.NewString()[:10]), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- Append(path, []uuid.UUID{uuid.New()}, time.Now())
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err := Read(path)
+	if err != nil || len(entries) != 16 {
+		t.Fatalf("%d entries (%v), want 16", len(entries), err)
+	}
+}
+
+func TestEnsureEntryAddsOnlyWhatTheLedgerDoesNotHold(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	id := uuid.New()
+	at := time.Date(2026, 10, 20, 9, 30, 0, 500_000_000, time.UTC)
+	cutoff := at.Add(-time.Hour)
+	missed := Entry{ID: id, At: at, Kind: KindUnfreeze}
+
+	added, err := EnsureEntry(path, missed, cutoff)
+	if err != nil || !added {
+		t.Fatalf("first ensure: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, missed, cutoff); err != nil || added {
+		t.Fatalf("second ensure: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: id, At: at.Add(-time.Minute), Kind: KindUnfreeze}, cutoff); err != nil || added {
+		t.Fatalf("an older event than a recorded one: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: id, At: at, Kind: KindSessions}, cutoff); err != nil || !added {
+		t.Fatalf("another kind of the same id: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: id, At: at.Add(time.Minute), Kind: KindUnfreeze}, cutoff); err != nil || !added {
+		t.Fatalf("a newer event: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: uuid.New(), At: cutoff.Add(-time.Second), Kind: KindUnfreeze}, cutoff); err != nil || added {
+		t.Fatalf("an event past retention: added %v, %v", added, err)
+	}
+	entries, err := Read(path)
+	if err != nil || len(entries) != 3 {
+		t.Fatalf("entries %+v, %v, want 3", entries, err)
+	}
+}
+
+func TestMissingOnlyReadsTheLedger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	at := time.Now().Truncate(time.Second)
+	e := Entry{ID: uuid.New(), At: at, Kind: KindInviteRevoked}
+	if missing, err := Missing(path, e, at.Add(-time.Hour)); err != nil || !missing {
+		t.Fatalf("an absent ledger: %v %v, want missing", missing, err)
+	}
+	if entries, err := Read(path); err != nil || len(entries) != 0 {
+		t.Fatalf("Missing wrote %+v %v", entries, err)
+	}
+	if missing, err := Missing(path, e, at.Add(time.Hour)); err != nil || missing {
+		t.Fatalf("past retention: %v %v, want not missing", missing, err)
+	}
+	if err := AppendEntries(path, e); err != nil {
+		t.Fatal(err)
+	}
+	if missing, err := Missing(path, e, at.Add(-time.Hour)); err != nil || missing {
+		t.Fatalf("a held line: %v %v, want not missing", missing, err)
+	}
+	if missing, err := Missing(path, Entry{ID: e.ID, At: at.Add(time.Minute), Kind: e.Kind}, at.Add(-time.Hour)); err != nil || !missing {
+		t.Fatalf("a later event of the same id: %v %v, want missing", missing, err)
+	}
+}
+
+func TestEnsureEntryLeavesAMalformedLedgerAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	if err := os.WriteFile(path, []byte("not a line\n"), FileMode); err != nil {
+		t.Fatal(err)
+	}
+	e := Entry{ID: uuid.New(), At: time.Now(), Kind: KindUnfreeze}
+	if added, err := EnsureEntry(path, e, time.Time{}); err == nil || added {
+		t.Fatalf("added %v, %v, want an error", added, err)
+	}
+	if raw, _ := os.ReadFile(path); string(raw) != "not a line\n" {
+		t.Fatalf("ledger changed: %q", raw)
 	}
 }

@@ -33,6 +33,10 @@ final class GravatarPreference {
     guard on != isOn else { return }
     GravatarSetting.setEnabled(on, defaults)
     isOn = on
-    if !on { clearing = Task { [loader] in await loader.clear() } }
+    if !on { forgetPictures() }
+  }
+
+  func forgetPictures() {
+    clearing = Task { [loader] in await loader.clear() }
   }
 }
